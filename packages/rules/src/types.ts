@@ -1,0 +1,119 @@
+/** 죄악 속성 7종. 비전투 능력치로도 쓰인다. */
+export type Sin = "wrath" | "lust" | "sloth" | "gluttony" | "gloom" | "pride" | "envy";
+export const SINS: readonly Sin[] = ["wrath", "lust", "sloth", "gluttony", "gloom", "pride", "envy"];
+export const SIN_LABEL: Record<Sin, string> = {
+  wrath: "분노", lust: "색욕", sloth: "나태", gluttony: "탐식", gloom: "우울", pride: "오만", envy: "질투",
+};
+
+/** 피해 유형 3종 */
+export type DamageType = "slash" | "pierce" | "blunt";
+export const DAMAGE_TYPE_LABEL: Record<DamageType, string> = { slash: "참격", pierce: "관통", blunt: "타격" };
+
+/** 저항 단계. 원작과 동일 (취약 2.0 / 보통 1.0 / 내성 0.5 / 면역 0) */
+export type Resistance = "fatal" | "weak" | "normal" | "endure" | "resist" | "immune";
+export const RESISTANCE_MULT: Record<Resistance, number> = {
+  fatal: 2.0, weak: 1.5, normal: 1.0, endure: 0.75, resist: 0.5, immune: 0,
+};
+
+export type SkillKind = "attack" | "defense";
+export type DefenseKind = "guard" | "evade" | "counter";
+
+export interface Skill {
+  id: string;
+  name: string;
+  kind: SkillKind;
+  /** 방어 스킬일 때만 */
+  defenseKind?: DefenseKind;
+  /** 덱 비율. 원작 스킬1/2/3 = 3/2/1. 방어 스킬은 덱에 들어가지 않는다. */
+  tier?: 1 | 2 | 3;
+  basePower: number;
+  coinPower: number;   // 음수 가능 (뒷면이 유리한 스킬은 다루지 않고, 음수 코인은 "앞면이면 감소")
+  coinCount: number;   // 1~14
+  damageType: DamageType;
+  sin: Sin;
+  /** 부가 효과 설명. 1차에서는 텍스트로만 표시하고 GM이 수동 적용 */
+  effectText?: string;
+  /** 구조화된 효과 (자동 실행). 후속 구현 */
+  effects?: Effect[];
+}
+
+/** 상태: 호흡만 1차 구현. 위력(potency)과 횟수(count) */
+export interface StatusStack {
+  potency: number;
+  count: number;
+}
+export type StatusId = "poise"; // 호흡. 추후 burn/bleed/tremor/rupture/sinking/charge 추가
+
+export interface Combatant {
+  id: string;
+  name: string;
+  side: "ally" | "enemy";
+  maxHp: number;
+  hp: number;
+  /** 정신력 -45 ~ +45 */
+  sanity: number;
+  /** 속도 다이스 범위와 개수 (캐릭터 귀속) */
+  speed: { min: number; max: number; dice: 1 | 2 };
+  skills: Skill[];
+  statuses: Partial<Record<StatusId, StatusStack>>;
+  /** 흐트러짐 상태. staggeredUntilRound 이전 라운드까지 행동 불가, 피해 2배 */
+  staggered: boolean;
+  staggeredUntilRound?: number;
+  /** 이미 발동한 흐트러짐 구간 (0.5, 0.3) */
+  staggerTriggered: number[];
+  /** 저항표. 토글이 꺼져 있으면 무시 */
+  resist?: { damage?: Partial<Record<DamageType, Resistance>>; sin?: Partial<Record<Sin, Resistance>> };
+  incapacitated: boolean;
+}
+
+/** 캠페인 단위 규칙 토글 */
+export interface RuleConfig {
+  sanityMin: number;         // -45
+  sanityMax: number;         // 45
+  headsBase: number;         // 0.5
+  sanityOnClashWin: number;  // +10
+  sanityOnClashLose: number; // -10
+  staggerThresholds: number[]; // [0.5, 0.3]
+  staggerDamageMult: number;   // 2
+  critMult: number;            // 1.5 고정 (플레이어 수정 불가)
+  poiseCritPerPotency: number; // 0.05
+  resistanceMode: "off" | "enemyOnly" | "all";
+}
+
+export const DEFAULT_RULES: RuleConfig = {
+  sanityMin: -45,
+  sanityMax: 45,
+  headsBase: 0.5,
+  sanityOnClashWin: 10,
+  sanityOnClashLose: -10,
+  staggerThresholds: [0.5, 0.3],
+  staggerDamageMult: 2,
+  critMult: 1.5,
+  poiseCritPerPotency: 0.05,
+  resistanceMode: "off",
+};
+
+/* ---------- 구조화된 효과 (특기 / 패시브 / 스킬 부가효과 / 적 기믹 공용) ---------- */
+
+export type Trigger =
+  | "combatStart" | "roundStart" | "roundEnd"
+  | "onHeads" | "onTails" | "onHit" | "onCrit"
+  | "clashWin" | "clashLose" | "onKill" | "onStaggered" | "onIncapacitated";
+
+export type Target = "self" | "clashTarget" | "allies" | "enemies" | "all";
+
+export type Action =
+  | { type: "applyStatus"; status: StatusId; potency: number; count: number }
+  | { type: "sanity"; delta: number }
+  | { type: "heal"; amount: number }
+  | { type: "damage"; amount: number }
+  | { type: "addCoinPower"; delta: number }
+  | { type: "addBasePower"; delta: number };
+
+export interface Effect {
+  trigger: Trigger;
+  target: Target;
+  action: Action;
+  /** 자연어 원문 (플레이어가 쓴 문장) */
+  source?: string;
+}

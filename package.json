@@ -4,6 +4,9 @@
   "packageManager": "pnpm@10.28.0",
   "scripts": {
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "dev": "pnpm --filter @limbus/web dev",
+    "build": "pnpm --filter @limbus/web build",
+    "lint": "pnpm --filter @limbus/web lint"
   }
 }

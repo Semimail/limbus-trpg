@@ -10,13 +10,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@limbus/rules": "workspace:*",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "^2.119.0",
     "next": "16.4.5",
     "next-themes": "0.4.6",
     "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "@limbus/rules": "workspace:*"
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
@@ -26,7 +26,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "undici": "^7.30.2"
   },
   "packageManager": "pnpm@10.28.0"
 }

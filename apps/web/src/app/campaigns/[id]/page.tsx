@@ -112,8 +112,8 @@ export default async function OfficePage({ params }: { params: Promise<{ id: str
           </div>
         </div>
 
-        {/* 오른쪽 1/3 */}
-        <div className="space-y-4">
+        {/* 오른쪽 1/3 (모바일에서는 맨 위) */}
+        <div className="order-first space-y-4 lg:order-none">
           <Panel title="내 캐릭터" right={<Link href={`/characters/new?campaign=${id}`} className="text-xs text-accent">+ 만들기</Link>}>
             <div className="space-y-2">
               {mine.map((c) => <CharacterCard key={c.id} c={c} />)}

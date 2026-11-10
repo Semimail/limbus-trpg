@@ -7,6 +7,7 @@ import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction,
 import { formatRound, unitNames } from "@/lib/combat-log";
 import { Button } from "@/components/ui";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon, StatusBadge, StatusIcon } from "@/components/icons";
+import { Keyword, KeywordText } from "@/components/keyword/keyword";
 
 interface Props { campaignId: string; combatId: string; initial: CombatState; meId: string; isGm: boolean }
 
@@ -52,7 +53,7 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
       {err ? <p className="text-xs text-danger">{err}</p> : null}
       {state.notices?.length ? (
         <ul className="space-y-0.5 border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs">
-          {state.notices.map((n, i) => <li key={i}>{n}</li>)}
+          {state.notices.map((n, i) => <li key={i}><KeywordText text={n} /></li>)}
         </ul>
       ) : null}
 
@@ -74,7 +75,7 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
       {state.lastRound ? (
         <details className="border-t border-border pt-2" open>
           <summary className="cursor-pointer text-sm font-semibold">지난 라운드 결과</summary>
-          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs leading-relaxed">{formatRound(state.lastRound, names).join("\n")}</pre>
+          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs leading-relaxed"><KeywordText text={formatRound(state.lastRound, names).join("\n")} /></pre>
         </details>
       ) : null}
     </div>
@@ -104,15 +105,15 @@ function UnitCard({ u, state, isGm, hideNumbers, names, campaignId, combatId, on
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
             <span className="truncate text-sm font-medium">{u.name}</span>
-            <span className="text-[11px] text-muted">{u.incapacitated ? "전투불능" : isCorroded(u, state.round) ? <span className="text-danger">침식</span> : u.staggered ? "흐트러짐" : ""}</span>
+            <span className="text-[11px] text-muted">{u.incapacitated ? <Keyword id="down">전투불능</Keyword> : isCorroded(u, state.round) ? <Keyword id="corrosion" className="text-danger">침식</Keyword> : u.staggered ? <Keyword id="stagger">흐트러짐</Keyword> : ""}</span>
           </div>
           <div className="mt-1 h-2 w-full bg-fg/10"><div className="h-full bg-danger" style={{ width: `${hpPct}%` }} /></div>
           <div className="mt-0.5 flex justify-between text-[11px] tabular-nums text-muted">
             <span>{hideNumbers ? "체력" : `체력 ${u.hp}/${u.maxHp}`}</span>
             {!u.sanityLocked ? <span>정신력 {u.sanity > 0 ? "+" : ""}{u.sanity}</span> : null}
           </div>
-          {u.source.kind === "character" ? <div className="text-[11px] tabular-nums text-muted">빛 {u.light} · 침식도 {u.erosion}</div> : null}
-          {statuses.length ? <div className="mt-1 flex flex-wrap gap-1">{statuses.map(([k, v]) => <StatusBadge key={k} status={k} value={v} />)}</div> : null}
+          {u.source.kind === "character" ? <div className="text-[11px] tabular-nums text-muted"><Keyword id="light">빛</Keyword> {u.light} · <Keyword id="erosion">침식도</Keyword> {u.erosion}</div> : null}
+          {statuses.length ? <div className="mt-1 flex flex-wrap gap-1">{statuses.map(([k, v]) => <Keyword key={k} id={k} className="border-0"><StatusBadge status={k} value={v} /></Keyword>)}</div> : null}
         </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-1">

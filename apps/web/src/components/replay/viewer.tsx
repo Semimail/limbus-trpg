@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatRound, type RoundEvent } from "@/lib/replay-format";
 import { CoinIcon, StatusBadge } from "@/components/icons";
+import { KeywordText } from "@/components/keyword/keyword";
 import type { StatusId } from "@limbus/rules";
 
 interface Msg { id: number; kind: string; content: string; created_at: string; author_id: string | null; character_id: string | null; to_user_id: string | null; scene_id: string | null; payload: Record<string, unknown> | null }
@@ -86,7 +87,7 @@ function Item({ item, names, charNames, last }: { item: TimelineItem; names: Rec
   if (item.t === "round") return (
     <div className={`border-l-2 border-gold bg-gold/5 px-3 py-2 text-xs ${cls}`}>
       <div className="mb-1 font-semibold">라운드 {item.round}</div>
-      <pre className="whitespace-pre-wrap font-mono leading-relaxed">{item.lines.join("\n")}</pre>
+      <pre className="whitespace-pre-wrap font-mono leading-relaxed"><KeywordText text={item.lines.join("\n")} /></pre>
       {item.after ? (
         <div className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
           {item.after.map((u) => (
@@ -108,14 +109,14 @@ function Item({ item, names, charNames, last }: { item: TimelineItem; names: Rec
   const img = m.payload && typeof m.payload.image === "string" ? m.payload.image : null;
   const body = (
     <>
-      {m.content ? <span className="whitespace-pre-wrap break-words">{m.content}</span> : null}
+      {m.content ? <KeywordText text={m.content} className="whitespace-pre-wrap break-words" /> : null}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {img ? <img src={img} alt="" className="mt-1 max-h-64 border border-border" /> : null}
     </>
   );
   if (m.kind === "system") {
     const p = m.payload ?? {};
-    return <div className={`border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs ${cls}`}><span className="text-muted">{time} · {author}{m.character_id ? ` (${charNames[m.character_id] ?? ""})` : ""}</span><div className="mt-0.5 whitespace-pre-wrap font-mono">{m.content}</div>
+    return <div className={`border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs ${cls}`}><span className="text-muted">{time} · {author}{m.character_id ? ` (${charNames[m.character_id] ?? ""})` : ""}</span><div className="mt-0.5 whitespace-pre-wrap font-mono"><KeywordText text={m.content} /></div>
       {p.type === "coin" && Array.isArray(p.coins) ? <div className="mt-1 flex gap-0.5">{(p.coins as boolean[]).map((h, i) => <CoinIcon key={i} heads={h} size={18} />)}</div> : null}</div>;
   }
   if (m.kind === "gm") return <div className={`border-l-2 border-accent px-2 py-1 text-sm italic ${cls}`}><span className="mr-2 text-xs not-italic text-muted">{time} GM</span>{body}</div>;

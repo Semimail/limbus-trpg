@@ -6,3 +6,4 @@ dist
 !.env.example
 *.log
 .DS_Store
+apps/web/public/rulebook.md

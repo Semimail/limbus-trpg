@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { sendMessage, deleteMessage, type MessageKind } from "@/app/campaigns/[id]/sessions/[sid]/actions";
 import { CoinIcon } from "@/components/icons";
+import { KeywordText } from "@/components/keyword/keyword";
 
 export interface ChatMessage {
   id: number; kind: MessageKind; content: string; created_at: string;
@@ -127,7 +128,7 @@ function Line({ m, names, charNames, meId, onDelete }: { m: ChatMessage; names: 
   const img = m.payload && typeof m.payload.image === "string" ? m.payload.image : null;
   const body = (
     <>
-      {m.content ? <span className="whitespace-pre-wrap break-words">{m.content}</span> : null}
+      {m.content ? <KeywordText text={m.content} className="whitespace-pre-wrap break-words" /> : null}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {img ? <a href={img} target="_blank" rel="noreferrer"><img src={img} alt="" className="mt-1 max-h-64 max-w-full border border-border" /></a> : null}
     </>
@@ -137,7 +138,7 @@ function Line({ m, names, charNames, meId, onDelete }: { m: ChatMessage; names: 
     return (
       <div className="group border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs">
         <span className="text-muted">{time} · {author}{m.character_id ? ` (${charNames[m.character_id] ?? ""})` : ""}</span>{del}
-        <div className="mt-0.5 whitespace-pre-wrap font-mono">{m.content}</div>
+        <div className="mt-0.5 whitespace-pre-wrap font-mono"><KeywordText text={m.content} /></div>
         {p.type === "coin" && Array.isArray(p.coins) ? (
           <div className="mt-1 flex flex-wrap gap-0.5">
             {(p.coins as boolean[]).map((h, i) => <CoinIcon key={i} heads={h} size={22} />)}

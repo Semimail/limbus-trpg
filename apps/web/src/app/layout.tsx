@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Header } from "@/components/header";
+import { KeywordProvider } from "@/components/keyword/provider";
 
 export const metadata: Metadata = {
   title: "림버스 TRPG",
@@ -17,8 +18,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-full">
         <ThemeProvider>
-          <Header />
-          <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+          <KeywordProvider>
+            <Header />
+            <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+          </KeywordProvider>
         </ThemeProvider>
       </body>
     </html>

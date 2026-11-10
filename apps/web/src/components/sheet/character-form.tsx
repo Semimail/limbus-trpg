@@ -12,6 +12,7 @@ import { Panel } from "@/components/office/panel";
 import { PortraitUpload } from "./portrait-upload";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon } from "@/components/icons";
 import { EffectPreview } from "./effect-preview";
+import { Keyword } from "@/components/keyword/keyword";
 import { SkillEditor } from "./skill-editor";
 import { newEgoDraft } from "@limbus/rules";
 
@@ -88,7 +89,7 @@ export function CharacterForm({ id, campaignId, initialName, initialPortrait, in
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
           {SINS.map((s) => (
             <div key={s} className="border border-border p-2 text-center">
-              <div className="flex items-center justify-center gap-1 text-xs text-muted"><SinIcon sin={s} size={18} />{SIN_LABEL[s]}</div>
+              <div className="flex items-center justify-center gap-1 text-xs text-muted"><SinIcon sin={s} size={18} /><Keyword id={s}>{SIN_LABEL[s]}</Keyword></div>
               <div className="my-1 text-2xl font-semibold tabular-nums">{d.stats[s]}</div>
               {!ro ? (
                 <div className="flex justify-center gap-1">
@@ -222,8 +223,10 @@ export function CharacterForm({ id, campaignId, initialName, initialPortrait, in
   );
 }
 
+const STAT_KEY: Record<string, string> = { "레벨": "level", "정신력": "sanity", "빛": "light", "동기화": "sync", "침식도": "erosion", "속도": "speed", "코인 상한": "level" };
 function Stat({ label, value }: { label: string; value: string }) {
-  return <div className="border border-border px-2 py-1"><div className="text-[11px] text-muted">{label}</div><div className="tabular-nums">{value}</div></div>;
+  const k = STAT_KEY[label];
+  return <div className="border border-border px-2 py-1"><div className="text-[11px] text-muted">{k ? <Keyword id={k}>{label}</Keyword> : label}</div><div className="tabular-nums">{value}</div></div>;
 }
 
 function Num({ label, value, min, max, onChange, ro }: { label: string; value: number; min?: number; max?: number; onChange: (v: number) => void; ro: boolean }) {

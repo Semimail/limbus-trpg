@@ -3,6 +3,7 @@ import { SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, expectedPower, type DamageType, typ
 import { Input } from "@/components/ui";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon } from "@/components/icons";
 import { EffectPreview } from "./effect-preview";
+import { Keyword } from "@/components/keyword/keyword";
 
 const DEFENSE_LABEL: Record<DefenseKind, string> = { guard: "가드", evade: "회피", counter: "반격" };
 const field = "w-full rounded-md border border-border bg-elev px-2 py-1 text-sm outline-none focus:border-accent disabled:opacity-70";
@@ -26,7 +27,7 @@ export function SkillEditor({ s, onChange, ro, coinCap, budget, label, onRemove 
         </span>
         <Input value={s.name} onChange={(e) => onChange({ name: e.target.value })} disabled={ro} placeholder="스킬 이름" className="max-w-xs" />
         <span className={`ml-auto text-xs tabular-nums ${over ? "text-danger" : "text-muted"}`}>
-          기대 위력 {ev.toFixed(1)}{budget !== undefined ? ` / 상한 ${budget}` : ""}
+          <Keyword id="skillbudget">기대 위력</Keyword> {ev.toFixed(1)}{budget !== undefined ? ` / 상한 ${budget}` : ""}
         </span>
         {!ro && onRemove ? <button type="button" onClick={onRemove} className="text-xs text-muted hover:text-danger">제거</button> : null}
       </div>

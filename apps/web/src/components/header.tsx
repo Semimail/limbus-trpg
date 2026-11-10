@@ -15,6 +15,8 @@ export async function Header() {
         </Link>
         <nav className="flex items-center gap-3 text-sm">
           <Link href="/characters" className="text-muted hover:text-fg">내 캐릭터</Link>
+          <Link href="/rulebook" className="hidden text-muted hover:text-fg sm:inline">룰북</Link>
+          <Link href="/databook" className="text-muted hover:text-fg">데이터북</Link>
           <span className="hidden text-muted sm:inline">{name}</span>
           <form action="/auth/signout" method="post">
             <button className="text-muted hover:text-fg">로그아웃</button>

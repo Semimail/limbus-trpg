@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prebuild": "node -e \"require('fs').copyFileSync(require('path').resolve(__dirname,'../../docs/rulebook.md'),'public/rulebook.md')\"",
+    "predev": "node -e \"require('fs').copyFileSync(require('path').resolve(__dirname,'../../docs/rulebook.md'),'public/rulebook.md')\""
   },
   "dependencies": {
     "@limbus/rules": "workspace:*",

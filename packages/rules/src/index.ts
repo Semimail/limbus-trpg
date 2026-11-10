@@ -15,3 +15,4 @@ export * from "./enemy";
 export * from "./combat";
 export * from "./effects";
 export * from "./parse";
+export * from "./glossary";

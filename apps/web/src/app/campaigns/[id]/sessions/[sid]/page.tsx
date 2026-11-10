@@ -20,11 +20,16 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   const { data: s } = await supabase.from("sessions").select("id, title, status, started_at, current_scene_id").eq("id", sid).single();
   if (!s || !user) notFound();
 
-  const [{ data: members }, { data: scenes }, { data: chars }, { data: msgs }] = await Promise.all([
+  // 세션에 필요한 조회를 한 번에 (왕복 최소화)
+  const [{ data: members }, { data: scenes }, { data: chars }, { data: msgs }, { data: activeCombat }, { data: foes }] = await Promise.all([
     supabase.from("campaign_members").select("user_id, role, profiles(username)").eq("campaign_id", id),
     supabase.from("scenes").select("id, title, kind, order_index, board").eq("session_id", sid).order("order_index"),
-    supabase.from("characters").select("id, name, owner_id, portrait_url").eq("campaign_id", id),
+    supabase.from("characters").select("id, name, owner_id, portrait_url, approved").eq("campaign_id", id).order("created_at"),
     supabase.from("messages").select("id, kind, content, created_at, author_id, character_id, to_user_id, payload").eq("session_id", sid).order("id", { ascending: false }).limit(150),
+    s.current_scene_id
+      ? supabase.from("combats").select("id, state, phase, scene_id").eq("scene_id", s.current_scene_id).neq("phase", "ended").order("created_at", { ascending: false }).limit(1).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase.from("enemies").select("id, name, portrait_url, data").eq("campaign_id", id).order("name"),
   ]);
   const me = members?.find((m) => m.user_id === user.id);
   const isGm = me?.role === "gm" || me?.role === "temp_gm";
@@ -36,30 +41,23 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   const myChars = (chars ?? []).filter((c) => c.owner_id === user.id).map((c) => ({ id: c.id, name: c.name }));
   const current = (scenes ?? []).find((x) => x.id === s.current_scene_id) ?? null;
   const open = s.status === "open";
-  const boardData: BoardData = (() => { const b = (current?.board ?? {}) as Partial<BoardData>; return { background: b.background ?? null, tokens: b.tokens ?? [] }; })();
-  let tokenSources: TokenSource[] = (chars ?? []).map((c) => ({ id: c.id, name: c.name, img: c.portrait_url, ownerId: c.owner_id, kind: "character" as const }));
-  if (isGm && current && current.kind !== "combat") {
-    const { data: foes } = await supabase.from("enemies").select("id, name, portrait_url").eq("campaign_id", id).order("name");
-    tokenSources = [...tokenSources, ...(foes ?? []).map((f) => ({ id: f.id, name: f.name, img: f.portrait_url, ownerId: null, kind: "enemy" as const }))];
-  }
-
   // 전투 장면이면 활성 전투 또는 준비 화면
   let combat: { id: string; state: CombatState } | null = null;
   let setup: { allies: { id: string; name: string; owner: string; approved: boolean }[]; enemies: { id: string; name: string; threat: string; maxHp: number }[] } | null = null;
   if (current?.kind === "combat") {
-    const { data: c } = await supabase.from("combats").select("id, state, phase").eq("scene_id", current.id).neq("phase", "ended").order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (c) combat = { id: c.id, state: c.state as unknown as CombatState };
+    if (activeCombat) combat = { id: activeCombat.id, state: activeCombat.state as unknown as CombatState };
     else if (isGm && open) {
-      const [{ data: allChars }, { data: foes }] = await Promise.all([
-        supabase.from("characters").select("id, name, owner_id, approved").eq("campaign_id", id).order("created_at"),
-        supabase.from("enemies").select("id, name, data").eq("campaign_id", id).order("name"),
-      ]);
       const ownerName = (uid: string) => memberList.find((m) => m.user_id === uid)?.username ?? "";
       setup = {
-        allies: (allChars ?? []).map((c) => ({ id: c.id, name: c.name, owner: ownerName(c.owner_id), approved: c.approved })),
+        allies: (chars ?? []).map((c) => ({ id: c.id, name: c.name, owner: ownerName(c.owner_id), approved: c.approved })),
         enemies: (foes ?? []).map((f) => { const d = f.data as unknown as EnemyData; return { id: f.id, name: f.name, threat: d.threat, maxHp: d.maxHp }; }),
       };
     }
+  }
+  const boardData: BoardData = (() => { const b = (current?.board ?? {}) as Partial<BoardData>; return { background: b.background ?? null, tokens: b.tokens ?? [] }; })();
+  let tokenSources: TokenSource[] = (chars ?? []).map((c) => ({ id: c.id, name: c.name, img: c.portrait_url, ownerId: c.owner_id, kind: "character" as const }));
+  if (isGm && current && current.kind !== "combat") {
+    tokenSources = [...tokenSources, ...(foes ?? []).map((f) => ({ id: f.id, name: f.name, img: f.portrait_url, ownerId: null, kind: "enemy" as const }))];
   }
 
   return (

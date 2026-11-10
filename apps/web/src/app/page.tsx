@@ -12,7 +12,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
         <span className="text-accent">림버스</span> TRPG
       </h1>
       <p className="mt-3 text-muted">코인을 던지고, 합을 겨루고, 도시에서 살아남으세요.</p>
-      {error ? <p className="mt-4 text-sm text-danger">로그인에 실패했습니다. 다시 시도해 주세요.</p> : null}
+      {error ? <p className="mt-4 text-sm text-danger">로그인에 실패했습니다. 다시 시도해 주세요.<br /><span className="text-xs text-muted">사유: {error}</span></p> : null}
       <div className="mt-8">
         <DiscordLogin next={next ?? "/campaigns"} />
       </div>

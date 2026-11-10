@@ -11,3 +11,5 @@ export * from "./deck";
 export * from "./progression";
 export * from "./character";
 export * from "./status";
+export * from "./enemy";
+export * from "./combat";

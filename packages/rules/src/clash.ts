@@ -78,8 +78,8 @@ export function resolveClash(a: Side, b: Side, round: number, rules: RuleConfig,
   const lose = winner === "a" ? b : a;
   const left = winner === "a" ? aLeft : bLeft;
 
-  win.combatant.sanity = adjustSanity(win.combatant.sanity, rules.sanityOnClashWin, rules);
-  lose.combatant.sanity = adjustSanity(lose.combatant.sanity, rules.sanityOnClashLose, rules);
+  if (!win.combatant.sanityLocked) win.combatant.sanity = adjustSanity(win.combatant.sanity, rules.sanityOnClashWin, rules);
+  if (!lose.combatant.sanityLocked) lose.combatant.sanity = adjustSanity(lose.combatant.sanity, rules.sanityOnClashLose, rules);
 
   const attacks: AttackCoin[] = [];
   const ticks: StatusTick[] = [];
@@ -110,7 +110,7 @@ export function afterAttack(_attacker: Combatant, target: Combatant, attacks: At
   if (landed && !target.incapacitated) {
     const sinking = triggerStatus(target, "sinking");
     if (sinking > 0) {
-      target.sanity = adjustSanity(target.sanity, -sinking, rules);
+      if (!target.sanityLocked) target.sanity = adjustSanity(target.sanity, -sinking, rules);
       ticks.push({ target: target.id, status: "sinking", amount: sinking, sanityAfter: target.sanity });
     }
   }

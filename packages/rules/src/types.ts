@@ -56,6 +56,8 @@ export interface Combatant {
   hp: number;
   /** 정신력 -45 ~ +45 */
   sanity: number;
+  /** true면 정신력이 변하지 않는다 (환상체 등) */
+  sanityLocked?: boolean;
   /** 속도 다이스 범위와 개수 (캐릭터 귀속) */
   speed: { min: number; max: number; dice: 1 | 2 };
   skills: Skill[];

@@ -108,8 +108,8 @@ export default async function OfficePage({ params }: { params: Promise<{ id: str
               </ul>
             </Panel>
             <Panel title="적 도감">
-              <p className="text-sm text-muted">{isGm ? `등록 ${enemyCount ?? 0}` : "마주친 적 0"}</p>
-              <p className="mt-1 text-xs text-muted">다음 단계에서 구현</p>
+              <p className="text-sm text-muted">{isGm ? `등록 ${enemyCount ?? 0}` : `마주친 적 ${enemyCount ?? 0}`}</p>
+              <Link href={`/campaigns/${id}/enemies`} className="mt-1 inline-block text-sm text-accent">{isGm ? "도감 관리 →" : "도감 보기 →"}</Link>
             </Panel>
           </div>
         </div>

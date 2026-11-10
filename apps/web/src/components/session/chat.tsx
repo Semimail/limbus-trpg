@@ -135,7 +135,7 @@ function Line({ m, names, charNames, meId }: { m: ChatMessage; names: Record<str
     return (
       <div className="border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs">
         <span className="text-muted">{time} · {author}{m.character_id ? ` (${charNames[m.character_id] ?? ""})` : ""}</span>
-        <div className="mt-0.5 font-mono">{m.content}</div>
+        <div className="mt-0.5 whitespace-pre-wrap font-mono">{m.content}</div>
         {p.type === "coin" && Array.isArray(p.coins) ? (
           <div className="mt-1 flex flex-wrap gap-0.5">
             {(p.coins as boolean[]).map((h, i) => <CoinIcon key={i} heads={h} size={22} />)}

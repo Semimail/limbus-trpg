@@ -6,6 +6,9 @@ import { Chat, type ChatMessage } from "@/components/session/chat";
 import { SceneBar, type SceneRow } from "@/components/session/scene-bar";
 import { closeSession } from "@/app/campaigns/actions";
 import { Button } from "@/components/ui";
+import { CombatBoard } from "@/components/combat/board";
+import { CombatSetup } from "@/components/combat/setup";
+import type { CombatState, EnemyData } from "@limbus/rules";
 
 export default async function SessionPage({ params }: { params: Promise<{ id: string; sid: string }> }) {
   const { id, sid } = await params;
@@ -31,6 +34,25 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   const current = (scenes ?? []).find((x) => x.id === s.current_scene_id) ?? null;
   const open = s.status === "open";
 
+  // 전투 장면이면 활성 전투 또는 준비 화면
+  let combat: { id: string; state: CombatState } | null = null;
+  let setup: { allies: { id: string; name: string; owner: string; approved: boolean }[]; enemies: { id: string; name: string; threat: string; maxHp: number }[] } | null = null;
+  if (current?.kind === "combat") {
+    const { data: c } = await supabase.from("combats").select("id, state, phase").eq("scene_id", current.id).neq("phase", "ended").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (c) combat = { id: c.id, state: c.state as unknown as CombatState };
+    else if (isGm && open) {
+      const [{ data: allChars }, { data: foes }] = await Promise.all([
+        supabase.from("characters").select("id, name, owner_id, approved").eq("campaign_id", id).order("created_at"),
+        supabase.from("enemies").select("id, name, data").eq("campaign_id", id).order("name"),
+      ]);
+      const ownerName = (uid: string) => memberList.find((m) => m.user_id === uid)?.username ?? "";
+      setup = {
+        allies: (allChars ?? []).map((c) => ({ id: c.id, name: c.name, owner: ownerName(c.owner_id), approved: c.approved })),
+        enemies: (foes ?? []).map((f) => { const d = f.data as unknown as EnemyData; return { id: f.id, name: f.name, threat: d.threat, maxHp: d.maxHp }; }),
+      };
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -47,9 +69,10 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
           <Panel title="장면" stamp={current ? ({ drama: "드라마", explore: "탐색", combat: "전투" } as const)[current.kind] : undefined}>
             <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} />
           </Panel>
-          <Panel title={current ? current.title : "보드"} className="min-h-64">
-            {current?.kind === "combat"
-              ? <p className="text-sm text-muted">전투 보드는 다음 단계에서 구현됩니다. 지금은 채팅의 /coin 과 /r 명령으로 진행하세요.</p>
+          <Panel title={current ? current.title : "보드"} className="min-h-64" stamp={combat ? "BATTLE" : undefined}>
+            {combat ? <CombatBoard campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} />
+              : setup ? <CombatSetup campaignId={id} sessionId={sid} sceneId={current!.id} allies={setup.allies} enemies={setup.enemies} />
+              : current?.kind === "combat" ? <p className="text-sm text-muted">GM이 전투를 준비하고 있습니다.</p>
               : <p className="text-sm text-muted">장면 보드(배경 이미지, 토큰)는 이후에 추가됩니다.</p>}
           </Panel>
         </div>

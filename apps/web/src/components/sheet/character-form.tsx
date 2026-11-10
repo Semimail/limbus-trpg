@@ -10,6 +10,7 @@ import { saveCharacter } from "@/app/characters/actions";
 import { Button, Input } from "@/components/ui";
 import { Panel } from "@/components/office/panel";
 import { PortraitUpload } from "./portrait-upload";
+import { SinIcon, DamageIcon, DefenseIcon, CoinIcon } from "@/components/icons";
 
 interface Props {
   id?: string;
@@ -84,7 +85,7 @@ export function CharacterForm({ id, campaignId, initialName, initialPortrait, in
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
           {SINS.map((s) => (
             <div key={s} className="border border-border p-2 text-center">
-              <div className="text-xs text-muted">{SIN_LABEL[s]}</div>
+              <div className="flex items-center justify-center gap-1 text-xs text-muted"><SinIcon sin={s} size={18} />{SIN_LABEL[s]}</div>
               <div className="my-1 text-2xl font-semibold tabular-nums">{d.stats[s]}</div>
               {!ro ? (
                 <div className="flex justify-center gap-1">
@@ -129,6 +130,13 @@ export function CharacterForm({ id, campaignId, initialName, initialPortrait, in
               <div key={s.id} className={`border p-3 ${over ? "border-danger" : "border-border"}`}>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span className="stamp">{s.kind === "defense" ? "방어" : `스킬 ${s.tier}`}</span>
+                  <span className="inline-flex items-center gap-1 rounded-sm bg-fg/5 px-1.5 py-0.5">
+                    {s.kind === "defense" ? <DefenseIcon kind={s.defenseKind ?? "guard"} size={18} /> : <DamageIcon type={s.damageType} size={18} />}
+                    <SinIcon sin={s.sin} size={18} />
+                    <span className="ml-1 inline-flex items-center gap-0.5">
+                      {Array.from({ length: Math.min(s.coinCount, 14) }).map((_, i) => <CoinIcon key={i} heads size={14} />)}
+                    </span>
+                  </span>
                   <Input value={s.name} onChange={(e) => setSkill(s.id, { name: e.target.value })} disabled={ro} placeholder="스킬 이름" className="max-w-xs" />
                   <span className={`ml-auto text-xs tabular-nums ${over ? "text-danger" : "text-muted"}`}>기대 위력 {ev.toFixed(1)} / 상한 {budget}</span>
                 </div>

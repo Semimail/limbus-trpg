@@ -46,11 +46,18 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
 
 /* 로그인 전 화면: 임시 배경 (나중에 일러스트로 교체) */
 .landing { background: #070606; color: #ece6dc; }
+.landing-photo {
+  background: url("/assets/limbus/bg/backstreet.jpg") center / cover no-repeat;
+  filter: saturate(0.65) brightness(0.75);
+}
+@media (max-width: 640px) {
+  .landing-photo { background-image: url("/assets/limbus/bg/backstreet-sm.jpg"); background-position: 60% center; }
+}
 .landing-art {
   background:
-    radial-gradient(60% 50% at 80% 30%, rgba(210, 36, 43, 0.22), transparent 70%),
-    radial-gradient(40% 40% at 20% 80%, rgba(217, 179, 91, 0.10), transparent 70%),
-    linear-gradient(180deg, #0b0a0a 0%, #050404 100%);
+    linear-gradient(90deg, rgba(7, 6, 6, 0.88) 0%, rgba(7, 6, 6, 0.45) 45%, rgba(7, 6, 6, 0.15) 100%),
+    linear-gradient(180deg, rgba(7, 6, 6, 0.1) 0%, rgba(7, 6, 6, 0.7) 100%),
+    radial-gradient(60% 50% at 80% 30%, rgba(210, 36, 43, 0.18), transparent 70%);
 }
 .landing-noise {
   opacity: 0.35;

@@ -8,6 +8,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
   if (user) redirect(next && next.startsWith("/") ? next : "/campaigns");
   return (
     <div className="landing fixed inset-0 overflow-hidden">
+      <div className="landing-photo absolute inset-0" aria-hidden />
       <div className="landing-art absolute inset-0" aria-hidden />
       <div className="landing-noise absolute inset-0" aria-hidden />
       <div className="relative z-10 flex h-full flex-col justify-between px-6 py-8 sm:px-12 sm:py-12">
@@ -23,7 +24,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
             {error ? <p className="mt-2 text-xs text-[#e04b52]">로그인 실패: {error}</p> : null}
           </div>
         </div>
-        <p className="text-xs text-[#6f665f]">림버스 컴퍼니 세계관의 2차 창작 TRPG · 원작 에셋을 사용하지 않습니다</p>
+        <p className="text-xs text-[#6f665f]">비공개 팬 프로젝트 · 림버스 컴퍼니의 이미지와 세계관은 Project Moon의 권리입니다</p>
       </div>
     </div>
   );

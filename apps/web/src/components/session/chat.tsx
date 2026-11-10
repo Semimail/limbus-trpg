@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { sendMessage, type MessageKind } from "@/app/campaigns/[id]/sessions/[sid]/actions";
+import { CoinIcon } from "@/components/icons";
 
 export interface ChatMessage {
   id: number; kind: MessageKind; content: string; created_at: string;
@@ -137,7 +138,7 @@ function Line({ m, names, charNames, meId }: { m: ChatMessage; names: Record<str
         <div className="mt-0.5 font-mono">{m.content}</div>
         {p.type === "coin" && Array.isArray(p.coins) ? (
           <div className="mt-1 flex flex-wrap gap-0.5">
-            {(p.coins as boolean[]).map((h, i) => <span key={i} className={`inline-block h-4 w-4 rounded-full border ${h ? "border-gold bg-gold" : "border-border bg-fg/10"}`} title={h ? "앞면" : "뒷면"} />)}
+            {(p.coins as boolean[]).map((h, i) => <CoinIcon key={i} heads={h} size={22} />)}
           </div>
         ) : null}
       </div>

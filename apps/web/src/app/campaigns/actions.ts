@@ -82,3 +82,18 @@ export async function deleteCampaign(campaignId: string): Promise<void> {
   if (error) throw new Error(error.message);
   redirect("/campaigns?all=1");
 }
+
+/** 세션 삭제 (GM). 장면·채팅·전투·이벤트가 함께 지워진다. 내보내기 후에 쓰는 것을 전제. */
+export async function deleteSession(campaignId: string, sessionId: string): Promise<void> {
+  const supabase = await createClient();
+  // 진행 중 전투로 잠긴 캐릭터 해제
+  const { data: combats } = await supabase.from("combats").select("state").eq("session_id", sessionId).neq("phase", "ended");
+  for (const c of combats ?? []) {
+    const st = c.state as { units?: { source?: { kind: string; id: string } }[] };
+    const ids = (st.units ?? []).filter((u) => u.source?.kind === "character").map((u) => u.source!.id);
+    if (ids.length) await supabase.from("characters").update({ locked: false }).in("id", ids);
+  }
+  const { error } = await supabase.from("sessions").delete().eq("id", sessionId);
+  if (error) throw new Error(error.message);
+  redirect(`/campaigns/${campaignId}`);
+}

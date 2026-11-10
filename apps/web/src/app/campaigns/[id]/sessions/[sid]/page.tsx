@@ -4,10 +4,13 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { Panel } from "@/components/office/panel";
 import { Chat, type ChatMessage } from "@/components/session/chat";
 import { SceneBar, type SceneRow } from "@/components/session/scene-bar";
-import { closeSession } from "@/app/campaigns/actions";
+import { closeSession, deleteSession } from "@/app/campaigns/actions";
+import { DeleteSession } from "@/components/session/delete-session";
 import { Button } from "@/components/ui";
 import { CombatBoard } from "@/components/combat/board";
 import { CombatSetup } from "@/components/combat/setup";
+import { SceneBoard, type TokenSource } from "@/components/board/scene-board";
+import type { BoardData } from "./actions";
 import type { CombatState, EnemyData } from "@limbus/rules";
 
 export default async function SessionPage({ params }: { params: Promise<{ id: string; sid: string }> }) {
@@ -19,8 +22,8 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
 
   const [{ data: members }, { data: scenes }, { data: chars }, { data: msgs }] = await Promise.all([
     supabase.from("campaign_members").select("user_id, role, profiles(username)").eq("campaign_id", id),
-    supabase.from("scenes").select("id, title, kind, order_index").eq("session_id", sid).order("order_index"),
-    supabase.from("characters").select("id, name, owner_id").eq("campaign_id", id),
+    supabase.from("scenes").select("id, title, kind, order_index, board").eq("session_id", sid).order("order_index"),
+    supabase.from("characters").select("id, name, owner_id, portrait_url").eq("campaign_id", id),
     supabase.from("messages").select("id, kind, content, created_at, author_id, character_id, to_user_id, payload").eq("session_id", sid).order("id", { ascending: false }).limit(150),
   ]);
   const me = members?.find((m) => m.user_id === user.id);
@@ -33,6 +36,12 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   const myChars = (chars ?? []).filter((c) => c.owner_id === user.id).map((c) => ({ id: c.id, name: c.name }));
   const current = (scenes ?? []).find((x) => x.id === s.current_scene_id) ?? null;
   const open = s.status === "open";
+  const boardData: BoardData = (() => { const b = (current?.board ?? {}) as Partial<BoardData>; return { background: b.background ?? null, tokens: b.tokens ?? [] }; })();
+  let tokenSources: TokenSource[] = (chars ?? []).map((c) => ({ id: c.id, name: c.name, img: c.portrait_url, ownerId: c.owner_id, kind: "character" as const }));
+  if (isGm && current && current.kind !== "combat") {
+    const { data: foes } = await supabase.from("enemies").select("id, name, portrait_url").eq("campaign_id", id).order("name");
+    tokenSources = [...tokenSources, ...(foes ?? []).map((f) => ({ id: f.id, name: f.name, img: f.portrait_url, ownerId: null, kind: "enemy" as const }))];
+  }
 
   // 전투 장면이면 활성 전투 또는 준비 화면
   let combat: { id: string; state: CombatState } | null = null;
@@ -61,7 +70,13 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
           <h1 className="text-xl font-bold">{s.title}</h1>
           <span className="text-xs text-muted">{open ? "진행 중" : "종료"}</span>
         </div>
-        {isGm && open ? <form action={closeSession.bind(null, id, sid)}><Button variant="ghost" className="text-xs">세션 종료</Button></form> : null}
+        {isGm ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <a href={`/api/sessions/${sid}/export`} className="rounded-md border border-border px-3 py-2 text-xs hover:bg-fg/5">내보내기 (JSON)</a>
+            {open ? <form action={closeSession.bind(null, id, sid)}><Button variant="ghost" className="text-xs">세션 종료</Button></form> : null}
+            {!open ? <DeleteSession title={s.title} action={deleteSession.bind(null, id, sid)} /> : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-3 lg:grid-cols-3">
@@ -73,7 +88,8 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
             {combat ? <CombatBoard campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} />
               : setup ? <CombatSetup campaignId={id} sessionId={sid} sceneId={current!.id} allies={setup.allies} enemies={setup.enemies} />
               : current?.kind === "combat" ? <p className="text-sm text-muted">GM이 전투를 준비하고 있습니다.</p>
-              : <p className="text-sm text-muted">장면 보드(배경 이미지, 토큰)는 이후에 추가됩니다.</p>}
+              : current ? <SceneBoard key={current.id} campaignId={id} sceneId={current.id} initial={boardData} isGm={isGm} meId={user.id} sources={tokenSources} readOnly={!open} />
+              : <p className="text-sm text-muted">장면을 추가하면 보드가 나타납니다.</p>}
           </Panel>
         </div>
         <Panel title="채팅" className={`${combat ? "order-last" : "order-first"} lg:order-none lg:sticky lg:top-4`}>

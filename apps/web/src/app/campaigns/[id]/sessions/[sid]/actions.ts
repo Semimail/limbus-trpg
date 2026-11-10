@@ -126,3 +126,40 @@ export async function deleteMessage(sessionId: string, messageId: number): Promi
   const { error } = await supabase.from("messages").delete().eq("id", messageId).eq("session_id", sessionId);
   return error ? { error: error.message } : {};
 }
+
+/* ---------- 장면 보드 (배경 + 토큰) ---------- */
+export interface BoardToken { id: string; name: string; img: string | null; x: number; y: number; size: number; ownerId?: string | null; refKind?: "character" | "enemy" | "free"; refId?: string }
+export interface BoardData { background: string | null; tokens: BoardToken[] }
+
+export async function updateBoard(campaignId: string, sceneId: string, patch: Partial<BoardData>): Promise<{ error?: string; board?: BoardData }> {
+  const supabase = await createClient();
+  const user = await getUser();
+  if (!user) return { error: "로그인이 필요합니다" };
+  const { data: m } = await supabase.from("campaign_members").select("role").eq("campaign_id", campaignId).eq("user_id", user.id).maybeSingle();
+  const isGm = m?.role === "gm" || m?.role === "temp_gm";
+  const { data: sc } = await supabase.from("scenes").select("board").eq("id", sceneId).single();
+  if (!sc) return { error: "장면이 없습니다" };
+  const cur = (sc.board && typeof sc.board === "object" ? sc.board : {}) as Partial<BoardData>;
+  const board: BoardData = { background: cur.background ?? null, tokens: cur.tokens ?? [] };
+  if (isGm) {
+    if (patch.background !== undefined) board.background = patch.background;
+    if (patch.tokens) board.tokens = patch.tokens;
+  } else {
+    if (patch.background !== undefined) return { error: "GM만 배경을 바꿀 수 있습니다" };
+    if (patch.tokens) {
+      // 플레이어: 자기 토큰의 위치만
+      const byId = new Map(patch.tokens.map((t) => [t.id, t]));
+      if (patch.tokens.length !== board.tokens.length) return { error: "토큰 추가/삭제는 GM만 가능합니다" };
+      board.tokens = board.tokens.map((t) => {
+        const n = byId.get(t.id);
+        if (!n) return t;
+        if (t.ownerId === user.id) return { ...t, x: clamp(n.x), y: clamp(n.y) };
+        return t;
+      });
+    }
+  }
+  const { error } = await supabase.from("scenes").update({ board: JSON.parse(JSON.stringify(board)) }).eq("id", sceneId);
+  if (error) return { error: error.message };
+  return { board };
+}
+const clamp = (v: number) => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 50));

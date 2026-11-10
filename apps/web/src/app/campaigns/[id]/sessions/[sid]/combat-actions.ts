@@ -126,7 +126,8 @@ export async function resolveRoundAction(campaignId: string, combatId: string): 
   if (r) return { error: r === "conflict" ? "누군가 선택을 바꾸는 중입니다. 다시 눌러주세요" : r };
 
   const { count } = await supabase.from("combat_events").select("id", { count: "exact", head: true }).eq("combat_id", combatId);
-  await supabase.from("combat_events").insert({ combat_id: combatId, seq: (count ?? 0) + 1, event: JSON.parse(JSON.stringify({ round: roundNo, events })) });
+  const snapshot = state.units.map((u) => ({ id: u.id, name: u.name, side: u.side, hp: u.hp, maxHp: u.maxHp, sanity: u.sanity, sanityLocked: !!u.sanityLocked, statuses: u.statuses, staggered: u.staggered, incapacitated: u.incapacitated, light: u.light, erosion: u.erosion }));
+  await supabase.from("combat_events").insert({ combat_id: combatId, seq: (count ?? 0) + 1, event: JSON.parse(JSON.stringify({ round: roundNo, events, after: snapshot })) });
 
   // 적이 사용한 스킬 공개
   const used = new Map<string, Set<string>>();

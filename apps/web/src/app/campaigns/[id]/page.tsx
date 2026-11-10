@@ -106,6 +106,7 @@ export default async function OfficePage({ params }: { params: Promise<{ id: str
                 ))}
                 {closedSessions.length === 0 ? <li className="text-muted">종료된 세션 없음</li> : null}
               </ul>
+              <Link href="/replay" className="mt-2 inline-block text-xs text-accent">내보낸 기록 재생 →</Link>
             </Panel>
             <Panel title="적 도감">
               <p className="text-sm text-muted">{isGm ? `등록 ${enemyCount ?? 0}` : `마주친 적 ${enemyCount ?? 0}`}</p>

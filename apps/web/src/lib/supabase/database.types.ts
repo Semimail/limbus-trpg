@@ -501,6 +501,7 @@ export type Database = {
         Row: {
           campaign_id: string
           created_by: string
+          current_scene_id: string | null
           ended_at: string | null
           id: string
           seed: string
@@ -511,6 +512,7 @@ export type Database = {
         Insert: {
           campaign_id: string
           created_by: string
+          current_scene_id?: string | null
           ended_at?: string | null
           id?: string
           seed?: string
@@ -521,6 +523,7 @@ export type Database = {
         Update: {
           campaign_id?: string
           created_by?: string
+          current_scene_id?: string | null
           ended_at?: string | null
           id?: string
           seed?: string
@@ -541,6 +544,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_current_scene_id_fkey"
+            columns: ["current_scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
             referencedColumns: ["id"]
           },
         ]

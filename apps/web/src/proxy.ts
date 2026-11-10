@@ -1,13 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getDevFetch } from "@/lib/dev-fetch";
 
 /** 요청마다 세션 쿠키를 갱신하고, 보호 경로는 로그인으로 보낸다. */
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const devFetch = await getDevFetch();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      global: devFetch ? { fetch: devFetch } : undefined,
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (toSet) => {

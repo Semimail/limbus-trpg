@@ -1,0 +1,156 @@
+"use client";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { sendMessage, type MessageKind } from "@/app/campaigns/[id]/sessions/[sid]/actions";
+
+export interface ChatMessage {
+  id: number; kind: MessageKind; content: string; created_at: string;
+  author_id: string | null; character_id: string | null; to_user_id: string | null;
+  payload: Record<string, unknown> | null;
+}
+export interface Member { user_id: string; username: string; role: "gm" | "temp_gm" | "player" }
+export interface MyChar { id: string; name: string }
+
+interface Props {
+  sessionId: string; sceneId: string | null; meId: string; isGm: boolean;
+  members: Member[]; myChars: MyChar[]; charNames: Record<string, string>;
+  initial: ChatMessage[]; sessionOpen: boolean;
+}
+
+export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNames, initial, sessionOpen }: Props) {
+  const [msgs, setMsgs] = useState<ChatMessage[]>(initial);
+  const [kind, setKind] = useState<MessageKind>(myChars.length ? "ic" : "ooc");
+  const [charId, setCharId] = useState<string | null>(myChars[0]?.id ?? null);
+  const [toUser, setToUser] = useState<string | null>(members.find((m) => m.user_id !== meId)?.user_id ?? null);
+  const [text, setText] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const [uploading, setUploading] = useState(false);
+  const bottom = useRef<HTMLDivElement>(null);
+  const names = Object.fromEntries(members.map((m) => [m.user_id, m.username]));
+  const append = (m: ChatMessage) => setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m].sort((a, b) => a.id - b.id)));
+
+  useEffect(() => {
+    const supabase = createClient();
+    const ch = supabase.channel(`session:${sessionId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `session_id=eq.${sessionId}` },
+        (p) => append(p.new as ChatMessage))
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" },
+        (p) => setMsgs((prev) => prev.filter((m) => m.id !== (p.old as { id: number }).id)))
+      .subscribe();
+    return () => { void supabase.removeChannel(ch); };
+  }, [sessionId]);
+
+  useEffect(() => { bottom.current?.scrollIntoView({ block: "end" }); }, [msgs.length]);
+
+  const send = () => {
+    if (!text.trim()) return;
+    setErr(null);
+    const body = text;
+    setText("");
+    start(async () => {
+      const r = await sendMessage({ sessionId, sceneId, kind, content: body, characterId: charId, toUserId: toUser });
+      if (r.error) { setErr(r.error); setText(body); return; }
+      if (r.message) append(r.message as unknown as ChatMessage);
+    });
+  };
+
+  const uploadImage = async (file: File) => {
+    setUploading(true); setErr(null);
+    try {
+      const supabase = createClient();
+      const path = `${meId}/${Date.now()}-${file.name.replace(/[^\w.\-]/g, "_")}`;
+      const { error } = await supabase.storage.from("uploads").upload(path, file, { contentType: file.type });
+      if (error) throw error;
+      const { data } = supabase.storage.from("uploads").getPublicUrl(path);
+      const r = await sendMessage({ sessionId, sceneId, kind: kind === "system" ? "ooc" : kind, content: text, characterId: charId, toUserId: toUser, imageUrl: data.publicUrl });
+      if (r.error) throw new Error(r.error);
+      if (r.message) append(r.message as unknown as ChatMessage);
+      setText("");
+    } catch (e) { setErr(e instanceof Error ? e.message : "업로드 실패"); }
+    finally { setUploading(false); }
+  };
+
+  return (
+    <div className="flex h-[70vh] flex-col lg:h-[calc(100vh-10rem)]">
+      <div className="flex-1 space-y-1.5 overflow-y-auto pr-1">
+        {msgs.map((m) => <Line key={m.id} m={m} names={names} charNames={charNames} meId={meId} />)}
+        <div ref={bottom} />
+      </div>
+
+      {sessionOpen ? (
+        <div className="mt-2 border-t border-border pt-2">
+          <div className="mb-1 flex flex-wrap items-center gap-1 text-xs">
+            {(["ic", "ooc", "gm", "whisper"] as const).filter((k) => k !== "gm" || isGm).map((k) => (
+              <button key={k} type="button" onClick={() => setKind(k)}
+                className={`border px-2 py-0.5 ${kind === k ? "border-accent text-accent" : "border-border text-muted"}`}>
+                {{ ic: "캐릭터", ooc: "플레이어", gm: "GM 서술", whisper: "귓속말" }[k]}
+              </button>
+            ))}
+            {kind === "ic" ? (
+              <select value={charId ?? ""} onChange={(e) => setCharId(e.target.value || null)} className="border border-border bg-elev px-1 py-0.5">
+                {myChars.length === 0 ? <option value="">캐릭터 없음</option> : null}
+                {myChars.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            ) : null}
+            {kind === "whisper" ? (
+              <select value={toUser ?? ""} onChange={(e) => setToUser(e.target.value || null)} className="border border-border bg-elev px-1 py-0.5">
+                {members.filter((m) => m.user_id !== meId).map((m) => <option key={m.user_id} value={m.user_id}>→ {m.username}</option>)}
+              </select>
+            ) : null}
+            <label className="ml-auto cursor-pointer border border-border px-2 py-0.5 text-muted hover:text-fg">
+              {uploading ? "업로드 중" : "이미지"}
+              <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f); e.target.value = ""; }} />
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
+              placeholder={kind === "ic" ? "캐릭터의 말과 행동" : kind === "gm" ? "상황 서술" : "메시지. /r 2d6+3, /coin 3 2 같은 명령도 가능"}
+              className="flex-1 resize-none rounded-md border border-border bg-elev px-3 py-2 text-sm outline-none focus:border-accent" />
+            <button type="button" onClick={send} disabled={pending || !text.trim()}
+              className="rounded-md bg-accent px-4 text-sm font-medium text-accent-fg disabled:opacity-50">전송</button>
+          </div>
+          {err ? <p className="mt-1 text-xs text-danger">{err}</p> : null}
+        </div>
+      ) : <p className="mt-2 border-t border-border pt-2 text-xs text-muted">종료된 세션입니다. 기록만 볼 수 있습니다.</p>}
+    </div>
+  );
+}
+
+function Line({ m, names, charNames, meId }: { m: ChatMessage; names: Record<string, string>; charNames: Record<string, string>; meId: string }) {
+  const time = new Date(m.created_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  const author = m.author_id ? names[m.author_id] ?? "?" : "";
+  const img = m.payload && typeof m.payload.image === "string" ? m.payload.image : null;
+  const body = (
+    <>
+      {m.content ? <span className="whitespace-pre-wrap break-words">{m.content}</span> : null}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {img ? <a href={img} target="_blank" rel="noreferrer"><img src={img} alt="" className="mt-1 max-h-64 max-w-full border border-border" /></a> : null}
+    </>
+  );
+  if (m.kind === "system") {
+    const p = m.payload ?? {};
+    return (
+      <div className="border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs">
+        <span className="text-muted">{time} · {author}{m.character_id ? ` (${charNames[m.character_id] ?? ""})` : ""}</span>
+        <div className="mt-0.5 font-mono">{m.content}</div>
+        {p.type === "coin" && Array.isArray(p.coins) ? (
+          <div className="mt-1 flex flex-wrap gap-0.5">
+            {(p.coins as boolean[]).map((h, i) => <span key={i} className={`inline-block h-4 w-4 rounded-full border ${h ? "border-gold bg-gold" : "border-border bg-fg/10"}`} title={h ? "앞면" : "뒷면"} />)}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+  if (m.kind === "gm") return <div className="border-l-2 border-accent px-2 py-1 text-sm italic"><span className="mr-2 text-xs not-italic text-muted">{time} GM</span>{body}</div>;
+  if (m.kind === "whisper") {
+    const to = m.to_user_id ? names[m.to_user_id] ?? "?" : "?";
+    return <div className="px-2 py-1 text-sm text-muted"><span className="mr-2 text-xs">{time} 귓속말 {author} → {m.to_user_id === meId ? "나" : to}</span>{body}</div>;
+  }
+  if (m.kind === "ic") {
+    const cn = m.character_id ? charNames[m.character_id] ?? author : author;
+    return <div className="px-2 py-1 text-sm"><span className="mr-2 text-xs text-muted">{time}</span><span className="mr-2 font-semibold text-gold">{cn}</span>{body}</div>;
+  }
+  return <div className="px-2 py-1 text-sm text-muted"><span className="mr-2 text-xs">{time}</span><span className="mr-2">({author})</span>{body}</div>;
+}

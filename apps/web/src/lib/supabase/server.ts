@@ -1,14 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { getDevFetch } from "@/lib/dev-fetch";
 import type { Database } from "./database.types";
 
 /** 서버 컴포넌트, 서버 액션, 라우트 핸들러용 클라이언트 */
 export async function createClient() {
   const cookieStore = await cookies();
+  const devFetch = await getDevFetch();
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      global: devFetch ? { fetch: devFetch } : undefined,
       cookies: {
         getAll: () => cookieStore.getAll(),
         setAll: (toSet) => {

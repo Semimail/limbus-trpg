@@ -46,6 +46,8 @@ export function formatRound(events: RoundEvent[], n: Record<string, string>): st
         break;
       }
       case "idle": out.push(`${n[e.actor] ?? e.actor} [${e.skill}] 대기 (${e.reason})`); break;
+      case "fx": out.push(...e.logs.map((l) => `  효과 ${n[l.who] ?? l.who} ${l.text}`)); break;
+      case "corrosionEnd": out.push(`${n[e.unit] ?? e.unit} 침식 해제`); break;
       case "burn": out.push(...ticksText(e.ticks, n).map((x) => `화상: ${x}`)); break;
       case "staggerEnd": out.push(`${n[e.unit] ?? e.unit} 흐트러짐 해제`); break;
       case "down": out.push(`${n[e.unit] ?? e.unit} 전투불능!`); break;

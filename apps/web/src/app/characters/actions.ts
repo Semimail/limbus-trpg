@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { validateCharacter, type CharacterData } from "@limbus/rules";
+import { validateCharacter, parseEffectText, type CharacterData } from "@limbus/rules";
 
 export interface SaveInput {
   id?: string;
@@ -20,8 +20,14 @@ export async function saveCharacter(input: SaveInput): Promise<{ error?: string;
   const errors = validateCharacter(input.data).filter((i) => i.level === "error");
   if (errors.length) return { error: errors.map((e) => e.message).join(" / ") };
 
-  // JSON 컬럼 타입 호환을 위해 직렬화
-  const data = JSON.parse(JSON.stringify(input.data));
+  // 자연어 효과 → 구조화 효과 (저장 시점에 해석)
+  const parsed: CharacterData = {
+    ...input.data,
+    skills: input.data.skills.map((s) => ({ ...s, effects: parseEffectText(s.effectText ?? "", "skill").effects })),
+    ego: input.data.ego.map((s) => ({ ...s, effects: parseEffectText(s.effectText ?? "", "skill").effects })),
+    traits: input.data.traits.map((t) => ({ ...t, effects: parseEffectText(t.description ?? "", "passive").effects })),
+  };
+  const data = JSON.parse(JSON.stringify(parsed));
   if (input.id) {
     const { error } = await supabase.from("characters")
       .update({ name: input.name.trim(), portrait_url: input.portraitUrl, data, campaign_id: input.campaignId })

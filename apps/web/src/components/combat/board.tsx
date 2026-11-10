@@ -2,8 +2,8 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { STATUS_IDS, slotKey, type CombatState, type Unit, type StatusId, type Skill } from "@limbus/rules";
-import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction } from "@/app/campaigns/[id]/sessions/[sid]/combat-actions";
+import { STATUS_IDS, slotKey, isCorroded, type CombatState, type Unit, type StatusId, type Skill } from "@limbus/rules";
+import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction, redrawHandAction } from "@/app/campaigns/[id]/sessions/[sid]/combat-actions";
 import { formatRound, unitNames } from "@/lib/combat-log";
 import { Button } from "@/components/ui";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon, StatusBadge, StatusIcon } from "@/components/icons";
@@ -50,6 +50,11 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
         {isGm && state.phase === "ended" ? <span className="ml-auto"><Button variant="ghost" onClick={() => router.refresh()}>닫기</Button></span> : null}
       </div>
       {err ? <p className="text-xs text-danger">{err}</p> : null}
+      {state.notices?.length ? (
+        <ul className="space-y-0.5 border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs">
+          {state.notices.map((n, i) => <li key={i}>{n}</li>)}
+        </ul>
+      ) : null}
 
       <div className="space-y-2">
         <Row units={enemies} state={state} isGm={isGm} hideNumbers={!isGm} names={names} campaignId={campaignId} combatId={combatId} onApply={setState} />
@@ -61,7 +66,8 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
         <div className="space-y-3 border-t border-border pt-3">
           <div className="text-sm font-semibold">행동 선택 {unpicked.length === 0 ? <span className="text-xs font-normal text-ok">· 모두 선택됨</span> : null}</div>
           {mySlots.map((s) => <PickRow key={slotKey(s.combatantId, s.slot)} state={state} unit={state.units.find((u) => u.id === s.combatantId)!} slot={s.slot} speed={s.speed}
-            onPick={(pick) => act(() => setPickAction(campaignId, combatId, s.combatantId, s.slot, pick))} names={names} />)}
+            onPick={(pick) => act(() => setPickAction(campaignId, combatId, s.combatantId, s.slot, pick))} names={names}
+            onRedraw={() => act(() => redrawHandAction(campaignId, combatId, s.combatantId))} />)}
         </div>
       ) : null}
 
@@ -98,13 +104,14 @@ function UnitCard({ u, state, isGm, hideNumbers, names, campaignId, combatId, on
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
             <span className="truncate text-sm font-medium">{u.name}</span>
-            <span className="text-[11px] text-muted">{u.incapacitated ? "전투불능" : u.staggered ? "흐트러짐" : ""}</span>
+            <span className="text-[11px] text-muted">{u.incapacitated ? "전투불능" : isCorroded(u, state.round) ? <span className="text-danger">침식</span> : u.staggered ? "흐트러짐" : ""}</span>
           </div>
           <div className="mt-1 h-2 w-full bg-fg/10"><div className="h-full bg-danger" style={{ width: `${hpPct}%` }} /></div>
           <div className="mt-0.5 flex justify-between text-[11px] tabular-nums text-muted">
             <span>{hideNumbers ? "체력" : `체력 ${u.hp}/${u.maxHp}`}</span>
             {!u.sanityLocked ? <span>정신력 {u.sanity > 0 ? "+" : ""}{u.sanity}</span> : null}
           </div>
+          {u.source.kind === "character" ? <div className="text-[11px] tabular-nums text-muted">빛 {u.light} · 침식도 {u.erosion}</div> : null}
           {statuses.length ? <div className="mt-1 flex flex-wrap gap-1">{statuses.map(([k, v]) => <StatusBadge key={k} status={k} value={v} />)}</div> : null}
         </div>
       </div>
@@ -155,25 +162,34 @@ function GmAdjust({ u, campaignId, combatId, onDone, onApply }: { u: Unit; campa
   );
 }
 
-function PickRow({ state, unit, slot, speed, onPick, names }: { state: CombatState; unit: Unit; slot: number; speed: number; onPick: (p: { skillId: string; targetId: string; targetSlot?: number } | null) => void; names: Record<string, string> }) {
+function PickRow({ state, unit, slot, speed, onPick, names, onRedraw }: { state: CombatState; unit: Unit; slot: number; speed: number; onPick: (p: { skillId: string; targetId: string; targetSlot?: number } | null) => void; names: Record<string, string>; onRedraw: () => void }) {
   const current = state.picks[slotKey(unit.id, slot)];
+  const egos = unit.skills.filter((s) => s.ego);
+  const corroded = isCorroded(unit, state.round);
   const enemies = state.units.filter((u) => u.side === "enemy" && !u.incapacitated);
   const [targetId, setTargetId] = useState(current?.targetId ?? enemies[0]?.id ?? "");
   const [targetSlot, setTargetSlot] = useState<number | "">(current?.targetSlot ?? "");
   const handSkills: Skill[] = unit.hand.map((id) => unit.skills.find((s) => s.id === id)!).filter(Boolean);
-  const defense = unit.skills.filter((s) => s.kind === "defense");
+  const defense = unit.skills.filter((s) => s.kind === "defense" && !s.ego);
   const interceptable = state.slots.filter((s) => s.combatantId === targetId && s.speed <= speed && state.picks[slotKey(s.combatantId, s.slot)] && state.picks[slotKey(s.combatantId, s.slot)]!.targetId !== unit.id);
   const choose = (skillId: string) => onPick({ skillId, targetId, ...(targetSlot !== "" ? { targetSlot: Number(targetSlot) } : {}) });
   const card = (s: Skill, i: number) => {
     const sel = current?.skillId === s.id;
+    const used = s.ego ? (unit.egoUsed?.[s.id] ?? 0) : 0;
+    const egoBlocked = s.ego ? used >= s.ego.usesPerCombat : false;
+    const disabled = corroded || current?.locked || egoBlocked;
     return (
-      <button key={`${s.id}-${i}`} type="button" onClick={() => choose(s.id)}
-        className={`flex min-w-36 flex-col items-start gap-0.5 border px-2 py-1 text-left text-xs ${sel ? "border-accent bg-accent/10" : "border-border hover:border-fg/40"}`}>
+      <button key={`${s.id}-${i}`} type="button" disabled={disabled}
+        onClick={() => { if (s.ego && !confirm(`E.G.O [${s.name}] 발현: 정신력 -${s.ego.sanityCost}, 침식도 +${s.ego.erosionGain}. 발현 후에는 바꿀 수 없습니다.`)) return; choose(s.id); }}
+        className={`flex min-w-36 flex-col items-start gap-0.5 border px-2 py-1 text-left text-xs disabled:opacity-50 ${sel ? "border-accent bg-accent/10" : s.ego ? "border-gold/70 bg-gold/5 hover:border-gold" : "border-border hover:border-fg/40"}`}>
         <span className="flex items-center gap-1">
+          {s.ego ? <span className="stamp">E.G.O</span> : null}
           {s.kind === "defense" ? <DefenseIcon kind={s.defenseKind ?? "guard"} size={14} /> : <DamageIcon type={s.damageType} size={14} />}
           <SinIcon sin={s.sin} size={14} /><b>{s.name}</b>
         </span>
         <span className="text-muted">{s.basePower} {s.coinPower >= 0 ? "+" : ""}{s.coinPower} <span className="inline-flex gap-0.5 align-middle">{Array.from({ length: s.coinCount }).map((_, j) => <CoinIcon key={j} heads size={11} />)}</span></span>
+        {s.ego ? <span className="text-[10px] text-muted">정신력 -{s.ego.sanityCost} · 침식도 +{s.ego.erosionGain} · {used}/{s.ego.usesPerCombat}회</span> : null}
+        {s.effects?.length ? <span className="text-[10px] text-ok">자동 효과 {s.effects.length}</span> : null}
       </button>
     );
   };
@@ -194,11 +210,15 @@ function PickRow({ state, unit, slot, speed, onPick, names }: { state: CombatSta
             </select>
           </label>
         ) : null}
-        {current ? <button type="button" onClick={() => onPick(null)} className="ml-auto text-muted hover:text-fg">선택 취소</button> : null}
+        {corroded ? <span className="text-danger">침식 상태: 자동 조종</span> : null}
+        {current?.locked ? <span className="text-gold">확정됨</span> : null}
+        {current && !current.locked ? <button type="button" onClick={() => onPick(null)} className="ml-auto text-muted hover:text-fg">선택 취소</button> : null}
+        {!corroded && !current?.locked && unit.light > 0 ? <button type="button" onClick={() => { if (confirm(`빛 1을 써서 손패를 교체할까요? (남은 빛 ${unit.light})`)) onRedraw(); }} className="text-gold hover:underline">빛 1: 손패 교체</button> : null}
       </div>
       <div className="flex flex-wrap gap-1">
         {handSkills.map(card)}
         {defense.map((s) => card(s, 99))}
+        {egos.map((s, i) => card(s, 200 + i))}
       </div>
     </div>
   );

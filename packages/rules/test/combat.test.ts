@@ -23,7 +23,7 @@ function enemy(id: string, hp = 60): UnitInput {
 
 describe("전투 진행", () => {
   it("시작: 1라운드, 속도 슬롯, 손패 3장, 적 자동 선택", () => {
-    const st = startCombat([ally("A"), enemy("E")], 1);
+    const st = startCombat([ally("A"), enemy("E")], 1, DEFAULT_RULES);
     expect(st.round).toBe(1);
     expect(st.slots.map((s) => s.combatantId)).toEqual(["A", "E"]); // 속도 4 > 2
     expect(st.units.find((u) => u.id === "A")!.hand).toHaveLength(3);
@@ -31,21 +31,21 @@ describe("전투 진행", () => {
   });
 
   it("선택 검증: 손패 밖 카드, 같은 편 대상, 느린 쪽의 가로채기 거부", () => {
-    const st = startCombat([ally("A"), ally("B"), enemy("E")], 2);
+    const st = startCombat([ally("A"), ally("B"), enemy("E")], 2, DEFAULT_RULES);
     const a = st.units.find((u) => u.id === "A")!;
-    expect(setPick(st, "A", 0, { skillId: "zzz", targetId: "E" })).toBeTruthy();
-    expect(setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "B" })).toBeTruthy();
-    expect(setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "E" })).toBeNull();
-    expect(setPick(st, "A", 0, { skillId: "g", targetId: "E" })).toBeNull(); // 방어는 항상 가능
+    expect(setPick(st, "A", 0, { skillId: "zzz", targetId: "E" }, DEFAULT_RULES)).toBeTruthy();
+    expect(setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "B" }, DEFAULT_RULES)).toBeTruthy();
+    expect(setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "E" }, DEFAULT_RULES)).toBeNull();
+    expect(setPick(st, "A", 0, { skillId: "g", targetId: "E" }, DEFAULT_RULES)).toBeNull(); // 방어는 항상 가능
     // 가로채기: A(4) >= E(2) 허용
-    expect(setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "E", targetSlot: 0 })).toBeNull();
+    expect(setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "E", targetSlot: 0 }, DEFAULT_RULES)).toBeNull();
   });
 
   it("라운드 처리: 서로 노리면 합, 아니면 일방 공격, 적이 쓰러지면 종료", () => {
-    const st = startCombat([ally("A"), enemy("E", 30)], 3);
+    const st = startCombat([ally("A"), enemy("E", 30)], 3, DEFAULT_RULES);
     const a = st.units.find((u) => u.id === "A")!;
     // 적은 A를 노린다. A도 적을 노리면 합.
-    expect(setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "E" })).toBeNull();
+    expect(setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "E" }, DEFAULT_RULES)).toBeNull();
     const ev = resolveRound(st, DEFAULT_RULES);
     const clash = ev.find((e) => e.type === "clash");
     expect(clash).toBeTruthy();
@@ -53,7 +53,7 @@ describe("전투 진행", () => {
     let rounds = 1;
     while (st.phase === "select" && rounds < 6) {
       const au = st.units.find((u) => u.id === "A")!;
-      setPick(st, "A", 0, { skillId: au.hand[0]!, targetId: "E" });
+      setPick(st, "A", 0, { skillId: au.hand[0]!, targetId: "E" }, DEFAULT_RULES);
       resolveRound(st, DEFAULT_RULES); rounds++;
     }
     expect(st.phase).toBe("ended");
@@ -62,11 +62,11 @@ describe("전투 진행", () => {
   });
 
   it("가로채기: B를 노리던 적 슬롯이 A와 합을 겨룬다", () => {
-    const st = startCombat([ally("A"), ally("B"), enemy("E", 500)], 5);
+    const st = startCombat([ally("A"), ally("B"), enemy("E", 500)], 5, DEFAULT_RULES);
     // 적 선택을 B로 고정
     st.picks[slotKey("E", 0)] = { skillId: st.units.find((u) => u.id === "E")!.hand[0]!, targetId: "B" };
     const a = st.units.find((u) => u.id === "A")!;
-    expect(setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "E", targetSlot: 0 })).toBeNull();
+    expect(setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "E", targetSlot: 0 }, DEFAULT_RULES)).toBeNull();
     const ev = resolveRound(st, DEFAULT_RULES);
     const clash = ev.find((e) => e.type === "clash") as Extract<typeof ev[number], { type: "clash" }> | undefined;
     expect(clash?.actor).toBe("A"); expect(clash?.target).toBe("E");
@@ -74,9 +74,9 @@ describe("전투 진행", () => {
 
   it("같은 시드면 같은 결과 (재생)", () => {
     const run = () => {
-      const st = startCombat([ally("A"), enemy("E", 80)], 99);
+      const st = startCombat([ally("A"), enemy("E", 80)], 99, DEFAULT_RULES);
       const a = st.units.find((u) => u.id === "A")!;
-      setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "E" });
+      setPick(st, "A", 0, { skillId: a.hand[0]!, targetId: "E" }, DEFAULT_RULES);
       resolveRound(st, DEFAULT_RULES);
       return JSON.stringify(st.units.map((u) => [u.hp, u.sanity]));
     };
@@ -84,10 +84,10 @@ describe("전투 진행", () => {
   });
 
   it("손패는 쓴 카드를 버리고 다음 라운드에 다시 3장", () => {
-    const st = startCombat([ally("A"), enemy("E", 9999)], 7);
+    const st = startCombat([ally("A"), enemy("E", 9999)], 7, DEFAULT_RULES);
     const a = st.units.find((u) => u.id === "A")!;
     const used = a.hand[0]!;
-    setPick(st, "A", 0, { skillId: used, targetId: "E" });
+    setPick(st, "A", 0, { skillId: used, targetId: "E" }, DEFAULT_RULES);
     resolveRound(st, DEFAULT_RULES);
     const a2 = st.units.find((u) => u.id === "A")!;
     expect(st.round).toBe(2);

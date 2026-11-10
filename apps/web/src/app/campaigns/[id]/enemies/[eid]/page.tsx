@@ -28,6 +28,17 @@ export default async function EnemyPage({ params }: { params: Promise<{ id: stri
             <form action={deleteEnemy.bind(null, id, eid)}><Button variant="danger" className="px-2 py-1 text-xs">삭제</Button></form>
           </div>
         </div>
+        {d.gimmicks.length ? (
+          <Panel title="기믹 공개 (플레이어에게)">
+            <div className="flex flex-wrap gap-2">
+              {d.gimmicks.map((g) => (
+                <form key={g.id} action={revealToAll.bind(null, id, eid, [], [g.id])}>
+                  <Button variant="ghost" className="px-2 py-1 text-xs">{g.name || "(이름 없음)"} 공개</Button>
+                </form>
+              ))}
+            </div>
+          </Panel>
+        ) : null}
         <EnemyForm campaignId={id} id={eid} initialName={e.name} initialPortrait={e.portrait_url} initial={d} />
       </div>
     );

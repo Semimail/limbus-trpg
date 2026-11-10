@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { sendMessage, type MessageKind } from "@/app/campaigns/[id]/sessions/[sid]/actions";
+import { sendMessage, deleteMessage, type MessageKind } from "@/app/campaigns/[id]/sessions/[sid]/actions";
 import { CoinIcon } from "@/components/icons";
 
 export interface ChatMessage {
@@ -75,7 +75,8 @@ export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNam
   return (
     <div className="flex h-[70vh] flex-col lg:h-[calc(100vh-10rem)]">
       <div className="flex-1 space-y-1.5 overflow-y-auto pr-1">
-        {msgs.map((m) => <Line key={m.id} m={m} names={names} charNames={charNames} meId={meId} />)}
+        {msgs.map((m) => <Line key={m.id} m={m} names={names} charNames={charNames} meId={meId}
+          onDelete={isGm ? () => { if (confirm("이 메시지를 삭제할까요?")) void deleteMessage(sessionId, m.id).then(() => setMsgs((prev) => prev.filter((x) => x.id !== m.id))); } : undefined} />)}
         <div ref={bottom} />
       </div>
 
@@ -107,7 +108,7 @@ export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNam
           <div className="flex gap-2">
             <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
-              placeholder={kind === "ic" ? "캐릭터의 말과 행동" : kind === "gm" ? "상황 서술" : "메시지. /r 2d6+3, /coin 3 2 같은 명령도 가능"}
+              placeholder={kind === "ic" ? "캐릭터의 말과 행동 (/coin 분노 2, /coin 3 2 +1 빛, /vs 오만 상대이름 색욕)" : kind === "gm" ? "상황 서술" : "메시지. /r 2d6+3, /coin 분노 2, /vs 오만 이름 색욕"}
               className="flex-1 resize-none rounded-md border border-border bg-elev px-3 py-2 text-sm outline-none focus:border-accent" />
             <button type="button" onClick={send} disabled={pending || !text.trim()}
               className="rounded-md bg-accent px-4 text-sm font-medium text-accent-fg disabled:opacity-50">전송</button>
@@ -119,7 +120,8 @@ export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNam
   );
 }
 
-function Line({ m, names, charNames, meId }: { m: ChatMessage; names: Record<string, string>; charNames: Record<string, string>; meId: string }) {
+function Line({ m, names, charNames, meId, onDelete }: { m: ChatMessage; names: Record<string, string>; charNames: Record<string, string>; meId: string; onDelete?: () => void }) {
+  const del = onDelete ? <button type="button" onClick={onDelete} className="ml-1 text-[10px] text-muted opacity-0 hover:text-danger group-hover:opacity-100" aria-label="삭제">삭제</button> : null;
   const time = new Date(m.created_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
   const author = m.author_id ? names[m.author_id] ?? "?" : "";
   const img = m.payload && typeof m.payload.image === "string" ? m.payload.image : null;
@@ -133,8 +135,8 @@ function Line({ m, names, charNames, meId }: { m: ChatMessage; names: Record<str
   if (m.kind === "system") {
     const p = m.payload ?? {};
     return (
-      <div className="border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs">
-        <span className="text-muted">{time} · {author}{m.character_id ? ` (${charNames[m.character_id] ?? ""})` : ""}</span>
+      <div className="group border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs">
+        <span className="text-muted">{time} · {author}{m.character_id ? ` (${charNames[m.character_id] ?? ""})` : ""}</span>{del}
         <div className="mt-0.5 whitespace-pre-wrap font-mono">{m.content}</div>
         {p.type === "coin" && Array.isArray(p.coins) ? (
           <div className="mt-1 flex flex-wrap gap-0.5">
@@ -144,14 +146,14 @@ function Line({ m, names, charNames, meId }: { m: ChatMessage; names: Record<str
       </div>
     );
   }
-  if (m.kind === "gm") return <div className="border-l-2 border-accent px-2 py-1 text-sm italic"><span className="mr-2 text-xs not-italic text-muted">{time} GM</span>{body}</div>;
+  if (m.kind === "gm") return <div className="group border-l-2 border-accent px-2 py-1 text-sm italic"><span className="mr-2 text-xs not-italic text-muted">{time} GM</span>{body}{del}</div>;
   if (m.kind === "whisper") {
     const to = m.to_user_id ? names[m.to_user_id] ?? "?" : "?";
-    return <div className="px-2 py-1 text-sm text-muted"><span className="mr-2 text-xs">{time} 귓속말 {author} → {m.to_user_id === meId ? "나" : to}</span>{body}</div>;
+    return <div className="group px-2 py-1 text-sm text-muted"><span className="mr-2 text-xs">{time} 귓속말 {author} → {m.to_user_id === meId ? "나" : to}</span>{body}{del}</div>;
   }
   if (m.kind === "ic") {
     const cn = m.character_id ? charNames[m.character_id] ?? author : author;
-    return <div className="px-2 py-1 text-sm"><span className="mr-2 text-xs text-muted">{time}</span><span className="mr-2 font-semibold text-gold">{cn}</span>{body}</div>;
+    return <div className="group px-2 py-1 text-sm"><span className="mr-2 text-xs text-muted">{time}</span><span className="mr-2 font-semibold text-gold">{cn}</span>{body}{del}</div>;
   }
-  return <div className="px-2 py-1 text-sm text-muted"><span className="mr-2 text-xs">{time}</span><span className="mr-2">({author})</span>{body}</div>;
+  return <div className="group px-2 py-1 text-sm text-muted"><span className="mr-2 text-xs">{time}</span><span className="mr-2">({author})</span>{body}{del}</div>;
 }

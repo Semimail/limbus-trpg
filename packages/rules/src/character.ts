@@ -16,6 +16,8 @@ export interface SkillDraft {
   sin: Sin;
   effectText: string;
   effects?: Effect[];
+  /** E.G.O 비용 (ego 목록의 스킬에만) */
+  ego?: { sanityCost: number; erosionGain: number; usesPerCombat: number };
 }
 
 export interface Trait {
@@ -42,6 +44,11 @@ export interface CharacterData {
   background: string;        // 배경 서사
   inventory: string;         // 자유 텍스트
   notes: string;
+}
+
+export function newEgoDraft(): SkillDraft {
+  return { id: `ego${Date.now().toString(36)}`, name: "", kind: "attack", tier: 3, basePower: 8, coinPower: 4, coinCount: 3, damageType: "slash", sin: "gloom", effectText: "",
+    ego: { sanityCost: 20, erosionGain: 10, usesPerCombat: 1 } };
 }
 
 export function newCharacterData(p: ProgressionConfig = DEFAULT_PROGRESSION): CharacterData {
@@ -90,6 +97,11 @@ export function validateCharacter(d: CharacterData, p: ProgressionConfig = DEFAU
     const budget = skillBudget(tier, d.level, p);
     const ev = expectedPower(s.basePower, s.coinPower, s.coinCount);
     if (ev > budget) out.push({ path: `skills.${s.id}`, message: `기대 위력 ${ev.toFixed(1)}이 상한 ${budget}을 넘습니다`, level: "error" });
+  }
+  for (const e of d.ego) {
+    if (!e.name.trim()) out.push({ path: `ego.${e.id}.name`, message: "E.G.O 이름이 비었습니다", level: "error" });
+    if (!e.ego) out.push({ path: `ego.${e.id}`, message: "E.G.O 비용이 없습니다", level: "error" });
+    if (e.coinCount < 1 || e.coinCount > p.maxCoins) out.push({ path: `ego.${e.id}.coinCount`, message: `코인은 1~${p.maxCoins}개`, level: "error" });
   }
   if (d.sanity < -45 || d.sanity > 45) out.push({ path: "sanity", message: "정신력은 -45~45", level: "error" });
   if (d.hp > d.maxHp || d.hp < 0) out.push({ path: "hp", message: "체력 범위 오류", level: "error" });

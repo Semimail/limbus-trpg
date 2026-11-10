@@ -173,6 +173,7 @@ export default async function OfficePage({ params }: { params: Promise<{ id: str
                     <Button variant="ghost" className="px-2 py-1 text-xs">초대 코드 만들기</Button>
                   </form>
                 </div>
+                {isOwnerGm ? <Link href={`/campaigns/${id}/settings`} className="inline-block text-sm text-accent">룰 설정 →</Link> : null}
                 {isOwner ? (
                   <div className="border-t border-border pt-3">
                     <div className="mb-1 text-xs text-muted">위험 구역 (소유자 전용)</div>

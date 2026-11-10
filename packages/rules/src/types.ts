@@ -33,8 +33,10 @@ export interface Skill {
   sin: Sin;
   /** 부가 효과 설명. 1차에서는 텍스트로만 표시하고 GM이 수동 적용 */
   effectText?: string;
-  /** 구조화된 효과 (자동 실행). 후속 구현 */
+  /** 구조화된 효과 (자동 실행) */
   effects?: Effect[];
+  /** E.G.O 스킬이면 비용 정보. 덱에 들어가지 않고 항상 선택 가능 */
+  ego?: { sanityCost: number; erosionGain: number; usesPerCombat: number };
 }
 
 /**
@@ -87,6 +89,12 @@ export interface RuleConfig {
   chargeCap: number;           // 20
   tremorStaggerBonus: number;  // 진동 N당 흐트러짐 피해 배율 +0.1
   resistanceMode: "off" | "enemyOnly" | "all";
+  /** E.G.O 사용 후 정신력이 이 값 미만이면 침식 판정 (코인 뒷면 = 침식) */
+  egoCorrosionSanityBelow: number; // 0
+  /** 침식도가 이 값에 도달하면 무조건 침식 */
+  erosionMax: number;              // 100
+  /** 손패 교체에 드는 빛 */
+  lightRedrawCost: number;         // 1
 }
 
 export const DEFAULT_RULES: RuleConfig = {
@@ -103,30 +111,47 @@ export const DEFAULT_RULES: RuleConfig = {
   chargeCap: 20,
   tremorStaggerBonus: 0.1,
   resistanceMode: "off",
+  egoCorrosionSanityBelow: 0,
+  erosionMax: 100,
+  lightRedrawCost: 1,
 };
 
 /* ---------- 구조화된 효과 (특기 / 패시브 / 스킬 부가효과 / 적 기믹 공용) ---------- */
 
 export type Trigger =
   | "combatStart" | "roundStart" | "roundEnd"
-  | "onHeads" | "onTails" | "onHit" | "onCrit"
-  | "clashWin" | "clashLose" | "onKill" | "onStaggered" | "onIncapacitated";
+  | "skillUse"                       // 이 스킬을 사용할 때 (위력 보정은 여기서만)
+  | "onHeads" | "onTails"            // 공격 코인 하나하나
+  | "onHit" | "onCrit"               // 적중 / 치명타
+  | "clashWin" | "clashLose"
+  | "onKill" | "onStaggered" | "onDamaged";
 
 export type Target = "self" | "clashTarget" | "allies" | "enemies" | "all";
 
+export type Condition =
+  | { type: "chargeAtLeast"; n: number }
+  | { type: "statusAtLeast"; status: StatusId; n: number; who: "self" | "clashTarget" }
+  | { type: "sanityAtLeast"; n: number }
+  | { type: "sanityBelow"; n: number }
+  | { type: "hpBelowPct"; pct: number };
+
 export type Action =
   | { type: "applyStatus"; status: StatusId; amount: number }
-  | { type: "consumeCharge"; amount: number }
   | { type: "sanity"; delta: number }
   | { type: "heal"; amount: number }
+  | { type: "healPct"; pct: number }
   | { type: "damage"; amount: number }
   | { type: "addCoinPower"; delta: number }
-  | { type: "addBasePower"; delta: number };
+  | { type: "addBasePower"; delta: number }
+  | { type: "consumeCharge"; amount: number };
 
 export interface Effect {
   trigger: Trigger;
   target: Target;
   action: Action;
-  /** 자연어 원문 (플레이어가 쓴 문장) */
+  condition?: Condition;
+  /** 전투당 1회 */
+  once?: boolean;
+  /** 자연어 원문 */
   source?: string;
 }

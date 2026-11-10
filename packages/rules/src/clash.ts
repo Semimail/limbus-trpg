@@ -5,6 +5,7 @@ import { computeHit, type HitBreakdown } from "./damage";
 import { applyDamage, type DamageOutcome } from "./stagger";
 import { adjustSanity } from "./coin";
 import { triggerStatus } from "./status";
+import type { Hooks } from "./effects";
 
 export interface ClashRound {
   index: number;
@@ -57,7 +58,12 @@ export interface Side {
  *  - 합 승리 시 정신력 상승, 패배 시 하락 (수치는 캠페인 설정).
  *  - 방어 스킬(가드)이 합에서 지면 피해를 받지 않고 끝난다(가드는 공격 코인이 없다).
  */
-export function resolveClash(a: Side, b: Side, round: number, rules: RuleConfig, rng: Rng): ClashResult {
+export function resolveClash(a: Side, b: Side, round: number, rules: RuleConfig, rng: Rng, hooks?: Hooks): ClashResult {
+  // skillUse: 위력 보정 효과를 위해 스킬 사본을 쓴다
+  a = { combatant: a.combatant, skill: { ...a.skill } };
+  b = { combatant: b.combatant, skill: { ...b.skill } };
+  hooks?.("skillUse", { self: a.combatant, other: b.combatant, skill: a.skill });
+  hooks?.("skillUse", { self: b.combatant, other: a.combatant, skill: b.skill });
   let aLeft = a.skill.coinCount;
   let bLeft = b.skill.coinCount;
   const rounds: ClashRound[] = [];
@@ -80,11 +86,13 @@ export function resolveClash(a: Side, b: Side, round: number, rules: RuleConfig,
 
   if (!win.combatant.sanityLocked) win.combatant.sanity = adjustSanity(win.combatant.sanity, rules.sanityOnClashWin, rules);
   if (!lose.combatant.sanityLocked) lose.combatant.sanity = adjustSanity(lose.combatant.sanity, rules.sanityOnClashLose, rules);
+  hooks?.("clashWin", { self: win.combatant, other: lose.combatant, skill: win.skill });
+  hooks?.("clashLose", { self: lose.combatant, other: win.combatant, skill: lose.skill });
 
   const attacks: AttackCoin[] = [];
   const ticks: StatusTick[] = [];
   if (win.skill.kind === "attack") {
-    attacks.push(...oneSidedAttack(win.combatant, lose.combatant, win.skill, left, round, rules, rng));
+    attacks.push(...oneSidedAttack(win.combatant, lose.combatant, win.skill, left, round, rules, rng, hooks, true));
     ticks.push(...afterAttack(win.combatant, lose.combatant, attacks, round, rules));
   }
   // 승자가 방어 스킬(가드/회피)이면 피해 없이 종료. 반격은 후속 구현.
@@ -135,15 +143,25 @@ export function roundEndBurn(c: Combatant, round: number, rules: RuleConfig): St
  */
 export function oneSidedAttack(
   attacker: Combatant, target: Combatant, skill: Skill, remaining: number,
-  round: number, rules: RuleConfig, rng: Rng,
+  round: number, rules: RuleConfig, rng: Rng, hooks?: Hooks, skillUseFired = false,
 ): AttackCoin[] {
+  if (!skillUseFired) { skill = { ...skill }; hooks?.("skillUse", { self: attacker, other: target, skill }); }
   const roll = rollSkill(skill, attacker.sanity, remaining, rules, rng);
   const out: AttackCoin[] = [];
   for (let i = 0; i < roll.coins.length; i++) {
     const c = roll.coins[i]!;
     const hit = computeHit(attacker, target, skill, c.power, c.heads, rules, rng);
+    const wasAlive = !target.incapacitated;
     const damage = applyDamage(target, hit.final, round, rules);
     const coin: AttackCoin = { coinIndex: i, heads: c.heads, hit, damage };
+    hooks?.(c.heads ? "onHeads" : "onTails", { self: attacker, other: target, skill });
+    if (hit.final > 0) {
+      hooks?.("onHit", { self: attacker, other: target, skill });
+      hooks?.("onDamaged", { self: target, other: attacker });
+      if (hit.crit) hooks?.("onCrit", { self: attacker, other: target, skill });
+    }
+    if (damage.staggerTriggeredAt) hooks?.("onStaggered", { self: target, other: attacker });
+    if (wasAlive && damage.incapacitated) hooks?.("onKill", { self: attacker, other: target, skill });
     const bleed = triggerStatus(attacker, "bleed");
     if (bleed > 0) coin.bleed = { amount: bleed, damage: applyDamage(attacker, bleed, round, rules) };
     out.push(coin);

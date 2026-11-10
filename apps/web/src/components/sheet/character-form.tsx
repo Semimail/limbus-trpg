@@ -11,6 +11,9 @@ import { Button, Input } from "@/components/ui";
 import { Panel } from "@/components/office/panel";
 import { PortraitUpload } from "./portrait-upload";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon } from "@/components/icons";
+import { EffectPreview } from "./effect-preview";
+import { SkillEditor } from "./skill-editor";
+import { newEgoDraft } from "@limbus/rules";
 
 interface Props {
   id?: string;
@@ -112,6 +115,7 @@ export function CharacterForm({ id, campaignId, initialName, initialPortrait, in
               <Input value={t.name} onChange={(e) => setTrait(t.id, { name: e.target.value })} disabled={ro} placeholder={`특기 ${i + 1} 이름`} />
               <textarea value={t.description} onChange={(e) => setTrait(t.id, { description: e.target.value })} disabled={ro} rows={2}
                 placeholder="자연어로 적으세요. 예: 매 라운드 시작 시 자신에게 호흡 1 부여" className={field} />
+              <EffectPreview text={t.description} mode="passive" />
             </div>
           ))}
         </div>
@@ -154,7 +158,8 @@ export function CharacterForm({ id, campaignId, initialName, initialPortrait, in
                   ) : <div />}
                 </div>
                 <textarea value={s.effectText} onChange={(e) => setSkill(s.id, { effectText: e.target.value })} disabled={ro} rows={1}
-                  placeholder="부가 효과 (예: 앞면 적중 시 출혈 2 부여). 1차에서는 GM이 수동 적용" className={`${field} mt-2`} />
+                  placeholder="부가 효과 (예: 앞면 적중 시 대상에게 출혈 2 부여)" className={`${field} mt-2`} />
+                <EffectPreview text={s.effectText} mode="skill" />
                 <div className="mt-1 text-xs text-muted">
                   위력 흐름: {s.basePower}
                   {Array.from({ length: s.coinCount }).map((_, i) => ` → ${s.basePower + s.coinPower * (i + 1)}`)}
@@ -164,6 +169,26 @@ export function CharacterForm({ id, campaignId, initialName, initialPortrait, in
           })}
         </div>
         <p className="mt-2 text-xs text-muted">기대 위력 = 기본 + 코인 수 × 코인 위력 × 0.5. 상한은 레벨에 따라 오릅니다. 공격 스킬은 3:2:1 비율로 덱에 들어가고 방어는 항상 사용 가능합니다.</p>
+      </Panel>
+
+      {/* E.G.O */}
+      <Panel title="E.G.O" right={!ro ? <button type="button" className="text-xs text-accent" onClick={() => setD({ ...d, ego: [...d.ego, newEgoDraft()] })}>+ E.G.O</button> : null}>
+        {d.ego.length === 0 ? <p className="text-sm text-muted">아직 발현한 E.G.O가 없습니다. GM이 서사로 열어주면 추가합니다.</p> : null}
+        <div className="space-y-3">
+          {d.ego.map((e) => (
+            <div key={e.id} className="space-y-2">
+              <SkillEditor s={e} ro={ro} coinCap={14} label="E.G.O" onChange={(patch) => setD({ ...d, ego: d.ego.map((x) => (x.id === e.id ? { ...x, ...patch } : x)) })}
+                onRemove={!ro ? () => setD({ ...d, ego: d.ego.filter((x) => x.id !== e.id) }) : undefined} />
+              <div className="grid grid-cols-3 gap-2 px-3">
+                <Num label="정신력 소모" value={e.ego?.sanityCost ?? 20} min={0} ro={ro} onChange={(v) => setD({ ...d, ego: d.ego.map((x) => (x.id === e.id ? { ...x, ego: { ...(x.ego ?? { sanityCost: 20, erosionGain: 10, usesPerCombat: 1 }), sanityCost: v } } : x)) })} />
+                <Num label="침식도 증가" value={e.ego?.erosionGain ?? 10} min={0} ro={ro} onChange={(v) => setD({ ...d, ego: d.ego.map((x) => (x.id === e.id ? { ...x, ego: { ...(x.ego ?? { sanityCost: 20, erosionGain: 10, usesPerCombat: 1 }), erosionGain: v } } : x)) })} />
+                <Num label="전투당 횟수" value={e.ego?.usesPerCombat ?? 1} min={1} ro={ro} onChange={(v) => setD({ ...d, ego: d.ego.map((x) => (x.id === e.id ? { ...x, ego: { ...(x.ego ?? { sanityCost: 20, erosionGain: 10, usesPerCombat: 1 }), usesPerCombat: v } } : x)) })} />
+              </div>
+              <EffectPreview text={e.effectText} mode="skill" />
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted">E.G.O는 덱에 들어가지 않고 항상 선택할 수 있습니다. 사용 시 정신력을 지불하고 침식도가 오르며, 정신력이 0 미만이면 코인을 던져 뒷면이면 침식합니다.</p>
       </Panel>
 
       {/* 서사 */}

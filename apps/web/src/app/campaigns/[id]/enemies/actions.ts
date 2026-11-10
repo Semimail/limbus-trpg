@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient, getUser } from "@/lib/supabase/server";
-import type { EnemyData } from "@limbus/rules";
+import { parseEffectText, type EnemyData } from "@limbus/rules";
 
 export async function saveEnemy(campaignId: string, id: string | null, name: string, portraitUrl: string | null, data: EnemyData): Promise<{ error?: string; id?: string }> {
   const supabase = await createClient();
@@ -11,7 +11,12 @@ export async function saveEnemy(campaignId: string, id: string | null, name: str
   if (!name.trim()) return { error: "이름을 입력하세요" };
   if (data.skills.length === 0) return { error: "스킬이 하나 이상 필요합니다" };
   if (data.skills.some((s) => !s.name.trim())) return { error: "이름 없는 스킬이 있습니다" };
-  const payload = JSON.parse(JSON.stringify(data));
+  const parsed: EnemyData = {
+    ...data,
+    skills: data.skills.map((s) => ({ ...s, effects: parseEffectText(s.effectText ?? "", "skill").effects })),
+    gimmicks: data.gimmicks.map((g) => ({ ...g, effects: parseEffectText(g.text ?? "", "passive").effects })),
+  };
+  const payload = JSON.parse(JSON.stringify(parsed));
   if (id) {
     const { error } = await supabase.from("enemies").update({ name: name.trim(), portrait_url: portraitUrl, data: payload }).eq("id", id);
     if (error) return { error: error.message };

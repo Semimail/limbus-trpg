@@ -2,6 +2,7 @@
 import { SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, expectedPower, type DamageType, type DefenseKind, type Sin, type SkillDraft } from "@limbus/rules";
 import { Input } from "@/components/ui";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon } from "@/components/icons";
+import { EffectPreview } from "./effect-preview";
 
 const DEFENSE_LABEL: Record<DefenseKind, string> = { guard: "가드", evade: "회피", counter: "반격" };
 const field = "w-full rounded-md border border-border bg-elev px-2 py-1 text-sm outline-none focus:border-accent disabled:opacity-70";
@@ -46,7 +47,8 @@ export function SkillEditor({ s, onChange, ro, coinCap, budget, label, onRemove 
         <Sel label="죄악" value={s.sin} ro={ro} onChange={(v) => onChange({ sin: v as Sin })} options={SINS.map((x) => [x, SIN_LABEL[x]])} />
       </div>
       <textarea value={s.effectText} onChange={(e) => onChange({ effectText: e.target.value })} disabled={ro} rows={1}
-        placeholder="부가 효과 (예: 앞면 적중 시 출혈 2 부여). 1차에서는 GM이 수동 적용" className={`${field} mt-2`} />
+        placeholder="부가 효과 (예: 앞면 적중 시 대상에게 출혈 2 부여)" className={`${field} mt-2`} />
+      <EffectPreview text={s.effectText} mode="skill" />
       <div className="mt-1 text-xs text-muted">
         위력 흐름: {s.basePower}{Array.from({ length: s.coinCount }).map((_, i) => ` → ${s.basePower + s.coinPower * (i + 1)}`)}
       </div>

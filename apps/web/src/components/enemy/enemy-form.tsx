@@ -8,6 +8,7 @@ import { Panel } from "@/components/office/panel";
 import { PortraitUpload } from "@/components/sheet/portrait-upload";
 import { SkillEditor, Num, Sel } from "@/components/sheet/skill-editor";
 import { SinIcon, DamageIcon } from "@/components/icons";
+import { EffectPreview } from "@/components/sheet/effect-preview";
 
 const RES_LABEL: Record<Resistance, string> = { fatal: "치명 x2", weak: "취약 x1.5", normal: "보통 x1", endure: "견딤 x0.75", resist: "내성 x0.5", immune: "면역 x0" };
 const field = "w-full rounded-md border border-border bg-elev px-2 py-1 text-sm outline-none focus:border-accent";
@@ -60,12 +61,15 @@ export function EnemyForm({ campaignId, id, initialName, initialPortrait, initia
       </Panel>
 
       <Panel title="기믹" right={<Button variant="ghost" className="px-2 py-1 text-xs" onClick={addGimmick}>+ 기믹</Button>}>
-        {d.gimmicks.length === 0 ? <p className="text-sm text-muted">없음. 기믹은 텍스트로 적고 GM이 수동 적용합니다. 발동하면 플레이어에게 공개됩니다.</p> : null}
+        {d.gimmicks.length === 0 ? <p className="text-sm text-muted">없음. 해석되는 문장은 자동 실행되고, 나머지는 GM이 수동 적용합니다.</p> : null}
         <div className="space-y-2">
           {d.gimmicks.map((g) => (
             <div key={g.id} className="grid gap-1 sm:grid-cols-[14rem_1fr_auto]">
               <Input value={g.name} onChange={(e) => setD({ ...d, gimmicks: d.gimmicks.map((x) => (x.id === g.id ? { ...x, name: e.target.value } : x)) })} placeholder="기믹 이름" />
-              <Input value={g.text} onChange={(e) => setD({ ...d, gimmicks: d.gimmicks.map((x) => (x.id === g.id ? { ...x, text: e.target.value } : x)) })} placeholder="효과 설명" />
+              <div>
+                <Input value={g.text} onChange={(e) => setD({ ...d, gimmicks: d.gimmicks.map((x) => (x.id === g.id ? { ...x, text: e.target.value } : x)) })} placeholder="효과 설명 (예: 매 라운드 시작 시 자신에게 충전 3 부여)" />
+                <EffectPreview text={g.text} mode="passive" />
+              </div>
               <button type="button" className="text-xs text-muted hover:text-danger" onClick={() => setD({ ...d, gimmicks: d.gimmicks.filter((x) => x.id !== g.id) })}>제거</button>
             </div>
           ))}

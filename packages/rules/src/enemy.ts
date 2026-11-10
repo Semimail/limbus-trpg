@@ -1,9 +1,9 @@
-import type { DamageType, Resistance, Sin } from "./types";
+import type { DamageType, Effect, Resistance, Sin } from "./types";
 import type { SkillDraft } from "./character";
 import type { Grade } from "./progression";
 
 /** 적 도감 항목 데이터 (enemies.data) */
-export interface Gimmick { id: string; name: string; text: string }
+export interface Gimmick { id: string; name: string; text: string; effects?: Effect[] }
 
 export interface EnemyData {
   version: 1;

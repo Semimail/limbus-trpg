@@ -2,10 +2,11 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getUser } from "@/lib/supabase/server";
 import {
-  startCombat, setPick, resolveRound, endCombat, seedFromString, DEFAULT_RULES,
-  type CombatState, type UnitInput, type CharacterData, type EnemyData, type Pick, type Skill, type Unit,
+  startCombat, setPick, resolveRound, endCombat, redrawHand, seedFromString,
+  type CombatState, type UnitInput, type CharacterData, type EnemyData, type Pick, type Skill, type Unit, type Effect,
 } from "@limbus/rules";
 import { formatRound, unitNames } from "@/lib/combat-log";
+import { getCampaignRules } from "@/lib/rules";
 
 type Json = Record<string, unknown>;
 
@@ -23,6 +24,7 @@ async function post(supabase: Awaited<ReturnType<typeof createClient>>, sessionI
 }
 
 const toSkill = (s: CharacterData["skills"][number]): Skill => ({ ...s, tier: s.tier });
+const fx = (list: { effects?: Effect[] }[]): Effect[] => list.flatMap((x) => x.effects ?? []);
 
 export async function startCombatAction(campaignId: string, sessionId: string, sceneId: string, allyIds: string[], enemies: { enemyId: string; count: number }[]): Promise<{ error?: string }> {
   const g = await requireGm(campaignId); if ("error" in g) return g;
@@ -35,11 +37,15 @@ export async function startCombatAction(campaignId: string, sessionId: string, s
     supabase.from("sessions").select("seed").eq("id", sessionId).single(),
   ]);
   const inputs: UnitInput[] = [];
+  const { rules } = await getCampaignRules(campaignId);
   for (const c of chars ?? []) {
     const d = c.data as unknown as CharacterData;
+    const dice: 1 | 2 = (d.sync ?? 1) >= 3 || d.speed.dice === 2 ? 2 : 1;   // 동기화 3단계부터 속도 다이스 2개
     inputs.push({
-      id: `c_${c.id}`, name: c.name, side: "ally", maxHp: d.maxHp, hp: d.hp, sanity: d.sanity, speed: d.speed,
-      skills: d.skills.map(toSkill), portraitUrl: c.portrait_url, source: { kind: "character", id: c.id, ownerId: c.owner_id },
+      id: `c_${c.id}`, name: c.name, side: "ally", maxHp: d.maxHp, hp: d.hp, sanity: d.sanity, speed: { ...d.speed, dice },
+      skills: [...d.skills.map(toSkill), ...(d.ego ?? []).map(toSkill)],
+      passives: fx(d.traits ?? []), light: d.light ?? 0, erosion: d.erosion ?? 0,
+      portraitUrl: c.portrait_url, source: { kind: "character", id: c.id, ownerId: c.owner_id },
     });
   }
   for (const spec of enemies) {
@@ -50,12 +56,13 @@ export async function startCombatAction(campaignId: string, sessionId: string, s
       inputs.push({
         id: `e_${f.id}_${i}`, name: f.name + suffix, side: "enemy", maxHp: d.maxHp, hp: d.maxHp,
         sanity: d.hasSanity ? d.sanity : 0, sanityLocked: !d.hasSanity, speed: { min: d.speed.min, max: d.speed.max, dice: Math.min(2, d.speed.dice) as 1 | 2 },
-        skills: d.skills.map(toSkill), resist: d.resist, portraitUrl: f.portrait_url, source: { kind: "enemy", id: f.id },
+        skills: d.skills.map(toSkill), resist: d.resist, passives: fx(d.gimmicks ?? []),
+        portraitUrl: f.portrait_url, source: { kind: "enemy", id: f.id },
       });
     }
   }
   const seed = seedFromString(`${session?.seed ?? sessionId}:${Date.now()}`);
-  const state = startCombat(inputs, seed);
+  const state = startCombat(inputs, seed, rules);
   const { data: row, error } = await supabase.from("combats").insert({ session_id: sessionId, scene_id: sceneId, round: state.round, phase: state.phase, state: JSON.parse(JSON.stringify(state)), rng_state: state.rngState }).select("id").single();
   if (error) return { error: error.message };
   // 캐릭터 잠금, 적 조우 기록
@@ -95,7 +102,8 @@ export async function setPickAction(campaignId: string, combatId: string, unitId
     if (!unit) return { error: "유닛이 없습니다" };
     const owns = unit.source.kind === "character" && unit.source.ownerId === user.id;
     if (!owns && !isGm) return { error: "자기 캐릭터만 선택할 수 있습니다" };
-    const err = setPick(row.state, unitId, slot, pick);
+    const { rules } = await getCampaignRules(campaignId);
+    const err = setPick(row.state, unitId, slot, pick, rules);
     if (err) return { error: err };
     const r = await saveState(supabase, combatId, row.state, row.updated_at);
     if (r === null) return { state: row.state };
@@ -112,7 +120,8 @@ export async function resolveRoundAction(campaignId: string, combatId: string): 
   if (row.state.phase !== "select") return { error: "진행할 수 있는 단계가 아닙니다" };
   const state = row.state;
   const roundNo = state.round;
-  const events = resolveRound(state, DEFAULT_RULES);
+  const { rules } = await getCampaignRules(campaignId);
+  const events = resolveRound(state, rules);
   const r = await saveState(supabase, combatId, state, row.updated_at);
   if (r) return { error: r === "conflict" ? "누군가 선택을 바꾸는 중입니다. 다시 눌러주세요" : r };
 
@@ -152,7 +161,7 @@ async function finish(supabase: Awaited<ReturnType<typeof createClient>>, state:
     const { data: c } = await supabase.from("characters").select("data").eq("id", u.source.id).single();
     if (!c) continue;
     const d = c.data as unknown as CharacterData;
-    await supabase.from("characters").update({ data: JSON.parse(JSON.stringify({ ...d, hp: u.hp, sanity: u.sanity })), locked: false }).eq("id", u.source.id);
+    await supabase.from("characters").update({ data: JSON.parse(JSON.stringify({ ...d, hp: u.hp, sanity: u.sanity, light: u.light, erosion: u.erosion })), locked: false }).eq("id", u.source.id);
   }
   if (allyCharIds.length) await supabase.from("characters").update({ locked: false }).in("id", allyCharIds);
 }
@@ -185,4 +194,28 @@ export async function gmAdjustUnitAction(campaignId: string, combatId: string, u
   const r = await saveState(supabase, combatId, row.state);
   if (r) return { error: r };
   return { state: row.state };
+}
+
+/** 빛을 써서 손패 교체 (자기 캐릭터 또는 GM) */
+export async function redrawHandAction(campaignId: string, combatId: string, unitId: string): Promise<{ error?: string; state?: CombatState }> {
+  const supabase = await createClient();
+  const user = await getUser();
+  if (!user) return { error: "로그인이 필요합니다" };
+  const { data: m } = await supabase.from("campaign_members").select("role").eq("campaign_id", campaignId).eq("user_id", user.id).maybeSingle();
+  const isGm = m?.role === "gm" || m?.role === "temp_gm";
+  const { rules } = await getCampaignRules(campaignId);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const row = await loadState(supabase, combatId);
+    if (!row) return { error: "전투가 없습니다" };
+    const unit = row.state.units.find((u: Unit) => u.id === unitId);
+    if (!unit) return { error: "유닛이 없습니다" };
+    const owns = unit.source.kind === "character" && unit.source.ownerId === user.id;
+    if (!owns && !isGm) return { error: "자기 캐릭터만 가능합니다" };
+    const err = redrawHand(row.state, unitId, rules);
+    if (err) return { error: err };
+    const r = await saveState(supabase, combatId, row.state, row.updated_at);
+    if (r === null) return { state: row.state };
+    if (r !== "conflict") return { error: r };
+  }
+  return { error: "동시에 수정 중입니다. 다시 시도하세요" };
 }

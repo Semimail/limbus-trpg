@@ -70,3 +70,15 @@ export async function approveCharacter(campaignId: string, characterId: string, 
   if (error) throw new Error(error.message);
   revalidatePath(`/campaigns/${campaignId}`);
 }
+
+/** 캠페인 삭제. 소유자(본 GM)만 가능 (RLS로도 막힘). 세션·장면·채팅·전투·적 도감·초대가 함께 지워지고, 캐릭터는 캠페인 미참가 상태로 남는다. */
+export async function deleteCampaign(campaignId: string): Promise<void> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const { data: c } = await supabase.from("campaigns").select("owner_id").eq("id", campaignId).single();
+  if (!c || c.owner_id !== user.id) throw new Error("캠페인 소유자만 삭제할 수 있습니다");
+  const { error } = await supabase.from("campaigns").delete().eq("id", campaignId);
+  if (error) throw new Error(error.message);
+  redirect("/campaigns?all=1");
+}

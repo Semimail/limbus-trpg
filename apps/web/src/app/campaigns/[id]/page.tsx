@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button, Input } from "@/components/ui";
 import { Panel } from "@/components/office/panel";
 import { CharacterCard, type CharacterSummary } from "@/components/office/character-card";
+import { DeleteCampaign } from "@/components/office/delete-campaign";
 import { approveCharacter, closeSession, createInvite, openSession, setMemberRole, updateNotice } from "../actions";
 
 const ROLE_LABEL = { gm: "GM", temp_gm: "임시 GM", player: "플레이어" } as const;
@@ -26,6 +27,7 @@ export default async function OfficePage({ params }: { params: Promise<{ id: str
   const me = members?.find((m) => m.user_id === user.id);
   const isGm = me?.role === "gm" || me?.role === "temp_gm";
   const isOwnerGm = me?.role === "gm";
+  const isOwner = campaign.owner_id === user.id;
   const openSessions = (sessions ?? []).filter((s) => s.status === "open");
   const closedSessions = (sessions ?? []).filter((s) => s.status === "closed");
   const mine = (characters ?? []).filter((c) => c.owner_id === user.id) as CharacterSummary[];
@@ -171,6 +173,12 @@ export default async function OfficePage({ params }: { params: Promise<{ id: str
                     <Button variant="ghost" className="px-2 py-1 text-xs">초대 코드 만들기</Button>
                   </form>
                 </div>
+                {isOwner ? (
+                  <div className="border-t border-border pt-3">
+                    <div className="mb-1 text-xs text-muted">위험 구역 (소유자 전용)</div>
+                    <DeleteCampaign campaignId={id} name={campaign.name} />
+                  </div>
+                ) : null}
               </div>
             </Panel>
           ) : null}

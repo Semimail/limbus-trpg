@@ -65,7 +65,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       </div>
 
       <div className="grid gap-3 lg:grid-cols-3">
-        <div className="order-last space-y-3 lg:order-none lg:col-span-2">
+        <div className={`${combat ? "order-first" : "order-last"} space-y-3 lg:order-none lg:col-span-2`}>
           <Panel title="장면" stamp={current ? ({ drama: "드라마", explore: "탐색", combat: "전투" } as const)[current.kind] : undefined}>
             <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} />
           </Panel>
@@ -76,7 +76,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
               : <p className="text-sm text-muted">장면 보드(배경 이미지, 토큰)는 이후에 추가됩니다.</p>}
           </Panel>
         </div>
-        <Panel title="채팅" className="order-first lg:order-none lg:sticky lg:top-4">
+        <Panel title="채팅" className={`${combat ? "order-last" : "order-first"} lg:order-none lg:sticky lg:top-4`}>
           <Chat sessionId={sid} sceneId={s.current_scene_id} meId={user.id} isGm={isGm} members={memberList}
             myChars={myChars} charNames={charNames} initial={((msgs ?? []) as unknown as ChatMessage[]).reverse()} sessionOpen={open} />
         </Panel>

@@ -37,3 +37,36 @@ export async function setMemberRole(campaignId: string, userId: string, role: "t
   if (error) throw new Error(error.message);
   revalidatePath(`/campaigns/${campaignId}`);
 }
+
+export async function updateNotice(campaignId: string, formData: FormData) {
+  const supabase = await createClient();
+  const notice = String(formData.get("notice") ?? "");
+  const next_session_note = String(formData.get("next_session_note") ?? "");
+  const { error } = await supabase.from("campaigns").update({ notice, next_session_note }).eq("id", campaignId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/campaigns/${campaignId}`);
+}
+
+export async function openSession(campaignId: string, formData: FormData) {
+  const title = String(formData.get("title") ?? "").trim() || `세션 ${new Date().toLocaleDateString("ko-KR")}`;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const { data, error } = await supabase.from("sessions").insert({ campaign_id: campaignId, title, created_by: user.id }).select("id").single();
+  if (error) throw new Error(error.message);
+  redirect(`/campaigns/${campaignId}/sessions/${data.id}`);
+}
+
+export async function closeSession(campaignId: string, sessionId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("sessions").update({ status: "closed", ended_at: new Date().toISOString() }).eq("id", sessionId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/campaigns/${campaignId}`);
+}
+
+export async function approveCharacter(campaignId: string, characterId: string, approved: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("characters").update({ approved }).eq("id", characterId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/campaigns/${campaignId}`);
+}

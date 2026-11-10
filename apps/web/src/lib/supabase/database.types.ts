@@ -103,6 +103,8 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          next_session_note: string
+          notice: string
           owner_id: string
           rules: Json
         }
@@ -110,6 +112,8 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          next_session_note?: string
+          notice?: string
           owner_id: string
           rules?: Json
         }
@@ -117,6 +121,8 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          next_session_note?: string
+          notice?: string
           owner_id?: string
           rules?: Json
         }

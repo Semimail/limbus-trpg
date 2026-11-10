@@ -1,6 +1,7 @@
 import type { Rng } from "./rng";
 import type { Combatant, RuleConfig, Skill } from "./types";
 import { RESISTANCE_MULT } from "./types";
+import { getStatus, triggerStatus } from "./status";
 
 export interface HitBreakdown {
   rawPower: number;
@@ -20,16 +21,15 @@ function resistanceMultiplier(target: Combatant, skill: Skill, rules: RuleConfig
 }
 
 /**
- * 호흡 기반 치명타 판정. 앞면 적중에서만 호출된다.
- * 확률 = 호흡 위력 x 5%. 치명타가 나면 호흡 횟수 1 감소, 0이면 제거.
+ * 호흡 기반 치명타. 앞면 적중에서만 호출된다.
+ * 확률 = 호흡 N x 5%. 치명타가 나면 호흡은 절반.
  */
 export function rollCrit(attacker: Combatant, rules: RuleConfig, rng: Rng): boolean {
-  const poise = attacker.statuses.poise;
-  if (!poise || poise.count <= 0 || poise.potency <= 0) return false;
-  const chance = Math.min(1, poise.potency * rules.poiseCritPerPotency);
+  const poise = getStatus(attacker, "poise");
+  if (poise <= 0) return false;
+  const chance = Math.min(1, poise * rules.poiseCritPerPotency);
   if (rng.next() >= chance) return false;
-  poise.count -= 1;
-  if (poise.count <= 0) delete attacker.statuses.poise;
+  triggerStatus(attacker, "poise");
   return true;
 }
 
@@ -40,7 +40,10 @@ export function computeHit(
 ): HitBreakdown {
   const crit = heads && rollCrit(attacker, rules, rng);
   const resistMult = resistanceMultiplier(target, skill, rules);
-  const staggerMult = target.staggered ? rules.staggerDamageMult : 1;
+  // 흐트러진 대상: 2배. 진동 N이 있으면 + N x 10%
+  const staggerMult = target.staggered
+    ? rules.staggerDamageMult + getStatus(target, "tremor") * rules.tremorStaggerBonus
+    : 1;
   const critMult = crit ? rules.critMult : 1;
   const final = Math.floor(rawPower * resistMult * staggerMult * critMult);
   return { rawPower, crit, resistMult, staggerMult, critMult, final };

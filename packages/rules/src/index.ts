@@ -10,3 +10,4 @@ export * from "./speed";
 export * from "./deck";
 export * from "./progression";
 export * from "./character";
+export * from "./status";

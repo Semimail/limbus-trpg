@@ -37,25 +37,25 @@ describe("합", () => {
 });
 
 describe("치명타(호흡)", () => {
-  it("호흡 위력 20 = 100% 치명타, 1.5배, 횟수 1 감소", () => {
-    const a = mkCombatant({ statuses: { poise: { potency: 20, count: 2 } } });
+  it("호흡 20 = 100% 치명타, 1.5배, 발동 후 절반", () => {
+    const a = mkCombatant({ statuses: { poise: 20 } });
     const t = mkCombatant({ id: "t", side: "enemy" });
     const h = computeHit(a, t, mkSkill(), 10, true, DEFAULT_RULES, createRng(1));
     expect(h.crit).toBe(true);
     expect(h.final).toBe(15);
-    expect(a.statuses.poise?.count).toBe(1);
+    expect(a.statuses.poise).toBe(10);
   });
 
   it("호흡이 없으면 치명타 없음, 뒷면이면 치명타 없음", () => {
     const a = mkCombatant();
     const t = mkCombatant({ id: "t", side: "enemy" });
     expect(computeHit(a, t, mkSkill(), 10, true, DEFAULT_RULES, createRng(1)).crit).toBe(false);
-    const b = mkCombatant({ statuses: { poise: { potency: 20, count: 2 } } });
+    const b = mkCombatant({ statuses: { poise: 20 } });
     expect(computeHit(b, t, mkSkill(), 10, false, DEFAULT_RULES, createRng(1)).crit).toBe(false);
   });
 
   it("흐트러진 대상은 2배, 치명타와 곱연산", () => {
-    const a = mkCombatant({ statuses: { poise: { potency: 20, count: 1 } } });
+    const a = mkCombatant({ statuses: { poise: 20 } });
     const t = mkCombatant({ id: "t", side: "enemy", staggered: true });
     expect(computeHit(a, t, mkSkill(), 10, true, DEFAULT_RULES, createRng(1)).final).toBe(30);
   });

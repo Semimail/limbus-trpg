@@ -37,12 +37,16 @@ export interface Skill {
   effects?: Effect[];
 }
 
-/** 상태: 호흡만 1차 구현. 위력(potency)과 횟수(count) */
-export interface StatusStack {
-  potency: number;
-  count: number;
-}
-export type StatusId = "poise"; // 호흡. 추후 burn/bleed/tremor/rupture/sinking/charge 추가
+/**
+ * 상태이상 7종. 숫자 하나(N)로 관리하며 발동 후 절반(내림)으로 줄어든다.
+ * burn 화상 / bleed 출혈 / tremor 진동 / rupture 파열 / sinking 침잠 / poise 호흡 / charge 충전
+ */
+export type StatusId = "burn" | "bleed" | "tremor" | "rupture" | "sinking" | "poise" | "charge";
+export const STATUS_IDS: readonly StatusId[] = ["burn", "bleed", "tremor", "rupture", "sinking", "poise", "charge"];
+export const STATUS_LABEL: Record<StatusId, string> = {
+  burn: "화상", bleed: "출혈", tremor: "진동", rupture: "파열", sinking: "침잠", poise: "호흡", charge: "충전",
+};
+export type Statuses = Partial<Record<StatusId, number>>;
 
 export interface Combatant {
   id: string;
@@ -55,7 +59,7 @@ export interface Combatant {
   /** 속도 다이스 범위와 개수 (캐릭터 귀속) */
   speed: { min: number; max: number; dice: 1 | 2 };
   skills: Skill[];
-  statuses: Partial<Record<StatusId, StatusStack>>;
+  statuses: Statuses;
   /** 흐트러짐 상태. staggeredUntilRound 이전 라운드까지 행동 불가, 피해 2배 */
   staggered: boolean;
   staggeredUntilRound?: number;
@@ -77,6 +81,9 @@ export interface RuleConfig {
   staggerDamageMult: number;   // 2
   critMult: number;            // 1.5 고정 (플레이어 수정 불가)
   poiseCritPerPotency: number; // 0.05
+  statusCap: number;           // 99
+  chargeCap: number;           // 20
+  tremorStaggerBonus: number;  // 진동 N당 흐트러짐 피해 배율 +0.1
   resistanceMode: "off" | "enemyOnly" | "all";
 }
 
@@ -90,6 +97,9 @@ export const DEFAULT_RULES: RuleConfig = {
   staggerDamageMult: 2,
   critMult: 1.5,
   poiseCritPerPotency: 0.05,
+  statusCap: 99,
+  chargeCap: 20,
+  tremorStaggerBonus: 0.1,
   resistanceMode: "off",
 };
 
@@ -103,7 +113,8 @@ export type Trigger =
 export type Target = "self" | "clashTarget" | "allies" | "enemies" | "all";
 
 export type Action =
-  | { type: "applyStatus"; status: StatusId; potency: number; count: number }
+  | { type: "applyStatus"; status: StatusId; amount: number }
+  | { type: "consumeCharge"; amount: number }
   | { type: "sanity"; delta: number }
   | { type: "heal"; amount: number }
   | { type: "damage"; amount: number }

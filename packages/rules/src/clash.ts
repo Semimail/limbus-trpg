@@ -4,6 +4,7 @@ import { rollSkill, type SkillRoll } from "./skill";
 import { computeHit, type HitBreakdown } from "./damage";
 import { applyDamage, type DamageOutcome } from "./stagger";
 import { adjustSanity } from "./coin";
+import { triggerStatus } from "./status";
 
 export interface ClashRound {
   index: number;
@@ -19,6 +20,17 @@ export interface AttackCoin {
   heads: boolean;
   hit: HitBreakdown;
   damage: DamageOutcome;
+  /** 이 코인 뒤에 공격자가 받은 출혈 피해 (출혈은 공격 코인마다 발동 후 절반) */
+  bleed?: { amount: number; damage: DamageOutcome };
+}
+
+/** 스킬 1회가 끝난 뒤 발동한 상태이상 기록 */
+export interface StatusTick {
+  target: string;        // combatant id
+  status: "rupture" | "sinking" | "tremor" | "burn";
+  amount: number;        // 발동 시점의 N
+  damage?: DamageOutcome;
+  sanityAfter?: number;
 }
 
 export interface ClashResult {
@@ -27,6 +39,8 @@ export interface ClashResult {
   winner: "a" | "b";
   /** 일방 공격 결과 (승자의 남은 코인) */
   attacks: AttackCoin[];
+  /** 공격 종료 후 상태이상 발동 */
+  ticks: StatusTick[];
   sanity: { a: number; b: number };
 }
 
@@ -68,12 +82,51 @@ export function resolveClash(a: Side, b: Side, round: number, rules: RuleConfig,
   lose.combatant.sanity = adjustSanity(lose.combatant.sanity, rules.sanityOnClashLose, rules);
 
   const attacks: AttackCoin[] = [];
+  const ticks: StatusTick[] = [];
   if (win.skill.kind === "attack") {
     attacks.push(...oneSidedAttack(win.combatant, lose.combatant, win.skill, left, round, rules, rng));
+    ticks.push(...afterAttack(win.combatant, lose.combatant, attacks, round, rules));
   }
   // 승자가 방어 스킬(가드/회피)이면 피해 없이 종료. 반격은 후속 구현.
 
-  return { rounds, winner, attacks, sanity: { a: a.combatant.sanity, b: b.combatant.sanity } };
+  return { rounds, winner, attacks, ticks, sanity: { a: a.combatant.sanity, b: b.combatant.sanity } };
+}
+
+/**
+ * 공격 스킬 1회가 끝난 뒤의 상태이상 발동. (출혈은 코인마다 oneSidedAttack에서 처리)
+ *  - 파열: 피격자가 적중을 1회라도 받았으면 N 추가 피해 → 절반
+ *  - 침잠: 피격자가 적중을 1회라도 받았으면 정신력 -N → 절반
+ *  - 진동: 흐트러진 상태로 피격당했으면 (배율은 computeHit에서 이미 반영) → 절반
+ */
+export function afterAttack(_attacker: Combatant, target: Combatant, attacks: AttackCoin[], round: number, rules: RuleConfig): StatusTick[] {
+  const ticks: StatusTick[] = [];
+  const landed = attacks.length > 0;
+  const wasStaggered = attacks.some((a) => a.hit.staggerMult > 1);
+
+  if (landed && !target.incapacitated) {
+    const rupture = triggerStatus(target, "rupture");
+    if (rupture > 0) ticks.push({ target: target.id, status: "rupture", amount: rupture, damage: applyDamage(target, rupture, round, rules) });
+  }
+  if (landed && !target.incapacitated) {
+    const sinking = triggerStatus(target, "sinking");
+    if (sinking > 0) {
+      target.sanity = adjustSanity(target.sanity, -sinking, rules);
+      ticks.push({ target: target.id, status: "sinking", amount: sinking, sanityAfter: target.sanity });
+    }
+  }
+  if (wasStaggered) {
+    const tremor = triggerStatus(target, "tremor");
+    if (tremor > 0) ticks.push({ target: target.id, status: "tremor", amount: tremor });
+  }
+  return ticks;
+}
+
+/** 라운드 종료: 화상 N 피해 → 절반. 흐트러짐 만료는 tickStagger에서. */
+export function roundEndBurn(c: Combatant, round: number, rules: RuleConfig): StatusTick | null {
+  if (c.incapacitated) return null;
+  const burn = triggerStatus(c, "burn");
+  if (burn <= 0) return null;
+  return { target: c.id, status: "burn", amount: burn, damage: applyDamage(c, burn, round, rules) };
 }
 
 /**
@@ -90,8 +143,11 @@ export function oneSidedAttack(
     const c = roll.coins[i]!;
     const hit = computeHit(attacker, target, skill, c.power, c.heads, rules, rng);
     const damage = applyDamage(target, hit.final, round, rules);
-    out.push({ coinIndex: i, heads: c.heads, hit, damage });
-    if (damage.incapacitated) break;
+    const coin: AttackCoin = { coinIndex: i, heads: c.heads, hit, damage };
+    const bleed = triggerStatus(attacker, "bleed");
+    if (bleed > 0) coin.bleed = { amount: bleed, damage: applyDamage(attacker, bleed, round, rules) };
+    out.push(coin);
+    if (damage.incapacitated || attacker.incapacitated) break;
   }
   return out;
 }

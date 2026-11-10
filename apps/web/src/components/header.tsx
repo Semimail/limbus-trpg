@@ -5,8 +5,8 @@ import { ThemeToggle } from "./theme-toggle";
 export async function Header() {
   const user = await getUser();
   if (!user) return null;
-  const name = (user.user_metadata?.custom_claims?.global_name as string | undefined)
-    ?? (user.user_metadata?.full_name as string | undefined) ?? "";
+  const meta = user.user_metadata as { custom_claims?: { global_name?: string }; full_name?: string };
+  const name = meta.custom_claims?.global_name ?? meta.full_name ?? "";
   return (
     <header className="border-b border-border">
       <div className="mx-auto flex h-12 max-w-6xl items-center justify-between px-4">

@@ -1,6 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { rollDice } from "@/lib/dice";
 import { DEFAULT_RULES, judge, type CharacterData } from "@limbus/rules";
 import { createRng } from "@limbus/rules";
@@ -25,7 +25,7 @@ export interface SendInput {
  */
 export async function sendMessage(input: SendInput): Promise<{ error?: string; message?: Record<string, unknown> }> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return { error: "로그인이 필요합니다" };
   const content = input.content.trim();
   if (!content && !input.imageUrl) return { error: "내용이 없습니다" };

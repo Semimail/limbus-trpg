@@ -1,7 +1,7 @@
 "use server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { validateCharacter, type CharacterData } from "@limbus/rules";
 
 export interface SaveInput {
@@ -14,7 +14,7 @@ export interface SaveInput {
 
 export async function saveCharacter(input: SaveInput): Promise<{ error?: string; id?: string }> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/");
   if (!input.name.trim()) return { error: "이름을 입력하세요" };
   const errors = validateCharacter(input.data).filter((i) => i.level === "error");

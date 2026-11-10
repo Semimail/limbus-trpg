@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { Panel } from "@/components/office/panel";
 import { Chat, type ChatMessage } from "@/components/session/chat";
 import { SceneBar, type SceneRow } from "@/components/session/scene-bar";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui";
 export default async function SessionPage({ params }: { params: Promise<{ id: string; sid: string }> }) {
   const { id, sid } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   const { data: s } = await supabase.from("sessions").select("id, title, status, started_at, current_scene_id").eq("id", sid).single();
   if (!s || !user) notFound();
 

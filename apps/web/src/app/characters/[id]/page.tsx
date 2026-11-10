@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { CharacterData } from "@limbus/rules";
 import { newCharacterData } from "@limbus/rules";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { CharacterForm } from "@/components/sheet/character-form";
 import { GmPanel } from "@/components/sheet/gm-panel";
 import { deleteCharacter } from "../actions";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui";
 export default async function CharacterPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   const { data: c } = await supabase.from("characters").select("*").eq("id", id).single();
   if (!c || !user) notFound();
 

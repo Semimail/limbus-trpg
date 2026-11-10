@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { Button, Input } from "@/components/ui";
 import { Panel } from "@/components/office/panel";
 import { CharacterCard, type CharacterSummary } from "@/components/office/character-card";
@@ -12,7 +12,7 @@ const ROLE_LABEL = { gm: "GM", temp_gm: "임시 GM", player: "플레이어" } as
 export default async function OfficePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   const { data: campaign } = await supabase.from("campaigns").select("id, name, owner_id, notice, next_session_note").eq("id", id).single();
   if (!campaign || !user) notFound();
 

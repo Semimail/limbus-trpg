@@ -1,13 +1,13 @@
 "use server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 
 export async function createCampaign(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/");
   const { data, error } = await supabase.from("campaigns").insert({ name, owner_id: user.id }).select("id").single();
   if (error) throw new Error(error.message);
@@ -16,7 +16,7 @@ export async function createCampaign(formData: FormData) {
 
 export async function createInvite(campaignId: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/");
   const code = Math.random().toString(36).slice(2, 8).toUpperCase();
   const { error } = await supabase.from("campaign_invites").insert({ campaign_id: campaignId, code, created_by: user.id });
@@ -50,7 +50,7 @@ export async function updateNotice(campaignId: string, formData: FormData) {
 export async function openSession(campaignId: string, formData: FormData) {
   const title = String(formData.get("title") ?? "").trim() || `세션 ${new Date().toLocaleDateString("ko-KR")}`;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/");
   const { data, error } = await supabase.from("sessions").insert({ campaign_id: campaignId, title, created_by: user.id }).select("id").single();
   if (error) throw new Error(error.message);
@@ -74,7 +74,7 @@ export async function approveCharacter(campaignId: string, characterId: string, 
 /** 캠페인 삭제. 소유자(본 GM)만 가능 (RLS로도 막힘). 세션·장면·채팅·전투·적 도감·초대가 함께 지워지고, 캐릭터는 캠페인 미참가 상태로 남는다. */
 export async function deleteCampaign(campaignId: string): Promise<void> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/");
   const { data: c } = await supabase.from("campaigns").select("owner_id").eq("id", campaignId).single();
   if (!c || c.owner_id !== user.id) throw new Error("캠페인 소유자만 삭제할 수 있습니다");

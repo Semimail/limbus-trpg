@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { Card, PageTitle } from "@/components/ui";
 
 export default async function CharactersPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   const { data: chars } = await supabase.from("characters").select("id, name, approved, campaigns(name)").eq("owner_id", user!.id).order("created_at");
   return (
     <div>

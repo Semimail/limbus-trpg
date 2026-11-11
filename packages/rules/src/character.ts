@@ -16,6 +16,8 @@ export interface SkillDraft {
   sin: Sin;
   effectText: string;
   effects?: Effect[];
+  /** 스킬 카드 이미지 (선택) */
+  imageUrl?: string | null;
   /** E.G.O 비용 (ego 목록의 스킬에만) */
   ego?: { sanityCost: number; erosionGain: number; usesPerCombat: number };
 }
@@ -29,6 +31,12 @@ export interface Trait {
 
 export interface CharacterData {
   version: 1;
+  /** 시트 상단의 대사 한 줄 */
+  quote?: string;
+  /** 정체성: 이 캐릭터를 한 줄로 */
+  identity?: string;
+  /** 면모 3개: 서사 태그. GM이 빛 보상이나 판정 보너스의 근거로 쓴다 */
+  aspects?: string[];
   level: number;
   sync: 1 | 2 | 3 | 4;
   stats: Record<Sin, number>;
@@ -55,7 +63,7 @@ export function newCharacterData(p: ProgressionConfig = DEFAULT_PROGRESSION): Ch
   const stats = Object.fromEntries(SINS.map((s) => [s, 2])) as Record<Sin, number>;
   const hp = maxHpAt(1, p);
   return {
-    version: 1, level: 1, sync: 1, stats,
+    version: 1, quote: "", identity: "", aspects: ["", "", ""], level: 1, sync: 1, stats,
     traits: [
       { id: "t1", name: "", description: "" },
       { id: "t2", name: "", description: "" },

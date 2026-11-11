@@ -81,8 +81,16 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
               <PortraitUpload value={portrait} onChange={setPortrait} />
               <div className="space-y-3">
                 <label className="block"><span className="text-xs text-muted">이름</span><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="해결사의 이름" autoFocus /></label>
-                <label className="block"><span className="text-xs text-muted">배경 (선택)</span>
-                  <textarea value={d.background} onChange={(e) => setD({ ...d, background: e.target.value })} rows={5} className={field}
+                <label className="block"><span className="text-xs text-muted">대사 한 줄 (선택) · 시트 맨 위에 크게 실립니다</span><Input value={d.quote ?? ""} onChange={(e) => setD({ ...d, quote: e.target.value })} placeholder="예: 퇴사 마렵네. 오늘인가?" /></label>
+                <label className="block"><span className="text-xs text-muted">정체성 · 이 캐릭터를 한 줄로</span><Input value={d.identity ?? ""} onChange={(e) => setD({ ...d, identity: e.target.value })} placeholder="예: 날고 싶은 직장인" /></label>
+                <div>
+                  <span className="text-xs text-muted">면모 3개 · 성격, 과거, 관계 같은 서사 태그. GM이 빛 보상과 판정 보너스의 근거로 씁니다</span>
+                  <div className="mt-1 grid gap-1 sm:grid-cols-3">
+                    {[0, 1, 2].map((i) => <Input key={i} value={(d.aspects ?? ["", "", ""])[i] ?? ""} onChange={(e) => { const a = [...(d.aspects ?? ["", "", ""])]; a[i] = e.target.value; setD({ ...d, aspects: a }); }} placeholder={["예: 숨겨둔 반골기질", "예: 기약 없는 재단", "예: 묻어둔 다정함"][i]} />)}
+                  </div>
+                </div>
+                <label className="block"><span className="text-xs text-muted">배경 (선택) · 시트 맨 아래 서사 칸</span>
+                  <textarea value={d.background} onChange={(e) => setD({ ...d, background: e.target.value })} rows={4} className={field}
                     placeholder="출신(둥지·뒷골목·외곽), 소속이 있다면 어디, 해결사가 된 계기, 지키고 싶은 것. 길지 않아도 됩니다." /></label>
               </div>
             </div>
@@ -235,6 +243,7 @@ function SkillStep({ d, setD }: { d: CharacterData; setD: (d: CharacterData) => 
           {!advanced[s.id] ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block"><span className="text-xs text-muted">2. 이름</span><Input value={s.name} onChange={(e) => set({ name: e.target.value })} placeholder={s.kind === "defense" ? "예: 흘려내기" : "예: 베기"} /></label>
+              <div><span className="text-xs text-muted">스킬 이미지 (선택)</span><div className="mt-1"><PortraitUpload value={s.imageUrl ?? null} onChange={(u) => set({ imageUrl: u })} label="이미지" size="h-16 w-16" hint="카드 왼쪽에 들어갑니다" /></div></div>
               <div>
                 <span className="text-xs text-muted">3. {s.kind === "defense" ? "방어 종류" : "피해 유형"}</span>
                 <div className="mt-1 flex gap-1">

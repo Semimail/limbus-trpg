@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export function PortraitUpload({ value, onChange, disabled }: { value: string | null; onChange: (url: string | null) => void; disabled?: boolean }) {
+export function PortraitUpload({ value, onChange, disabled, label = "초상화", size = "h-28 w-28", hint = "정사각형에 가까운 이미지를 권장합니다" }: { value: string | null; onChange: (url: string | null) => void; disabled?: boolean; label?: string; size?: string; hint?: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -26,9 +26,9 @@ export function PortraitUpload({ value, onChange, disabled }: { value: string | 
 
   return (
     <div className="flex items-start gap-3">
-      <div className="h-28 w-28 shrink-0 overflow-hidden border border-border bg-fg/10">
+      <div className={`${size} shrink-0 overflow-hidden border border-border bg-fg/10`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {value ? <img src={value} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-muted">초상화</div>}
+        {value ? <img src={value} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-muted">{label}</div>}
       </div>
       {!disabled ? (
         <div className="text-sm">
@@ -39,7 +39,7 @@ export function PortraitUpload({ value, onChange, disabled }: { value: string | 
           </label>
           {value ? <button type="button" onClick={() => onChange(null)} className="ml-2 text-xs text-muted hover:text-fg">제거</button> : null}
           {err ? <p className="mt-1 text-xs text-danger">{err}</p> : null}
-          <p className="mt-1 text-xs text-muted">정사각형에 가까운 이미지를 권장합니다</p>
+          <p className="mt-1 text-xs text-muted">{hint}</p>
         </div>
       ) : null}
     </div>

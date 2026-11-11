@@ -74,3 +74,20 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
   display: inline-block; padding: 1px 6px; font-size: 11px; letter-spacing: 0.08em;
   border: 1px solid var(--gold); color: var(--gold); text-transform: uppercase;
 }
+
+/* 캐릭터 시트: 테마와 무관하게 검정·빨강·금색 포스터 */
+.sheet {
+  --s-bg: #0b0909; --s-panel: #161111; --s-panel2: #1f1717; --s-line: #3a2626; --s-red: #b3161c; --s-red2: #7a0f13;
+  --s-gold: #d9b35b; --s-fg: #efe7da; --s-muted: #9a8f86;
+  background: var(--s-bg); color: var(--s-fg);
+}
+.sheet .s-box { background: var(--s-panel); border: 1px solid var(--s-line); }
+.sheet .s-head { background: var(--s-red); color: #fff; font-weight: 700; letter-spacing: 0.04em; }
+.sheet .s-label { background: var(--s-panel2); color: var(--s-muted); font-size: 11px; letter-spacing: 0.06em; }
+.sheet .s-cell { border: 1px solid var(--s-line); }
+.sheet .s-rule { height: 2px; background: linear-gradient(90deg, var(--s-red), var(--s-red2) 60%, transparent); }
+.sheet .s-gold { color: var(--s-gold); }
+.sheet .s-cut { clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+.sheet .s-banner { background: linear-gradient(90deg, var(--s-red) 0%, var(--s-red) 70%, transparent 100%); color: #fff; font-weight: 800; font-size: 1.05rem; letter-spacing: 0.02em; text-shadow: 0 1px 0 rgba(0,0,0,.6); }
+.sheet .s-banner-gold { background: linear-gradient(90deg, var(--s-gold) 0%, var(--s-gold) 70%, transparent 100%); color: #1a1410; font-weight: 800; font-size: 1.05rem; }
+.sheet .keyword-link { color: var(--s-gold); border-bottom-color: rgba(217,179,91,.6); }

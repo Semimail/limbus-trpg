@@ -91,3 +91,31 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
 .sheet .s-banner { background: linear-gradient(90deg, var(--s-red) 0%, var(--s-red) 70%, transparent 100%); color: #fff; font-weight: 800; font-size: 1.05rem; letter-spacing: 0.02em; text-shadow: 0 1px 0 rgba(0,0,0,.6); }
 .sheet .s-banner-gold { background: linear-gradient(90deg, var(--s-gold) 0%, var(--s-gold) 70%, transparent 100%); color: #1a1410; font-weight: 800; font-size: 1.05rem; }
 .sheet .keyword-link { color: var(--s-gold); border-bottom-color: rgba(217,179,91,.6); }
+
+/* 전투 화면: 테마와 무관하게 어두운 VTT 캔버스 */
+.battle {
+  --b-bg: #0a0707; --b-panel: rgba(22, 16, 16, .94); --b-line: #3a2626; --b-red: #b3161c; --b-red2: #6e0d11;
+  --b-gold: #d9b35b; --b-fg: #efe7da; --b-muted: #9a8f86;
+  background: var(--b-bg); color: var(--b-fg); color-scheme: dark;
+}
+.battle .b-bar { background: linear-gradient(180deg, #1a1212, #110c0c); border-bottom: 1px solid var(--b-line); }
+.battle .b-panel { background: var(--b-panel); border: 1px solid var(--b-line); backdrop-filter: blur(4px); }
+.battle .b-head { background: var(--b-red); color: #fff; font-weight: 700; }
+.battle .b-label { color: var(--b-muted); font-size: 10px; letter-spacing: .08em; }
+.battle .b-gold { color: var(--b-gold); }
+.battle .b-muted { color: var(--b-muted); }
+.battle .b-cell { border: 1px solid var(--b-line); background: rgba(0,0,0,.35); }
+.battle .b-active { outline: 1px solid var(--b-gold); background: rgba(217,179,91,.08); }
+.battle .b-input { background: #0e0a0a; border: 1px solid var(--b-line); color: var(--b-fg); }
+.battle .b-btn { border: 1px solid var(--b-line); padding: 3px 10px; color: var(--b-fg); background: rgba(0,0,0,.3); }
+.battle .b-btn:hover { border-color: var(--b-gold); }
+.battle .b-btn-red { border: 1px solid #d2242b; padding: 3px 12px; color: #fff; background: linear-gradient(180deg, #d2242b, var(--b-red)); font-weight: 700; }
+.battle .b-btn:disabled, .battle .b-btn-red:disabled { opacity: .5; }
+.battle .b-tracker { background: linear-gradient(180deg, #8e1217 0%, var(--b-red2) 100%); border-top: 2px solid var(--b-gold); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+.battle .b-chat { background: #0e0b0b; border-left: 1px solid var(--b-line); }
+.battle .b-canvas { background: var(--b-bg); }
+.battle .b-pulse { animation: b-pulse 1.2s ease-in-out infinite; }
+@keyframes b-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(217,179,91,.0); } 50% { box-shadow: 0 0 0 5px rgba(217,179,91,.45); } }
+/* 채팅을 어두운 전투 화면 색에 맞춘다 */
+.battle .b-chat { --bg: #0e0b0b; --bg-elev: #171212; --fg: #efe7da; --muted: #9a8f86; --border: #3a2626; --accent: #d2242b; --gold: #d9b35b; --danger: #e04b52; --ok: #4fb374; }
+.battle .keyword-link { color: var(--b-gold); }

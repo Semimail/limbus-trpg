@@ -18,9 +18,11 @@ interface Props {
   members: Member[]; myChars: MyChar[]; charNames: Record<string, string>;
   initial: ChatMessage[]; sessionOpen: boolean;
   onMessages?: (msgs: ChatMessage[]) => void;
+  /** 부모 높이를 꽉 채운다 (전투 화면) */
+  fill?: boolean;
 }
 
-export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNames, initial, sessionOpen, onMessages }: Props) {
+export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNames, initial, sessionOpen, onMessages, fill }: Props) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(initial);
   const [kind, setKind] = useState<MessageKind>(myChars.length ? "ic" : "ooc");
   const [charId, setCharId] = useState<string | null>(myChars[0]?.id ?? null);
@@ -44,7 +46,7 @@ export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNam
     return () => { void supabase.removeChannel(ch); };
   }, [sessionId]);
 
-  useEffect(() => { bottom.current?.scrollIntoView({ block: "end" }); onMessages?.(msgs); }, [msgs, onMessages]);
+  useEffect(() => { const el = bottom.current?.parentElement; if (el) el.scrollTop = el.scrollHeight; onMessages?.(msgs); }, [msgs, onMessages]);
 
   const send = () => {
     if (!text.trim()) return;
@@ -75,7 +77,7 @@ export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNam
   };
 
   return (
-    <div className="flex h-[70vh] flex-col lg:h-[calc(100vh-10rem)]">
+    <div className={fill ? "flex h-full flex-col" : "flex h-[70vh] flex-col lg:h-[calc(100vh-10rem)]"}>
       <div className="flex-1 space-y-1.5 overflow-y-auto pr-1">
         {msgs.map((m) => <Line key={m.id} m={m} names={names} charNames={charNames} meId={meId}
           onDelete={isGm ? () => { if (confirm("이 메시지를 삭제할까요?")) void deleteMessage(sessionId, m.id).then(() => setMsgs((prev) => prev.filter((x) => x.id !== m.id))); } : undefined} />)}

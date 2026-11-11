@@ -7,7 +7,7 @@ import { SceneBar, type SceneRow } from "@/components/session/scene-bar";
 import { closeSession, deleteSession } from "@/app/campaigns/actions";
 import { DeleteSession } from "@/components/session/delete-session";
 import { Button } from "@/components/ui";
-import { CombatBoard } from "@/components/combat/board";
+import { BattleScreen } from "@/components/combat/battle-screen";
 import { CombatSetup } from "@/components/combat/setup";
 import type { TokenSource } from "@/components/board/scene-board";
 import { SessionLive } from "@/components/session/session-live";
@@ -65,6 +65,16 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
     tokenSources = [...tokenSources, ...(foes ?? []).map((f) => ({ id: f.id, name: f.name, img: f.portrait_url, ownerId: null, kind: "enemy" as const }))];
   }
 
+  if (combat) {
+    return (
+      <BattleScreen campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} protectRange={rules.protectRange}
+        sessionTitle={s.title} sceneTitle={current?.title ?? ""} backHref={`/campaigns/${id}`}
+        sceneTools={isGm ? <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} /> : undefined}
+        chat={<Chat sessionId={sid} sceneId={s.current_scene_id} meId={user.id} isGm={isGm} members={memberList} myChars={myChars} charNames={charNames}
+          initial={((msgs ?? []) as unknown as ChatMessage[]).reverse()} sessionOpen={open} fill />} />
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -84,18 +94,17 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
 
       {current?.kind === "combat" || !current ? (
         <div className="grid gap-3 lg:grid-cols-3">
-          <div className={`${combat ? "order-first" : "order-last"} space-y-3 lg:order-none lg:col-span-2`}>
+          <div className="order-last space-y-3 lg:order-none lg:col-span-2">
             <Panel title="장면" stamp={current ? ({ drama: "드라마", explore: "탐색", combat: "전투" } as const)[current.kind] : undefined}>
               <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} />
             </Panel>
-            <Panel title={current ? current.title : "보드"} className="min-h-64" stamp={combat ? "BATTLE" : undefined}>
-              {combat ? <CombatBoard campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} protectRange={rules.protectRange} />
-                : setup ? <CombatSetup campaignId={id} sessionId={sid} sceneId={current!.id} allies={setup.allies} enemies={setup.enemies} />
+            <Panel title={current ? current.title : "보드"} className="min-h-64">
+              {setup ? <CombatSetup campaignId={id} sessionId={sid} sceneId={current!.id} allies={setup.allies} enemies={setup.enemies} />
                 : current?.kind === "combat" ? <p className="text-sm text-muted">GM이 전투를 준비하고 있습니다.</p>
                 : <p className="text-sm text-muted">장면을 추가하면 무대가 나타납니다.</p>}
             </Panel>
           </div>
-          <Panel title="채팅" className={`${combat ? "order-last" : "order-first"} lg:order-none lg:sticky lg:top-4`}>
+          <Panel title="채팅" className="order-first lg:order-none lg:sticky lg:top-4">
             <Chat sessionId={sid} sceneId={s.current_scene_id} meId={user.id} isGm={isGm} members={memberList}
               myChars={myChars} charNames={charNames} initial={((msgs ?? []) as unknown as ChatMessage[]).reverse()} sessionOpen={open} />
           </Panel>

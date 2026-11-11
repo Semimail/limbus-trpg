@@ -2,17 +2,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { STATUS_IDS, slotKey, isCorroded, type CombatState, type Unit, type StatusId, type Skill } from "@limbus/rules";
-import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction, redrawHandAction } from "@/app/campaigns/[id]/sessions/[sid]/combat-actions";
+import { STATUS_IDS, slotKey, isCorroded, reachableCells, dist, skillRange, type CombatState, type Unit, type StatusId, type Skill, type Pos } from "@limbus/rules";
+import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction, redrawHandAction, moveUnitAction } from "@/app/campaigns/[id]/sessions/[sid]/combat-actions";
 import { formatRound, unitNames } from "@/lib/combat-log";
 import { Button } from "@/components/ui";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon, StatusBadge, StatusIcon } from "@/components/icons";
 import { Keyword, KeywordText } from "@/components/keyword/keyword";
 import { Cinematic } from "./cinematic";
 
-interface Props { campaignId: string; combatId: string; initial: CombatState; meId: string; isGm: boolean }
+interface Props { campaignId: string; combatId: string; initial: CombatState; meId: string; isGm: boolean; protectRange: number }
 
-export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props) {
+export function CombatBoard({ campaignId, combatId, initial, meId, isGm, protectRange }: Props) {
   const router = useRouter();
   const [state, setState] = useState<CombatState>(initial);
   const [err, setErr] = useState<string | null>(null);
@@ -77,6 +77,9 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
         </ul>
       ) : null}
 
+      {state.grid ? <GridBoard state={state} isGm={isGm} meId={meId} names={names} disabled={pending || state.phase !== "select"}
+        onMove={(unitId, to) => act(() => moveUnitAction(campaignId, combatId, unitId, to))} /> : null}
+
       <div className="space-y-2">
         <Row units={enemies} state={state} isGm={isGm} hideNumbers={!isGm} names={names} campaignId={campaignId} combatId={combatId} onApply={applyState} />
         <div className="h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
@@ -87,7 +90,7 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
         <div className="space-y-3 border-t border-border pt-3">
           <div className="text-sm font-semibold">행동 선택 {unpicked.length === 0 ? <span className="text-xs font-normal text-ok">· 모두 선택됨</span> : null}</div>
           {mySlots.map((s) => <PickRow key={slotKey(s.combatantId, s.slot)} state={state} unit={state.units.find((u) => u.id === s.combatantId)!} slot={s.slot} speed={s.speed}
-            onPick={(pick) => act(() => setPickAction(campaignId, combatId, s.combatantId, s.slot, pick))} names={names}
+            onPick={(pick) => act(() => setPickAction(campaignId, combatId, s.combatantId, s.slot, pick))} names={names} protectRange={protectRange}
             onRedraw={() => act(() => redrawHandAction(campaignId, combatId, s.combatantId))} />)}
         </div>
       ) : null}
@@ -98,6 +101,64 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
           <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs leading-relaxed"><KeywordText text={formatRound(state.lastRound, names).join("\n")} /></pre>
         </details>
       ) : null}
+    </div>
+  );
+}
+
+const CELL = 56;
+function GridBoard({ state, isGm, meId, names, disabled, onMove }: { state: CombatState; isGm: boolean; meId: string; names: Record<string, string>; disabled: boolean; onMove: (unitId: string, to: Pos) => void }) {
+  const { cols, rows } = state.grid!;
+  const [sel, setSel] = useState<string | null>(null);
+  const mine = (u: Unit) => isGm || (u.source.kind === "character" && u.source.ownerId === meId);
+  const selected = sel ? state.units.find((u) => u.id === sel) : undefined;
+  const canMove = selected && mine(selected) && !selected.incapacitated && !selected.staggered && !isCorroded(selected, state.round) && state.phase === "select";
+  const reach = useMemo(() => (canMove && selected ? reachableCells(state, selected.id) : new Map<string, number>()), [state, selected, canMove]);
+  const alive = state.units.filter((u) => !u.incapacitated);
+  const at = (x: number, y: number) => alive.find((u) => u.pos.x === x && u.pos.y === y);
+  // 선택 유닛의 사거리(손패 스킬 중 가장 긴 사거리)
+  const maxRange = selected ? Math.max(1, ...selected.skills.filter((s) => s.kind === "attack").map(skillRange)) : 0;
+  // 적 의도: 적이 노리는 아군에 선 표시 (GM만 상세)
+  const intents = Object.entries(state.picks).map(([k, p]) => { const [uid] = k.split(":"); const a = state.units.find((u) => u.id === uid); const t = state.units.find((u) => u.id === p.targetId); return a && t && !a.incapacitated ? { a, t, enemy: a.side === "enemy" } : null; }).filter(Boolean) as { a: Unit; t: Unit; enemy: boolean }[];
+  return (
+    <div className="panel overflow-auto p-2">
+      <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+        <span>격자 {cols}×{rows}</span>
+        {selected ? <span><b className="text-fg">{selected.name}</b> · 이동력 {selected.move} · 최대 사거리 {maxRange}칸{canMove ? " · 이동할 칸을 누르세요" : ""}</span> : <span>유닛을 눌러 선택</span>}
+        {sel ? <button type="button" className="ml-auto underline" onClick={() => setSel(null)}>선택 해제</button> : null}
+      </div>
+      <div className="relative mx-auto" style={{ width: cols * CELL, height: rows * CELL }}>
+        <svg className="pointer-events-none absolute inset-0" width={cols * CELL} height={rows * CELL}>
+          {intents.map(({ a, t, enemy }, i) => (
+            <line key={i} x1={a.pos.x * CELL + CELL / 2} y1={a.pos.y * CELL + CELL / 2} x2={t.pos.x * CELL + CELL / 2} y2={t.pos.y * CELL + CELL / 2}
+              stroke={enemy ? "var(--color-danger)" : "var(--color-accent)"} strokeWidth={2} strokeDasharray="4 4" opacity={0.6} />
+          ))}
+        </svg>
+        <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, ${CELL}px)`, gridTemplateRows: `repeat(${rows}, ${CELL}px)` }}>
+          {Array.from({ length: rows }).map((_, y) => Array.from({ length: cols }).map((_, x) => {
+            const u = at(x, y);
+            const key = `${x},${y}`;
+            const cost = reach.get(key);
+            const reachableHere = cost !== undefined && cost > 0 && !u;
+            const inRng = selected && !u ? dist(selected.pos, { x, y }) <= maxRange : false;
+            const isSel = u && u.id === sel;
+            const cls = reachableHere ? "bg-ok/15 hover:bg-ok/40 cursor-pointer" : inRng && canMove ? "bg-accent/10" : "";
+            return (
+              <button key={key} type="button" disabled={disabled && !u}
+                onClick={() => { if (u) { setSel(u.id === sel ? null : u.id); } else if (reachableHere && selected && !disabled) { onMove(selected.id, { x, y }); } }}
+                className={`relative border border-border/60 text-left ${cls} ${isSel ? "ring-2 ring-accent" : ""}`} title={u ? names[u.id] : reachableHere ? `이동 ${cost}칸` : ""}>
+                {u ? (
+                  <div className={`flex h-full w-full flex-col items-center justify-center overflow-hidden p-0.5 ${u.side === "ally" ? "bg-accent/10" : "bg-danger/10"} ${u.staggered ? "ring-1 ring-inset ring-gold" : ""}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {u.portraitUrl ? <img src={u.portraitUrl} alt="" className="h-8 w-8 object-cover" /> : <span className="text-base">{u.side === "ally" ? "●" : "▲"}</span>}
+                    <span className="w-full truncate text-center text-[9px] leading-tight">{u.name}</span>
+                    <span className="h-0.5 w-full bg-fg/10"><span className={`block h-full ${u.side === "ally" ? "bg-ok" : "bg-danger"}`} style={{ width: `${Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100))}%` }} /></span>
+                  </div>
+                ) : reachableHere ? <span className="absolute bottom-0.5 right-1 text-[9px] text-muted">{cost}</span> : null}
+              </button>
+            );
+          }))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -183,17 +244,21 @@ function GmAdjust({ u, campaignId, combatId, onDone, onApply }: { u: Unit; campa
   );
 }
 
-function PickRow({ state, unit, slot, speed, onPick, names, onRedraw }: { state: CombatState; unit: Unit; slot: number; speed: number; onPick: (p: { skillId: string; targetId: string; targetSlot?: number } | null) => void; names: Record<string, string>; onRedraw: () => void }) {
+function PickRow({ state, unit, slot, speed, onPick, names, onRedraw, protectRange }: { state: CombatState; unit: Unit; slot: number; speed: number; onPick: (p: { skillId: string; targetId: string; targetSlot?: number; protect?: boolean } | null) => void; names: Record<string, string>; onRedraw: () => void; protectRange: number }) {
   const current = state.picks[slotKey(unit.id, slot)];
   const egos = unit.skills.filter((s) => s.ego);
   const corroded = isCorroded(unit, state.round);
-  const enemies = state.units.filter((u) => u.side === "enemy" && !u.incapacitated);
-  const [targetId, setTargetId] = useState(current?.targetId ?? enemies[0]?.id ?? "");
+  const enemies = state.units.filter((u) => u.side === "enemy" && !u.incapacitated)
+    .map((e) => ({ e, d: state.grid ? dist(unit.pos, e.pos) : 0 })).sort((a, b) => a.d - b.d);
+  const [targetId, setTargetId] = useState(current?.targetId ?? enemies[0]?.e.id ?? "");
   const [targetSlot, setTargetSlot] = useState<number | "">(current?.targetSlot ?? "");
   const handSkills: Skill[] = unit.hand.map((id) => unit.skills.find((s) => s.id === id)!).filter(Boolean);
   const defense = unit.skills.filter((s) => s.kind === "defense" && !s.ego);
   const interceptable = state.slots.filter((s) => s.combatantId === targetId && s.speed <= speed && state.picks[slotKey(s.combatantId, s.slot)] && state.picks[slotKey(s.combatantId, s.slot)]!.targetId !== unit.id);
-  const choose = (skillId: string) => onPick({ skillId, targetId, ...(targetSlot !== "" ? { targetSlot: Number(targetSlot) } : {}) });
+  // 보호: 상대가 노리는 주변 아군 (속도 무관, 빛 소모)
+  const protectable = state.slots.filter((s) => { if (s.combatantId !== targetId) return false; const p = state.picks[slotKey(s.combatantId, s.slot)]; if (!p || p.targetId === unit.id) return false; const v = state.units.find((u) => u.id === p.targetId); return !!v && v.side === unit.side && !v.incapacitated && (!state.grid || dist(v.pos, unit.pos) <= protectRange); });
+  const [protect, setProtect] = useState<boolean>(current?.protect ?? false);
+  const choose = (skillId: string) => onPick({ skillId, targetId, ...(targetSlot !== "" ? { targetSlot: Number(targetSlot), ...(protect ? { protect: true } : {}) } : {}) });
   const card = (s: Skill, i: number) => {
     const sel = current?.skillId === s.id;
     const used = s.ego ? (unit.egoUsed?.[s.id] ?? 0) : 0;
@@ -220,10 +285,21 @@ function PickRow({ state, unit, slot, speed, onPick, names, onRedraw }: { state:
         <b>{unit.name}</b> <span className="stamp">속도 {speed}</span>
         <label className="flex items-center gap-1">대상
           <select value={targetId} onChange={(e) => { setTargetId(e.target.value); setTargetSlot(""); if (current) onPick({ ...current, targetId: e.target.value, targetSlot: undefined }); }} className="border border-border bg-elev px-1 py-0.5">
-            {enemies.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            {enemies.map(({ e, d }) => <option key={e.id} value={e.id}>{e.name}{state.grid ? ` (거리 ${d})` : ""}</option>)}
           </select>
         </label>
-        {interceptable.length ? (
+        {protectable.length && state.grid ? (
+          <label className="flex items-center gap-1 text-gold" title="빛을 쓰고 노려지는 아군과 자리를 바꿔 공격을 대신 받습니다">
+            <input type="checkbox" checked={protect} disabled={!!current?.locked} onChange={(e) => { setProtect(e.target.checked); if (e.target.checked && targetSlot === "") setTargetSlot(protectable[0]!.slot); }} />보호
+          </label>
+        ) : null}
+        {protect && protectable.length ? (
+          <label className="flex items-center gap-1">보호 대상
+            <select value={targetSlot} onChange={(e) => setTargetSlot(e.target.value === "" ? "" : Number(e.target.value))} className="border border-border bg-elev px-1 py-0.5">
+              {protectable.map((s) => <option key={s.slot} value={s.slot}>속도 {s.speed} → {names[state.picks[slotKey(s.combatantId, s.slot)]!.targetId]}</option>)}
+            </select>
+          </label>
+        ) : interceptable.length ? (
           <label className="flex items-center gap-1">가로채기
             <select value={targetSlot} onChange={(e) => { const v = e.target.value === "" ? "" : Number(e.target.value); setTargetSlot(v); if (current) onPick({ ...current, targetSlot: v === "" ? undefined : v }); }} className="border border-border bg-elev px-1 py-0.5">
               <option value="">안 함</option>

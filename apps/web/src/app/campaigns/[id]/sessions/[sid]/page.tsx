@@ -13,6 +13,7 @@ import type { TokenSource } from "@/components/board/scene-board";
 import { SessionLive } from "@/components/session/session-live";
 import type { CharacterData } from "@limbus/rules";
 import type { BoardData } from "./actions";
+import { getCampaignRules } from "@/lib/rules";
 import type { CombatState, EnemyData } from "@limbus/rules";
 
 export default async function SessionPage({ params }: { params: Promise<{ id: string; sid: string }> }) {
@@ -23,7 +24,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   if (!s || !user) notFound();
 
   // 세션에 필요한 조회를 한 번에 (왕복 최소화)
-  const [{ data: members }, { data: scenes }, { data: chars }, { data: msgs }, { data: activeCombat }, { data: foes }] = await Promise.all([
+  const [{ data: members }, { data: scenes }, { data: chars }, { data: msgs }, { data: activeCombat }, { data: foes }, { rules }] = await Promise.all([
     supabase.from("campaign_members").select("user_id, role, profiles(username)").eq("campaign_id", id),
     supabase.from("scenes").select("id, title, kind, order_index, board").eq("session_id", sid).order("order_index"),
     supabase.from("characters").select("id, name, owner_id, portrait_url, approved, data").eq("campaign_id", id).order("created_at"),
@@ -32,6 +33,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       ? supabase.from("combats").select("id, state, phase, scene_id").eq("scene_id", s.current_scene_id).neq("phase", "ended").order("created_at", { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("enemies").select("id, name, portrait_url, data").eq("campaign_id", id).order("name"),
+    getCampaignRules(id),
   ]);
   const me = members?.find((m) => m.user_id === user.id);
   const isGm = me?.role === "gm" || me?.role === "temp_gm";
@@ -87,7 +89,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
               <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} />
             </Panel>
             <Panel title={current ? current.title : "보드"} className="min-h-64" stamp={combat ? "BATTLE" : undefined}>
-              {combat ? <CombatBoard campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} />
+              {combat ? <CombatBoard campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} protectRange={rules.protectRange} />
                 : setup ? <CombatSetup campaignId={id} sessionId={sid} sceneId={current!.id} allies={setup.allies} enemies={setup.enemies} />
                 : current?.kind === "combat" ? <p className="text-sm text-muted">GM이 전투를 준비하고 있습니다.</p>
                 : <p className="text-sm text-muted">장면을 추가하면 무대가 나타납니다.</p>}

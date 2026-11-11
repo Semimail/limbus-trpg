@@ -16,6 +16,8 @@ export interface SkillDraft {
   sin: Sin;
   effectText: string;
   effects?: Effect[];
+  /** 사거리(칸). 1 = 근접 */
+  range?: number;
   /** 스킬 카드 이미지 (선택) */
   imageUrl?: string | null;
   /** E.G.O 비용 (ego 목록의 스킬에만) */

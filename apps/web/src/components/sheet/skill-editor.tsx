@@ -31,7 +31,7 @@ export function SkillEditor({ s, onChange, ro, coinCap, budget, label, onRemove 
         </span>
         {!ro && onRemove ? <button type="button" onClick={onRemove} className="text-xs text-muted hover:text-danger">제거</button> : null}
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
         {!ro ? (
           <Sel label="종류" value={s.kind} ro={ro} onChange={(v) => onChange(v === "defense" ? { kind: "defense", defenseKind: s.defenseKind ?? "guard", tier: undefined } : { kind: "attack", tier: s.tier ?? 1 })}
             options={[["attack", "공격"], ["defense", "방어"]]} />
@@ -44,6 +44,7 @@ export function SkillEditor({ s, onChange, ro, coinCap, budget, label, onRemove 
         <Num label="기본 위력" value={s.basePower} min={0} onChange={(v) => onChange({ basePower: v })} ro={ro} />
         <Num label="코인 위력" value={s.coinPower} min={-999} onChange={(v) => onChange({ coinPower: v })} ro={ro} />
         <Num label="코인 수" value={s.coinCount} min={1} max={coinCap} onChange={(v) => onChange({ coinCount: v })} ro={ro} />
+        <Num label="사거리(칸)" value={s.range ?? 1} min={1} max={20} onChange={(v) => onChange({ range: v })} ro={ro} />
         <Sel label="피해 유형" value={s.damageType} ro={ro} onChange={(v) => onChange({ damageType: v as DamageType })} options={Object.entries(DAMAGE_TYPE_LABEL)} />
         <Sel label="죄악" value={s.sin} ro={ro} onChange={(v) => onChange({ sin: v as Sin })} options={SINS.map((x) => [x, SIN_LABEL[x]])} />
       </div>

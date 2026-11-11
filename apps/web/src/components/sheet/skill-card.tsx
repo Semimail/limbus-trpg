@@ -23,6 +23,7 @@ export function SkillCard({ s, label, compact = false }: { s: SkillDraft; label:
           <span className="text-xs text-muted">
             {s.kind === "defense" ? <Keyword id={s.defenseKind ?? "guard"}>{DEF_LABEL[s.defenseKind ?? "guard"]}</Keyword> : <Keyword id={s.damageType}>{DAMAGE_TYPE_LABEL[s.damageType]}</Keyword>}
             {" · "}<Keyword id={s.sin}>{SIN_LABEL[s.sin]}</Keyword>
+            {" · "}사거리 {s.range ?? 1}
           </span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">

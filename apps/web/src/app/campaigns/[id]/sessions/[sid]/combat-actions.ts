@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getUser } from "@/lib/supabase/server";
 import {
-  startCombat, setPick, resolveRound, endCombat, redrawHand, seedFromString,
+  startCombat, setPick, resolveRound, endCombat, redrawHand, moveUnit, seedFromString,
   type CombatState, type UnitInput, type CharacterData, type EnemyData, type Pick, type Skill, type Unit, type Effect,
 } from "@limbus/rules";
 import { formatRound, unitNames } from "@/lib/combat-log";
@@ -213,6 +213,30 @@ export async function redrawHandAction(campaignId: string, combatId: string, uni
     const owns = unit.source.kind === "character" && unit.source.ownerId === user.id;
     if (!owns && !isGm) return { error: "자기 캐릭터만 가능합니다" };
     const err = redrawHand(row.state, unitId, rules);
+    if (err) return { error: err };
+    const r = await saveState(supabase, combatId, row.state, row.updated_at);
+    if (r === null) return { state: row.state };
+    if (r !== "conflict") return { error: r };
+  }
+  return { error: "동시에 수정 중입니다. 다시 시도하세요" };
+}
+
+/** 격자 이동 (자기 캐릭터 또는 GM) */
+export async function moveUnitAction(campaignId: string, combatId: string, unitId: string, to: { x: number; y: number }): Promise<{ error?: string; state?: CombatState }> {
+  const supabase = await createClient();
+  const user = await getUser();
+  if (!user) return { error: "로그인이 필요합니다" };
+  const { data: m } = await supabase.from("campaign_members").select("role").eq("campaign_id", campaignId).eq("user_id", user.id).maybeSingle();
+  const isGm = m?.role === "gm" || m?.role === "temp_gm";
+  const { rules } = await getCampaignRules(campaignId);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const row = await loadState(supabase, combatId);
+    if (!row) return { error: "전투가 없습니다" };
+    const unit = row.state.units.find((u: Unit) => u.id === unitId);
+    if (!unit) return { error: "유닛이 없습니다" };
+    const owns = unit.source.kind === "character" && unit.source.ownerId === user.id;
+    if (!owns && !isGm) return { error: "자기 캐릭터만 움직일 수 있습니다" };
+    const err = moveUnit(row.state, unitId, to, rules);
     if (err) return { error: err };
     const r = await saveState(supabase, combatId, row.state, row.updated_at);
     if (r === null) return { state: row.state };

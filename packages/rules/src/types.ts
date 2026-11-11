@@ -35,6 +35,8 @@ export interface Skill {
   effectText?: string;
   /** 구조화된 효과 (자동 실행) */
   effects?: Effect[];
+  /** 사거리(칸). 1 = 근접(주변 8칸). 없으면 1 */
+  range?: number;
   /** E.G.O 스킬이면 비용 정보. 덱에 들어가지 않고 항상 선택 가능 */
   ego?: { sanityCost: number; erosionGain: number; usesPerCombat: number };
 }
@@ -95,6 +97,16 @@ export interface RuleConfig {
   erosionMax: number;              // 100
   /** 손패 교체에 드는 빛 */
   lightRedrawCost: number;         // 1
+  /** 격자 사용 여부와 크기 */
+  gridEnabled: boolean;            // true
+  gridCols: number;                // 10
+  gridRows: number;                // 6
+  /** 이동력 = 속도 + moveBonus */
+  moveBonus: number;               // 3
+  /** 보호에 드는 빛 */
+  protectLightCost: number;        // 1
+  /** 보호 가능 거리(칸) */
+  protectRange: number;            // 2
 }
 
 export const DEFAULT_RULES: RuleConfig = {
@@ -114,6 +126,12 @@ export const DEFAULT_RULES: RuleConfig = {
   egoCorrosionSanityBelow: 0,
   erosionMax: 100,
   lightRedrawCost: 1,
+  gridEnabled: true,
+  gridCols: 10,
+  gridRows: 6,
+  moveBonus: 3,
+  protectLightCost: 1,
+  protectRange: 2,
 };
 
 /* ---------- 구조화된 효과 (특기 / 패시브 / 스킬 부가효과 / 적 기믹 공용) ---------- */

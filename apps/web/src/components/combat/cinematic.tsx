@@ -46,6 +46,11 @@ export function buildSteps(events: RoundEvent[], units: UnitLite[]): Step[] {
       const left = a.side === "ally" ? a : t, right = a.side === "ally" ? t : a;
       steps.push({ kind: "face", left, right, leftSkill: left === a ? e.skill : undefined, rightSkill: left === a ? undefined : e.skill, text: "일방 공격", tone: "white", hold: 800 });
       coinsOf(e.coins, left === a ? "left" : "right", left, right);
+    } else if (e.type === "opportunity") {
+      const a = u(e.actor), t = u(e.target);
+      const left = a.side === "ally" ? a : t, right = a.side === "ally" ? t : a;
+      steps.push({ kind: "face", left, right, leftSkill: left === a ? e.skill : undefined, rightSkill: left === a ? undefined : e.skill, text: "기회 공격", tone: "white", hold: 700 });
+      coinsOf(e.coins, left === a ? "left" : "right", left, right);
     } else if (e.type === "down") {
       steps.push({ kind: "text", text: `${u(e.unit).name} 전투불능`, tone: "red", hold: 1100 });
     } else if (e.type === "end") {

@@ -44,6 +44,17 @@ export function RulesForm({ campaignId, rules, progression }: { campaignId: stri
           {N("손패 교체 빛 비용", r.lightRedrawCost, (n) => setR({ ...r, lightRedrawCost: n }))}
         </div>
       </Panel>
+      <Panel title="격자">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <label className="block text-xs"><span className="text-muted">격자 사용</span>
+            <select value={r.gridEnabled ? "on" : "off"} onChange={(e) => setR({ ...r, gridEnabled: e.target.value === "on" })} className={cls}><option value="on">사용</option><option value="off">사용 안 함 (진영만)</option></select></label>
+          {N("가로 칸", r.gridCols, (n) => setR({ ...r, gridCols: n }))}
+          {N("세로 칸", r.gridRows, (n) => setR({ ...r, gridRows: n }))}
+          {N("이동력 보정 (속도 +N)", r.moveBonus, (n) => setR({ ...r, moveBonus: n }))}
+          {N("보호 빛 비용", r.protectLightCost, (n) => setR({ ...r, protectLightCost: n }))}
+          {N("보호 거리(칸)", r.protectRange, (n) => setR({ ...r, protectRange: n }))}
+        </div>
+      </Panel>
       <Panel title="성장 규칙">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {N("최대 레벨", p.maxLevel, (n) => setP({ ...p, maxLevel: n }))}

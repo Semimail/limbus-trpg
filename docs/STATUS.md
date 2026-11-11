@@ -47,3 +47,9 @@ Battle Backgrounds 1nXRLjFglNgjithfvY1D_3AkSt_aDvhoa · Icons 1DkcKQWgYLf9Kzk3Jd
 - 위 질문 답에 따라 룰·시트 조정. 등급 아이콘. 상태이상 외 키워드(신속·속박·취약 등) 엔진 반영 여부.
 - 반격 고유 처리, 회피 고유 효과, 패시브 해금 UI, 경험치 입력 UI.
 - 세션 보드 토큰 다듬기(격자/크기), 채팅 커스텀 이모지(요청 시).
+
+## 격자 전술 레이어 (2026-11 추가, 사용자 승인 "응 그렇게 하자")
+- 엔진 `packages/rules/src/grid.ts` + `combat.ts`: 10×6 격자(설정 `gridEnabled/gridCols/gridRows/moveBonus/protectLightCost/protectRange`), 배치(아군 0~1열, 적 끝 두 열), 이동력 = 최고 속도 슬롯 + moveBonus, `moveUnit`(한 칸씩, 아군 통과·적 차단, 기회 공격 = 인접 적이 공격 스킬 1코인 일방 공격, `preRound` 이벤트), `setPick` 사거리 검사(`skill.range`, 기본 1 = 주변 8칸), 보호(`pick.protect`: 빛 소모, 자리 교환, 확정), 가로채기 격자 조건(공격자 인접 또는 공격 직선 위), 재지정도 사거리 안에서만. 적 AI는 라운드 시작에 가장 가까운 대상 쪽으로 이동 후 사거리 안이면 선택. 테스트 `test/grid.test.ts` 포함 65개 통과. 기존 테스트는 `NOGRID`.
+- 웹: `board.tsx`에 `GridBoard`(유닛 클릭 → 이동 가능 칸 강조·비용 표시 → 칸 클릭 이동, 의도 점선, 사거리 음영), `moveUnitAction`(소유자/GM, 낙관적 동시성), PickRow 보호 체크박스(노려지는 주변 아군 선택), 룰 설정 "격자" 패널, 스킬 에디터/위자드/카드 사거리, 로그·연출 `move`/`opportunity`.
+- 룰북 5장 "격자 (위치)" 절, 3장 스킬 사거리 문구 추가.
+- 미결: 이동 애니메이션 없음(즉시 반영), 지형/장애물 없음(필요하면 `passable`에 블록 셀 추가), 모바일에서 격자는 가로 스크롤.

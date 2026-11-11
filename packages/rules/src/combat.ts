@@ -10,6 +10,7 @@ import { resolveClash, oneSidedAttack, afterAttack, roundEndBurn, type ClashResu
 import { tickStagger } from "./stagger";
 import { fireEffects, type FxLog, type FxContext } from "./effects";
 import { flipCoin, adjustSanity } from "./coin";
+import { dist, reachable, stepToward, inBounds, type Pos } from "./grid";
 
 export interface Unit extends Combatant {
   portraitUrl: string | null;
@@ -29,6 +30,10 @@ export interface Unit extends Combatant {
   egoUsed: Record<string, number>;
   /** 침식 상태: 이 라운드까지 GM/자동 조종 */
   corrodedUntilRound?: number;
+  /** 격자 위치 */
+  pos: Pos;
+  /** 이번 라운드 남은 이동력 */
+  move: number;
 }
 
 export interface Pick {
@@ -37,6 +42,8 @@ export interface Pick {
   targetSlot?: number;
   /** E.G.O 사용으로 확정된 선택 (변경 불가) */
   locked?: boolean;
+  /** 보호: 빛을 쓰고 대상 슬롯이 노리던 아군과 자리를 바꿔 대신 받는다 */
+  protect?: boolean;
 }
 
 export type Phase = "select" | "resolving" | "ended";
@@ -51,9 +58,15 @@ export interface CombatState {
   picks: Record<string, Pick>;
   handSize: number;
   lastRound: RoundEvent[] | null;
+  /** 이미 "전투불능" 공지를 낸 유닛 (재공지 방지) */
+  downNoted?: string[];
   winner: "ally" | "enemy" | null;
-  /** 선택 단계에서 일어난 알림 (E.G.O 발현, 침식, 손패 교체) */
+  /** 선택 단계에서 일어난 알림 (E.G.O 발현, 침식, 손패 교체, 이동, 기회 공격) */
   notices: string[];
+  /** 격자 크기. 없으면 격자 미사용 */
+  grid?: { cols: number; rows: number };
+  /** 선택 단계의 기회 공격 결과 (라운드 로그에 합침) */
+  preRound: RoundEvent[];
 }
 
 export const slotKey = (id: string, slot: number) => `${id}:${slot}`;
@@ -64,6 +77,8 @@ export type RoundEvent =
   | { type: "attack"; actor: string; target: string; skill: string; coins: AttackCoin[]; ticks: StatusTick[] }
   | { type: "idle"; actor: string; skill: string; reason: string }
   | { type: "fx"; logs: FxLog[] }
+  | { type: "move"; unit: string; from: Pos; to: Pos }
+  | { type: "opportunity"; actor: string; target: string; skill: string; coins: AttackCoin[] }
   | { type: "burn"; ticks: StatusTick[] }
   | { type: "staggerEnd"; unit: string }
   | { type: "corrosionEnd"; unit: string }
@@ -78,6 +93,23 @@ export function findSkill(u: Unit, id: string): Skill | undefined { return u.ski
 const alive = (u: Unit) => !u.incapacitated;
 const living = (state: CombatState, side: Unit["side"]) => state.units.filter((u) => u.side === side && alive(u));
 export const isCorroded = (u: Unit, round: number) => u.corrodedUntilRound !== undefined && u.corrodedUntilRound >= round;
+
+export const skillRange = (s: Skill) => Math.max(1, s.range ?? 1);
+export const inRange = (a: Unit, b: Unit, s: Skill) => dist(a.pos, b.pos) <= skillRange(s);
+function passableFor(state: CombatState, mover: Unit) {
+  return (p: Pos): "free" | "pass" | "block" => {
+    const occ = state.units.find((u) => alive(u) && u.pos.x === p.x && u.pos.y === p.y);
+    if (!occ) return "free";
+    if (occ.id === mover.id) return "free";
+    return occ.side === mover.side ? "pass" : "block";
+  };
+}
+export function reachableCells(state: CombatState, unitId: string): Map<string, number> {
+  const u = state.units.find((x) => x.id === unitId);
+  if (!u || !state.grid) return new Map();
+  return reachable(u.pos, u.move, state.grid.cols, state.grid.rows, passableFor(state, u));
+}
+const adjacentEnemies = (state: CombatState, u: Unit) => state.units.filter((e) => e.side !== u.side && alive(e) && !e.staggered && dist(e.pos, u.pos) <= 1);
 
 function shuffle<T>(arr: T[], r: Rng): T[] {
   const a = [...arr];
@@ -128,12 +160,15 @@ export interface UnitInput {
 
 export function startCombat(inputs: UnitInput[], seed: number, rules: RuleConfig, handSize = 3): CombatState {
   const r = createRng(seed);
+  const grid = rules.gridEnabled ? { cols: rules.gridCols, rows: rules.gridRows } : undefined;
   const units: Unit[] = inputs.map((i) => ({
     ...i, statuses: i.statuses ?? {}, staggered: false, staggerTriggered: [], incapacitated: i.hp <= 0,
     deck: shuffle(buildDeckIds(i.skills), r), discard: [], hand: [],
     passives: i.passives ?? [], usedOnce: [], light: i.light ?? 0, erosion: i.erosion ?? 0, egoUsed: {},
+    pos: { x: 0, y: 0 }, move: 0,
   }));
-  const state: CombatState = { version: 1, round: 0, phase: "select", rngState: r.state(), units, slots: [], picks: {}, handSize, lastRound: null, winner: null, notices: [] };
+  if (grid) placeUnits(units, grid);
+  const state: CombatState = { version: 1, round: 0, phase: "select", rngState: r.state(), units, slots: [], picks: {}, handSize, lastRound: null, winner: null, notices: [], grid, preRound: [], downNoted: units.filter((u) => u.incapacitated).map((u) => u.id) };
   const sink: FxLog[] = [];
   const hooks = makeHooks(state, rules, sink);
   for (const u of units) hooks("combatStart", { self: u });
@@ -141,6 +176,22 @@ export function startCombat(inputs: UnitInput[], seed: number, rules: RuleConfig
   state.rngState = r.state();
   beginRound(state, rules);
   return state;
+}
+
+/** 아군은 왼쪽 두 열, 적은 오른쪽 두 열에 세로로 퍼뜨린다 */
+function placeUnits(units: Unit[], grid: { cols: number; rows: number }) {
+  const place = (list: Unit[], cols: number[]) => {
+    list.forEach((u, i) => { const col = cols[i % cols.length]!; const row = Math.floor(i / cols.length); const y = Math.min(grid.rows - 1, Math.floor((grid.rows - 1) / 2) + (row % 2 === 0 ? 1 : -1) * Math.ceil(row / 2)); u.pos = { x: col, y }; });
+  };
+  place(units.filter((u) => u.side === "ally"), [1, 0]);
+  place(units.filter((u) => u.side === "enemy"), [grid.cols - 2, grid.cols - 1]);
+  // 겹침 방지
+  const taken = new Set<string>();
+  for (const u of units) {
+    let p = { ...u.pos };
+    while (taken.has(`${p.x},${p.y}`)) { p = { x: p.x, y: (p.y + 1) % grid.rows }; }
+    u.pos = p; taken.add(`${p.x},${p.y}`);
+  }
 }
 
 /* ---------- 라운드 시작 ---------- */
@@ -155,13 +206,19 @@ export function beginRound(state: CombatState, rules: RuleConfig) {
   for (const u of state.units) if (alive(u)) hooks("roundStart", { self: u });
   if (sink.length) state.notices.push(...sink.map((l) => l.text));
   state.slots = rollSpeed(state.units, r);
+  state.preRound = [];
+  for (const u of state.units) {
+    const best = Math.max(0, ...state.slots.filter((s) => s.combatantId === u.id).map((s) => s.speed));
+    u.move = alive(u) && !u.staggered && best > 0 ? best + rules.moveBonus : 0;
+  }
   for (const u of state.units) if (alive(u)) drawHand(u, state.handSize, r);
-  autoPickEnemies(state, r);
+  autoPickEnemies(state, r, rules);
   save();
 }
 
-/** 적과 침식 상태 유닛: 손패에서 무작위 스킬, 무작위 대상 */
-export function autoPickEnemies(state: CombatState, r: Rng) {
+/** 적과 침식 상태 유닛: 가까운 대상 쪽으로 이동한 뒤, 사거리 안의 대상을 손패 스킬로 노린다 */
+export function autoPickEnemies(state: CombatState, r: Rng, rules: RuleConfig) {
+  const handled = new Set<string>();
   for (const s of state.slots) {
     const u = state.units.find((x) => x.id === s.combatantId)!;
     const corroded = isCorroded(u, state.round);
@@ -172,9 +229,78 @@ export function autoPickEnemies(state: CombatState, r: Rng) {
       : living(state, u.side === "enemy" ? "ally" : "enemy");
     if (pool.length === 0) continue;
     const skillId = u.hand[r.int(0, u.hand.length - 1)]!;
-    const target = pool[r.int(0, pool.length - 1)]!;
-    state.picks[slotKey(u.id, s.slot)] = { skillId, targetId: target.id, locked: corroded };
+    const skill = findSkill(u, skillId)!;
+    if (state.grid && !handled.has(u.id)) {
+      handled.add(u.id);
+      // 가장 가까운 대상에게 사거리 안에 들 때까지 이동
+      let target = pool.reduce((b, x) => (dist(x.pos, u.pos) < dist(b.pos, u.pos) ? x : b), pool[0]!);
+      let guard = 0;
+      while (u.move > 0 && dist(u.pos, target.pos) > skillRange(skill) && guard++ < 20) {
+        const next = stepToward(u.pos, target.pos, state.grid.cols, state.grid.rows, passableFor(state, u));
+        if (!next) break;
+        moveUnitRaw(state, u, next, rules, true);
+      }
+      target = pool.filter((x) => inRange(u, x, skill)).sort((a, b) => dist(a.pos, u.pos) - dist(b.pos, u.pos))[0] ?? target;
+      if (!inRange(u, target, skill)) continue; // 닿지 않으면 이 슬롯은 대기
+      state.picks[slotKey(u.id, s.slot)] = { skillId, targetId: target.id, locked: corroded };
+    } else {
+      const inR = state.grid ? pool.filter((x) => inRange(u, x, skill)) : pool;
+      if (inR.length === 0) continue;
+      const target = inR[r.int(0, inR.length - 1)]!;
+      state.picks[slotKey(u.id, s.slot)] = { skillId, targetId: target.id, locked: corroded };
+    }
   }
+}
+
+/* ---------- 이동 ---------- */
+/** 한 칸 이동 + 기회 공격 처리 (검증은 호출자가) */
+function moveUnitRaw(state: CombatState, u: Unit, to: Pos, rules: RuleConfig, silent = false) {
+  const from = { ...u.pos };
+  const threats = adjacentEnemies(state, u);
+  u.pos = to; u.move -= 1;
+  if (!silent) state.preRound.push({ type: "move", unit: u.id, from, to });
+  // 접전 이탈: 떠난 뒤 더 이상 인접하지 않은 적이 기회 공격 (공격 스킬 코인 1개)
+  const { r, save } = rng(state);
+  for (const e of threats) {
+    if (dist(e.pos, u.pos) <= 1) continue;
+    const atk = e.skills.find((sk) => sk.kind === "attack" && !sk.ego && e.hand.includes(sk.id)) ?? e.skills.find((sk) => sk.kind === "attack" && !sk.ego);
+    if (!atk) continue;
+    const coins = oneSidedAttack(e, u, { ...atk, coinCount: 1 }, 1, state.round, rules, r);
+    state.preRound.push({ type: "opportunity", actor: e.id, target: u.id, skill: atk.name, coins });
+    state.notices.push(`${e.name}의 기회 공격 → ${u.name}: ${coins.map((c) => `${c.heads ? "앞" : "뒤"}${c.hit.final}`).join(" ")} 피해`);
+    if (u.incapacitated) break;
+  }
+  save();
+}
+
+/** 플레이어 이동: 도달 가능한 칸으로만 */
+export function moveUnit(state: CombatState, unitId: string, to: Pos, rules: RuleConfig): string | null {
+  if (state.phase !== "select") return "선택 단계가 아닙니다";
+  if (!state.grid) return "격자를 사용하지 않는 전투입니다";
+  const u = state.units.find((x) => x.id === unitId);
+  if (!u || !alive(u)) return "유닛이 없습니다";
+  if (u.staggered) return "흐트러진 상태에서는 움직일 수 없습니다";
+  if (isCorroded(u, state.round)) return "침식 상태에서는 조종할 수 없습니다";
+  if (Object.entries(state.picks).some(([k, p]) => k.startsWith(unitId + ":") && p.locked)) return "확정된 행동이 있어 움직일 수 없습니다";
+  if (!inBounds(to, state.grid.cols, state.grid.rows)) return "판 밖입니다";
+  const cells = reachableCells(state, unitId);
+  const cost = cells.get(`${to.x},${to.y}`);
+  if (cost === undefined) return "그 칸까지 갈 수 없습니다";
+  // 한 칸씩 탐욕 경로로 이동 (기회 공격을 칸마다 평가)
+  let guard = 0;
+  while (!(u.pos.x === to.x && u.pos.y === to.y) && guard++ < 30 && !u.incapacitated) {
+    const next = stepToward(u.pos, to, state.grid.cols, state.grid.rows, passableFor(state, u));
+    if (!next) break;
+    moveUnitRaw(state, u, next, rules);
+  }
+  // 이동 후 사거리 밖이 된 선택은 해제
+  for (const [k, p] of Object.entries(state.picks)) {
+    const [actorId] = k.split(":");
+    if (actorId !== unitId) continue;
+    const t = state.units.find((x) => x.id === p.targetId); const sk = findSkill(u, p.skillId);
+    if (t && sk && !inRange(u, t, sk)) delete state.picks[k];
+  }
+  return null;
 }
 
 /* ---------- 선택 ---------- */
@@ -192,10 +318,32 @@ export function setPick(state: CombatState, unitId: string, slot: number, pick: 
   const t = state.units.find((x) => x.id === pick.targetId);
   if (!t || !alive(t)) return "대상이 없습니다";
   if (t.side === u.side) return "같은 편은 대상으로 지정할 수 없습니다";
+  if (state.grid && !pick.protect && !inRange(u, t, skill)) return `사거리 밖입니다 (사거리 ${skillRange(skill)}칸, 거리 ${dist(u.pos, t.pos)}칸)`;
   if (pick.targetSlot !== undefined) {
     const ts = state.slots.find((x) => x.combatantId === t.id && x.slot === pick.targetSlot);
     if (!ts) return "상대 슬롯이 없습니다";
+    const tp = state.picks[slotKey(t.id, pick.targetSlot)];
+    if (pick.protect) {
+      // 보호: 빛을 쓰고, 노려지던 아군(주변 N칸)과 자리를 바꾼다
+      if (!tp) return "그 슬롯은 아무도 노리지 않습니다";
+      const victim = state.units.find((x) => x.id === tp.targetId);
+      if (!victim || victim.side !== u.side || victim.id === u.id) return "보호할 아군이 없습니다";
+      if (state.grid && dist(u.pos, victim.pos) > rules.protectRange) return `보호는 주변 ${rules.protectRange}칸 안의 아군만 가능합니다`;
+      if (u.light < rules.protectLightCost) return "빛이 부족합니다";
+      u.light -= rules.protectLightCost;
+      const tmp = { ...u.pos }; u.pos = { ...victim.pos }; victim.pos = tmp;
+      state.notices.push(`${u.name} 보호: 빛 ${rules.protectLightCost} 소모, ${victim.name}과 자리를 바꿔 ${t.name}의 공격을 대신 받는다`);
+      state.picks[key] = { skillId: pick.skillId, targetId: pick.targetId, targetSlot: pick.targetSlot, protect: true, locked: true };
+      return null;
+    }
     if (ts.speed > s.speed) return "속도가 더 빠른 상대만 가로챌 수 있습니다";
+    if (state.grid) {
+      // 가로채기: 상대 공격 경로(직선) 위이거나 공격자에게 인접해야 한다
+      const victim = tp ? state.units.find((x) => x.id === tp.targetId) : undefined;
+      const nearAttacker = dist(u.pos, t.pos) <= 1;
+      const onLine = victim ? dist(u.pos, t.pos) + dist(u.pos, victim.pos) <= dist(t.pos, victim.pos) + 1 : false;
+      if (!nearAttacker && !onLine) return "가로채기는 공격자에게 인접하거나 공격 경로 위에 있어야 합니다";
+    }
   }
   if (skill.ego) return useEgo(state, u, s, skill, pick, rules);
   if (skill.kind === "attack" && !u.hand.includes(skill.id)) return "손패에 없는 스킬입니다";
@@ -265,7 +413,8 @@ export function resolveRound(state: CombatState, rules: RuleConfig): RoundEvent[
   if (state.phase !== "select") return [];
   const { r, save } = rng(state);
   state.phase = "resolving";
-  const events: RoundEvent[] = [{ type: "roundStart", round: state.round, slots: [...state.slots] }];
+  const events: RoundEvent[] = [{ type: "roundStart", round: state.round, slots: [...state.slots] }, ...state.preRound];
+  state.preRound = [];
   const sink: FxLog[] = [];
   const hooks = makeHooks(state, rules, sink);
   const flush = () => { if (sink.length) { events.push({ type: "fx", logs: [...sink] }); sink.length = 0; } };
@@ -293,8 +442,9 @@ export function resolveRound(state: CombatState, rules: RuleConfig): RoundEvent[
 
     let target = unitOf(pick.targetId);
     if (!alive(target)) {
-      const pool = isCorroded(actor, state.round) ? state.units.filter((x) => x.id !== actor.id && alive(x)) : living(state, target.side);
-      if (pool.length === 0) { events.push({ type: "idle", actor: actor.id, skill: skill.name, reason: "대상 없음" }); continue; }
+      let pool = isCorroded(actor, state.round) ? state.units.filter((x) => x.id !== actor.id && alive(x)) : living(state, target.side);
+      if (state.grid) pool = pool.filter((x) => inRange(actor, x, skill));
+      if (pool.length === 0) { events.push({ type: "idle", actor: actor.id, skill: skill.name, reason: state.grid ? "사거리 안에 대상 없음" : "대상 없음" }); continue; }
       target = pool[r.int(0, pool.length - 1)]!;
     }
 
@@ -340,10 +490,11 @@ function useCard(u: Unit, skill: Skill) {
   if (i >= 0) { u.hand.splice(i, 1); u.discard.push(skill.id); }
 }
 
-const downNoted = new WeakMap<CombatState, Set<string>>();
 function noteDowns(state: CombatState, events: RoundEvent[]) {
-  let set = downNoted.get(state); if (!set) { set = new Set(); downNoted.set(state, set); }
+  // 상태는 DB를 오가며 직렬화되므로 전투불능 공지 여부도 상태에 보관한다
+  const set = new Set(state.downNoted ?? []);
   for (const u of state.units) if (u.incapacitated && !set.has(u.id)) { set.add(u.id); events.push({ type: "down", unit: u.id }); }
+  state.downNoted = [...set];
 }
 
 function checkEnd(state: CombatState, events: RoundEvent[]): boolean {

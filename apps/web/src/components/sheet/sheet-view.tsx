@@ -188,6 +188,7 @@ function PosterSkill({ s, label, gold = false }: { s: SkillDraft; label: string;
           <span className="s-gold font-bold">{label}</span>
           <span>{s.kind === "defense" ? <Keyword id={s.defenseKind ?? "guard"} className="border-0 text-inherit">{DEF_LABEL[s.defenseKind ?? "guard"]}</Keyword> : <Keyword id={s.damageType} className="border-0 text-inherit">{DAMAGE_TYPE_LABEL[s.damageType]}</Keyword>}</span>
           <span><Keyword id={s.sin} className="border-0 text-inherit">{SIN_LABEL[s.sin]}</Keyword></span>
+          <span>사거리 {s.range ?? 1}</span>
           <span className="ml-auto inline-flex gap-0.5">{Array.from({ length: s.coinCount }).map((_, i) => <CoinIcon key={i} heads size={13} />)}</span>
         </div>
         <div className={`${gold ? "s-banner-gold" : "s-banner"} mt-1 px-3 py-1.5`}>{s.name || "(이름 없음)"}</div>

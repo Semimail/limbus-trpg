@@ -255,6 +255,12 @@ function SkillStep({ d, setD }: { d: CharacterData; setD: (d: CharacterData) => 
                     : (Object.keys(DAMAGE_TYPE_LABEL) as DamageType[]).map((k) => <button key={k} type="button" onClick={() => set({ damageType: k })} className={`flex items-center gap-1 border px-2 py-1 text-xs ${s.damageType === k ? "border-accent" : "border-border"}`}><DamageIcon type={k} size={16} />{DAMAGE_TYPE_LABEL[k]}</button>)}
                 </div>
               </div>
+              <div>
+                <span className="text-xs text-muted">사거리</span>
+                <div className="mt-1 flex gap-1">
+                  {[[1, "근접 (주변 8칸)"], [3, "중거리 3칸"], [5, "원거리 5칸"]].map(([v, l]) => <button key={v} type="button" onClick={() => set({ range: Number(v) })} className={`border px-2 py-1 text-xs ${(s.range ?? 1) === v ? "border-accent" : "border-border"}`}>{l}</button>)}
+                </div>
+              </div>
               <div className="sm:col-span-2">
                 <span className="text-xs text-muted">4. 죄악 속성</span>
                 <div className="mt-1 flex flex-wrap gap-1">

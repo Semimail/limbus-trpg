@@ -16,3 +16,4 @@ export * from "./combat";
 export * from "./effects";
 export * from "./parse";
 export * from "./glossary";
+export * from "./grid";

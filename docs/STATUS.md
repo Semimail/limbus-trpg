@@ -39,6 +39,10 @@
 Battle Backgrounds 1nXRLjFglNgjithfvY1D_3AkSt_aDvhoa · Icons 1DkcKQWgYLf9Kzk3JdsLHKxr1iei7XmrV (Sins, Status Effects/General, Other[Coin_F/B], Resistances, Skill Frames) · UI 1qNV4ywqBeObQMU07sHiki8NBbTz7PJzF (Battle 79장) · Fonts 1X3rMhHCG5_mc6TRNUrCj5wP6qq2vnM1q.
 현재 사용 중: public/assets/limbus/{coins,sins,status,attack,bg}.
 
+## 영상 레퍼런스 반영 (2026-11-11)
+- 유튜브 "림버스 TRPG에 합 연출이 구현되었다고?!"(다이스 로그 도서관) 레이아웃을 미리보기 프레임으로 분석해 반영: 장면 무대(스탠딩+대사 상자), 합 연출 오버레이. 격자 지도는 서사용 토큰 보드로만 유지(위치 규칙 없음) — 사용자 확인 대기.
+- 유튜브는 이 환경에서 봇 차단. 프레임은 Invidious 미러(inv.nadeko.net)의 storyboards API로 받았다.
+
 ## 다음 후보
 - 위 질문 답에 따라 룰·시트 조정. 등급 아이콘. 상태이상 외 키워드(신속·속박·취약 등) 엔진 반영 여부.
 - 반격 고유 처리, 회피 고유 효과, 패시브 해금 UI, 경험치 입력 UI.

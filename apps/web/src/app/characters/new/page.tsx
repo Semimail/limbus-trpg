@@ -1,6 +1,6 @@
 import { newCharacterData } from "@limbus/rules";
 import { createClient } from "@/lib/supabase/server";
-import { CharacterForm } from "@/components/sheet/character-form";
+import { CharacterWizard } from "@/components/sheet/wizard";
 
 export default async function NewCharacterPage({ searchParams }: { searchParams: Promise<{ campaign?: string }> }) {
   const { campaign } = await searchParams;
@@ -12,8 +12,8 @@ export default async function NewCharacterPage({ searchParams }: { searchParams:
   }
   return (
     <div>
-      <h1 className="mb-4 text-2xl font-bold">새 캐릭터</h1>
-      <CharacterForm campaignId={campaignId} initialName="" initialPortrait={null} initial={newCharacterData()} readOnly={false} />
+      <div className="mb-4"><div className="stamp">새 해결사</div><h1 className="mt-1 text-2xl font-bold">캐릭터 만들기</h1></div>
+      <CharacterWizard campaignId={campaignId} initialName="" initialPortrait={null} initial={newCharacterData()} />
     </div>
   );
 }

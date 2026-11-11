@@ -1,4 +1,4 @@
-import { DEFAULT_PROGRESSION, coinCapAt, expectedPower, gradeOf, maxHpAt, newCharacterData, powerScaleAt, skillBudget, validateCharacter, validateStats } from "../src";
+import { DEFAULT_PROGRESSION, coinCapAt, expectedPower, gradeOf, maxHpAt, newCharacterData, powerScaleAt, skillBudget, skillPresets, validateCharacter, validateStats } from "../src";
 
 describe("성장 공식", () => {
   it("등급은 7레벨 단위", () => {
@@ -41,5 +41,21 @@ describe("능력치/시트 검증", () => {
     d.traits[0]!.name = "a"; d.traits[1]!.name = "b"; for (const s of d.skills) s.name = "x";
     d.skills[0]!.basePower = 10;
     expect(validateCharacter(d).some(i => i.message.includes("상한"))).toBe(true);
+  });
+});
+
+describe("스킬 틀", () => {
+  it("모든 틀의 기대 위력이 상한 이하", () => {
+    for (const lv of [1, 5, 12, 25, 49]) for (const tier of [1, 2, 3, "defense"] as const) {
+      const budget = skillBudget(tier, lv);
+      for (const s of skillPresets(tier, lv)) {
+        expect(expectedPower(s.basePower, s.coinPower, s.coinCount)).toBeLessThanOrEqual(budget + 1e-9);
+        expect(s.coinCount).toBeLessThanOrEqual(coinCapAt(lv));
+      }
+    }
+  });
+  it("1레벨 스킬1 안정형은 원작 초반과 비슷 (3 +2 x2)", () => {
+    const s = skillPresets(1, 1).find((x) => x.key === "steady")!;
+    expect([s.basePower, s.coinPower, s.coinCount]).toEqual([3, 2, 2]);
   });
 });

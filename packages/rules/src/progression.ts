@@ -80,3 +80,43 @@ export function validateStats(stats: Record<Sin, number>, p = DEFAULT_PROGRESSIO
   if (values.filter((v) => v === p.statMax).length > p.statMaxCount) issues.push({ code: "maxCount", message: `${p.statMax}는 ${p.statMaxCount}개까지만 가능합니다` });
   return issues;
 }
+
+/* ---------- 스킬 틀 (프리셋) ---------- */
+
+export interface SkillPreset {
+  key: string;
+  label: string;
+  desc: string;
+  basePower: number;
+  coinPower: number;
+  coinCount: number;
+}
+
+/**
+ * 상한(budget)과 코인 상한에 맞춰 기대 위력이 상한을 넘지 않는 틀을 만든다.
+ * 기대 위력 = base + coins × coinPower × 0.5 이므로 coinPower = floor((budget - base) / (coins × 0.5)).
+ */
+export function skillPresets(tier: 1 | 2 | 3 | "defense", level: number, p = DEFAULT_PROGRESSION): SkillPreset[] {
+  const B = skillBudget(tier, level, p);
+  const C = coinCapAt(level, p);
+  const mk = (key: string, label: string, desc: string, baseRatio: number, coins: number): SkillPreset => {
+    const coinCount = Math.max(1, Math.min(C, coins));
+    const basePower = Math.max(0, Math.floor(B * baseRatio));
+    const coinPower = Math.max(0, Math.floor((B - basePower) / (coinCount * 0.5)));
+    return { key, label, desc, basePower, coinPower, coinCount };
+  };
+  if (tier === "defense") {
+    return [
+      mk("wall", "철벽", "기본 위력이 높고 코인 1개. 꾸준히 막는다.", 0.8, 1),
+      mk("flow", "유연", "코인 2개. 운에 따라 더 크게 막거나 뚫린다.", 0.5, 2),
+      mk("riposte", "역습", "기본은 낮고 코인이 세다. 반격용.", 0.3, 2),
+    ];
+  }
+  const list = [
+    mk("steady", "안정형", "기본 위력 위주. 뒷면이 나와도 크게 흔들리지 않는다.", 0.6, 2),
+    mk("gamble", "도박형", "코인 위력 위주. 앞면이 이어지면 크게 터진다.", 0.2, 2),
+    mk("heavy", "한방형", "코인 1개. 결과가 둘 중 하나다.", 0.5, 1),
+  ];
+  if (C >= 3) list.push(mk("multi", "다타형", `코인 ${C}개. 적중 횟수가 많아 상태이상 스킬과 잘 맞는다.`, 0.3, C));
+  return list;
+}

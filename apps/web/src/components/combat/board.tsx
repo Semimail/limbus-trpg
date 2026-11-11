@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { STATUS_IDS, slotKey, isCorroded, type CombatState, type Unit, type StatusId, type Skill } from "@limbus/rules";
@@ -8,6 +8,7 @@ import { formatRound, unitNames } from "@/lib/combat-log";
 import { Button } from "@/components/ui";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon, StatusBadge, StatusIcon } from "@/components/icons";
 import { Keyword, KeywordText } from "@/components/keyword/keyword";
+import { Cinematic } from "./cinematic";
 
 interface Props { campaignId: string; combatId: string; initial: CombatState; meId: string; isGm: boolean }
 
@@ -16,15 +17,29 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
   const [state, setState] = useState<CombatState>(initial);
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // 합 연출: 새 라운드 결과가 오면 자동 재생 (끌 수 있음)
+  const [cine, setCine] = useState<{ round: number; events: CombatState["lastRound"] } | null>(null);
+  const seenRound = useRef<number>(initial.lastRound?.length && initial.lastRound[0]!.type === "roundStart" ? (initial.lastRound[0] as { round: number }).round : 0);
+  const [autoCine, setAutoCine] = useState<boolean>(() => { if (typeof window === "undefined") return true; try { return localStorage.getItem("limbus.cinematic") !== "off"; } catch { return true; } });
+  const autoRef = useRef(autoCine);
+  useEffect(() => { autoRef.current = autoCine; }, [autoCine]);
+  const applyState = useCallback((next: CombatState) => {
+    setState(next);
+    const lr = next.lastRound;
+    if (lr && lr.length) {
+      const rs = lr[0]!.type === "roundStart" ? (lr[0] as { round: number }).round : next.round;
+      if (rs > seenRound.current) { seenRound.current = rs; if (autoRef.current) setCine({ round: rs, events: lr }); }
+    }
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
     const ch = supabase.channel(`combat:${combatId}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "combats", filter: `id=eq.${combatId}` },
-        (p) => { const s = (p.new as { state?: CombatState }).state; if (s) setState(s); })
+        (p) => { const s = (p.new as { state?: CombatState }).state; if (s) applyState(s); })
       .subscribe();
     return () => { void supabase.removeChannel(ch); };
-  }, [combatId]);
+  }, [combatId, applyState]);
 
   const names = useMemo(() => unitNames(state), [state]);
   const allies = state.units.filter((u) => u.side === "ally");
@@ -34,7 +49,7 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
   const unpicked = mySlots.filter((s) => !state.picks[slotKey(s.combatantId, s.slot)]);
   const allyUnpicked = state.slots.filter((s) => state.units.find((x) => x.id === s.combatantId)!.side === "ally" && !state.picks[slotKey(s.combatantId, s.slot)]);
 
-  const act = (fn: () => Promise<{ error?: string; state?: CombatState }>) => start(async () => { setErr(null); const r = await fn(); if (r.error) setErr(r.error); if (r.state) setState(r.state); });
+  const act = (fn: () => Promise<{ error?: string; state?: CombatState }>) => start(async () => { setErr(null); const r = await fn(); if (r.error) setErr(r.error); if (r.state) applyState(r.state); });
 
   return (
     <div className="space-y-3">
@@ -50,6 +65,11 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
         ) : null}
         {isGm && state.phase === "ended" ? <span className="ml-auto"><Button variant="ghost" onClick={() => router.refresh()}>닫기</Button></span> : null}
       </div>
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+        <label className="flex items-center gap-1"><input type="checkbox" suppressHydrationWarning checked={autoCine} onChange={(e) => { setAutoCine(e.target.checked); autoRef.current = e.target.checked; try { localStorage.setItem("limbus.cinematic", e.target.checked ? "on" : "off"); } catch {} }} />합 연출 자동 재생</label>
+        {state.lastRound?.length ? <button type="button" className="underline" onClick={() => setCine({ round: state.round, events: state.lastRound })}>지난 라운드 연출 보기</button> : null}
+      </div>
+      {cine?.events ? <Cinematic events={cine.events} units={state.units} onClose={() => setCine(null)} /> : null}
       {err ? <p className="text-xs text-danger">{err}</p> : null}
       {state.notices?.length ? (
         <ul className="space-y-0.5 border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs">
@@ -58,9 +78,9 @@ export function CombatBoard({ campaignId, combatId, initial, meId, isGm }: Props
       ) : null}
 
       <div className="space-y-2">
-        <Row units={enemies} state={state} isGm={isGm} hideNumbers={!isGm} names={names} campaignId={campaignId} combatId={combatId} onApply={setState} />
+        <Row units={enemies} state={state} isGm={isGm} hideNumbers={!isGm} names={names} campaignId={campaignId} combatId={combatId} onApply={applyState} />
         <div className="h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
-        <Row units={allies} state={state} isGm={isGm} hideNumbers={false} names={names} campaignId={campaignId} combatId={combatId} onApply={setState} />
+        <Row units={allies} state={state} isGm={isGm} hideNumbers={false} names={names} campaignId={campaignId} combatId={combatId} onApply={applyState} />
       </div>
 
       {state.phase === "select" && mySlots.length > 0 ? (

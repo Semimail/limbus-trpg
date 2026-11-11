@@ -37,6 +37,8 @@ export interface CharacterData {
   identity?: string;
   /** 면모 3개: 서사 태그. GM이 빛 보상이나 판정 보너스의 근거로 쓴다 */
   aspects?: string[];
+  /** 스탠딩 일러스트 (상반신 또는 전신, 배경 투명 권장). 장면 무대와 합 연출에 쓴다 */
+  spriteUrl?: string | null;
   level: number;
   sync: 1 | 2 | 3 | 4;
   stats: Record<Sin, number>;

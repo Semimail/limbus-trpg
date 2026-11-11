@@ -78,7 +78,10 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">누구입니까?</h2>
             <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
-              <PortraitUpload value={portrait} onChange={setPortrait} />
+              <div className="space-y-3">
+                <PortraitUpload value={portrait} onChange={setPortrait} />
+                <PortraitUpload value={d.spriteUrl ?? null} onChange={(u) => setD({ ...d, spriteUrl: u })} label="스탠딩" size="h-40 w-28" hint="상반신/전신, 배경 투명(PNG) 권장. 장면 무대와 합 연출에 나옵니다" />
+              </div>
               <div className="space-y-3">
                 <label className="block"><span className="text-xs text-muted">이름</span><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="해결사의 이름" autoFocus /></label>
                 <label className="block"><span className="text-xs text-muted">대사 한 줄 (선택) · 시트 맨 위에 크게 실립니다</span><Input value={d.quote ?? ""} onChange={(e) => setD({ ...d, quote: e.target.value })} placeholder="예: 퇴사 마렵네. 오늘인가?" /></label>

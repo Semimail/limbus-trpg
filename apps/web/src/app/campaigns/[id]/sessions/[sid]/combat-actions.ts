@@ -44,7 +44,7 @@ export async function startCombatAction(campaignId: string, sessionId: string, s
     inputs.push({
       id: `c_${c.id}`, name: c.name, side: "ally", maxHp: d.maxHp, hp: d.hp, sanity: d.sanity, speed: { ...d.speed, dice },
       skills: [...d.skills.map(toSkill), ...(d.ego ?? []).map(toSkill)],
-      passives: fx(d.traits ?? []), light: d.light ?? 0, erosion: d.erosion ?? 0,
+      passives: fx(d.traits ?? []), light: d.light ?? 0, erosion: d.erosion ?? 0, spriteUrl: d.spriteUrl ?? null,
       portraitUrl: c.portrait_url, source: { kind: "character", id: c.id, ownerId: c.owner_id },
     });
   }
@@ -56,7 +56,7 @@ export async function startCombatAction(campaignId: string, sessionId: string, s
       inputs.push({
         id: `e_${f.id}_${i}`, name: f.name + suffix, side: "enemy", maxHp: d.maxHp, hp: d.maxHp,
         sanity: d.hasSanity ? d.sanity : 0, sanityLocked: !d.hasSanity, speed: { min: d.speed.min, max: d.speed.max, dice: Math.min(2, d.speed.dice) as 1 | 2 },
-        skills: d.skills.map(toSkill), resist: d.resist, passives: fx(d.gimmicks ?? []),
+        skills: d.skills.map(toSkill), resist: d.resist, passives: fx(d.gimmicks ?? []), spriteUrl: d.spriteUrl ?? null,
         portraitUrl: f.portrait_url, source: { kind: "enemy", id: f.id },
       });
     }

@@ -17,9 +17,10 @@ interface Props {
   sessionId: string; sceneId: string | null; meId: string; isGm: boolean;
   members: Member[]; myChars: MyChar[]; charNames: Record<string, string>;
   initial: ChatMessage[]; sessionOpen: boolean;
+  onMessages?: (msgs: ChatMessage[]) => void;
 }
 
-export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNames, initial, sessionOpen }: Props) {
+export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNames, initial, sessionOpen, onMessages }: Props) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(initial);
   const [kind, setKind] = useState<MessageKind>(myChars.length ? "ic" : "ooc");
   const [charId, setCharId] = useState<string | null>(myChars[0]?.id ?? null);
@@ -43,7 +44,7 @@ export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNam
     return () => { void supabase.removeChannel(ch); };
   }, [sessionId]);
 
-  useEffect(() => { bottom.current?.scrollIntoView({ block: "end" }); }, [msgs.length]);
+  useEffect(() => { bottom.current?.scrollIntoView({ block: "end" }); onMessages?.(msgs); }, [msgs, onMessages]);
 
   const send = () => {
     if (!text.trim()) return;

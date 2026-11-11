@@ -9,7 +9,9 @@ import { DeleteSession } from "@/components/session/delete-session";
 import { Button } from "@/components/ui";
 import { CombatBoard } from "@/components/combat/board";
 import { CombatSetup } from "@/components/combat/setup";
-import { SceneBoard, type TokenSource } from "@/components/board/scene-board";
+import type { TokenSource } from "@/components/board/scene-board";
+import { SessionLive } from "@/components/session/session-live";
+import type { CharacterData } from "@limbus/rules";
 import type { BoardData } from "./actions";
 import type { CombatState, EnemyData } from "@limbus/rules";
 
@@ -24,7 +26,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   const [{ data: members }, { data: scenes }, { data: chars }, { data: msgs }, { data: activeCombat }, { data: foes }] = await Promise.all([
     supabase.from("campaign_members").select("user_id, role, profiles(username)").eq("campaign_id", id),
     supabase.from("scenes").select("id, title, kind, order_index, board").eq("session_id", sid).order("order_index"),
-    supabase.from("characters").select("id, name, owner_id, portrait_url, approved").eq("campaign_id", id).order("created_at"),
+    supabase.from("characters").select("id, name, owner_id, portrait_url, approved, data").eq("campaign_id", id).order("created_at"),
     supabase.from("messages").select("id, kind, content, created_at, author_id, character_id, to_user_id, payload").eq("session_id", sid).order("id", { ascending: false }).limit(150),
     s.current_scene_id
       ? supabase.from("combats").select("id, state, phase, scene_id").eq("scene_id", s.current_scene_id).neq("phase", "ended").order("created_at", { ascending: false }).limit(1).maybeSingle()
@@ -54,6 +56,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       };
     }
   }
+  const actors = (chars ?? []).map((c) => ({ id: c.id, name: c.name, portraitUrl: c.portrait_url, spriteUrl: ((c.data as unknown as Partial<CharacterData>)?.spriteUrl ?? null) }));
   const boardData: BoardData = (() => { const b = (current?.board ?? {}) as Partial<BoardData>; return { background: b.background ?? null, tokens: b.tokens ?? [] }; })();
   let tokenSources: TokenSource[] = (chars ?? []).map((c) => ({ id: c.id, name: c.name, img: c.portrait_url, ownerId: c.owner_id, kind: "character" as const }));
   if (isGm && current && current.kind !== "combat") {
@@ -77,24 +80,35 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
         ) : null}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
-        <div className={`${combat ? "order-first" : "order-last"} space-y-3 lg:order-none lg:col-span-2`}>
-          <Panel title="장면" stamp={current ? ({ drama: "드라마", explore: "탐색", combat: "전투" } as const)[current.kind] : undefined}>
-            <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} />
-          </Panel>
-          <Panel title={current ? current.title : "보드"} className="min-h-64" stamp={combat ? "BATTLE" : undefined}>
-            {combat ? <CombatBoard campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} />
-              : setup ? <CombatSetup campaignId={id} sessionId={sid} sceneId={current!.id} allies={setup.allies} enemies={setup.enemies} />
-              : current?.kind === "combat" ? <p className="text-sm text-muted">GM이 전투를 준비하고 있습니다.</p>
-              : current ? <SceneBoard key={current.id} campaignId={id} sceneId={current.id} initial={boardData} isGm={isGm} meId={user.id} sources={tokenSources} readOnly={!open} />
-              : <p className="text-sm text-muted">장면을 추가하면 보드가 나타납니다.</p>}
+      {current?.kind === "combat" || !current ? (
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className={`${combat ? "order-first" : "order-last"} space-y-3 lg:order-none lg:col-span-2`}>
+            <Panel title="장면" stamp={current ? ({ drama: "드라마", explore: "탐색", combat: "전투" } as const)[current.kind] : undefined}>
+              <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} />
+            </Panel>
+            <Panel title={current ? current.title : "보드"} className="min-h-64" stamp={combat ? "BATTLE" : undefined}>
+              {combat ? <CombatBoard campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} />
+                : setup ? <CombatSetup campaignId={id} sessionId={sid} sceneId={current!.id} allies={setup.allies} enemies={setup.enemies} />
+                : current?.kind === "combat" ? <p className="text-sm text-muted">GM이 전투를 준비하고 있습니다.</p>
+                : <p className="text-sm text-muted">장면을 추가하면 무대가 나타납니다.</p>}
+            </Panel>
+          </div>
+          <Panel title="채팅" className={`${combat ? "order-last" : "order-first"} lg:order-none lg:sticky lg:top-4`}>
+            <Chat sessionId={sid} sceneId={s.current_scene_id} meId={user.id} isGm={isGm} members={memberList}
+              myChars={myChars} charNames={charNames} initial={((msgs ?? []) as unknown as ChatMessage[]).reverse()} sessionOpen={open} />
           </Panel>
         </div>
-        <Panel title="채팅" className={`${combat ? "order-last" : "order-first"} lg:order-none lg:sticky lg:top-4`}>
-          <Chat sessionId={sid} sceneId={s.current_scene_id} meId={user.id} isGm={isGm} members={memberList}
-            myChars={myChars} charNames={charNames} initial={((msgs ?? []) as unknown as ChatMessage[]).reverse()} sessionOpen={open} />
-        </Panel>
-      </div>
+      ) : (
+        <div className="space-y-3">
+          <Panel title="장면" stamp={({ drama: "드라마", explore: "탐색", combat: "전투" } as const)[current.kind]}>
+            <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} />
+          </Panel>
+          <SessionLive campaignId={id} sessionId={sid} sceneId={current.id} sceneTitle={current.title} sceneKind={current.kind}
+            meId={user.id} isGm={isGm} members={memberList} myChars={myChars} charNames={charNames}
+            initialMessages={((msgs ?? []) as unknown as ChatMessage[]).reverse()} sessionOpen={open}
+            actors={actors} board={boardData} tokenSources={tokenSources} />
+        </div>
+      )}
     </div>
   );
 }

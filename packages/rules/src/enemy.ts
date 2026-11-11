@@ -17,6 +17,8 @@ export interface EnemyData {
   gimmicks: Gimmick[];
   resist: { damage: Partial<Record<DamageType, Resistance>>; sin: Partial<Record<Sin, Resistance>> };
   description: string;
+  /** 스탠딩 일러스트 (선택) */
+  spriteUrl?: string | null;
 }
 
 export function newEnemyData(): EnemyData {

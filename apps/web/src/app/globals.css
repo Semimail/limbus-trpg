@@ -119,3 +119,28 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
 /* 채팅을 어두운 전투 화면 색에 맞춘다 */
 .battle .b-chat { --bg: #0e0b0b; --bg-elev: #171212; --fg: #efe7da; --muted: #9a8f86; --border: #3a2626; --accent: #d2242b; --gold: #d9b35b; --danger: #e04b52; --ok: #4fb374; }
 .battle .keyword-link { color: var(--b-gold); }
+
+/* 림버스식 전투 요소 */
+.battle .b-round { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; font-weight:900; font-size:18px; color:#fff; background: linear-gradient(180deg,#d2242b,#7a0f13); clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+.battle .b-tab { border:1px solid var(--b-line); background: rgba(10,6,6,.75); color: var(--b-muted); padding: 3px 8px; }
+.battle .b-tab:hover { color: var(--b-fg); border-color: var(--b-gold); }
+.battle .b-tab-on { color: var(--b-gold); border-color: var(--b-gold); }
+.battle .b-drawer { background: rgba(12,8,8,.96); border-left: 1px solid var(--b-line); --bg:#0e0b0b; --bg-elev:#171212; --fg:#efe7da; --muted:#9a8f86; --border:#3a2626; --accent:#d2242b; --gold:#d9b35b; --danger:#e04b52; --ok:#4fb374; }
+.battle .b-skillbar { background: linear-gradient(180deg, rgba(14,9,9,.92), #0a0606); border-top: 2px solid var(--b-gold); box-shadow: 0 -8px 24px rgba(0,0,0,.6); }
+.battle .b-die { display:inline-flex; align-items:center; justify-content:center; border-radius:9999px; background: radial-gradient(circle at 40% 35%, #3a2a2a, #120c0c 70%); border: 2px solid rgba(217,179,91,.75); box-shadow: 0 2px 8px rgba(0,0,0,.8); color:#fff; }
+.battle .b-die-enemy { border-color: rgba(224,75,82,.85); background: radial-gradient(circle at 40% 35%, #4a1d1f, #1a0a0b 70%); }
+.battle .b-die-over { box-shadow: 0 0 0 3px #fff, 0 0 18px #e04b52; transform: translate(-50%,-50%) scale(1.15); }
+.battle .b-die-active { box-shadow: 0 0 0 2px #fff, 0 0 14px rgba(217,179,91,.9); }
+.battle .b-die-set { border-color: #f1d27a; }
+.battle .b-die-locked { border-style: double; border-color: #f1d27a; }
+.battle .b-die-num { position:absolute; font-weight: 900; font-size: 13px; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
+.battle .b-die-num-sm { right: -4px; bottom: -4px; font-size: 11px; background:#0b0707; border:1px solid var(--b-gold); border-radius: 9999px; min-width: 16px; height:16px; line-height:14px; text-align:center; padding: 0 3px; }
+.battle .b-chip-on { filter: brightness(1.15); }
+.battle .b-start { width: 72px; height: 72px; border-radius: 9999px; padding: 5px; background: conic-gradient(from 0deg, #d9b35b, #7a5a1c, #d9b35b, #f1d27a, #d9b35b); box-shadow: 0 0 24px rgba(210,36,43,.45), 0 6px 20px rgba(0,0,0,.8); transition: transform .15s; }
+.battle .b-start:hover { transform: scale(1.05); }
+.battle .b-start:disabled { opacity: .6; transform:none; }
+.battle .b-start-inner { display:flex; width:100%; height:100%; flex-direction:column; align-items:center; justify-content:center; gap:2px; border-radius:9999px; color:#fff; font-weight:800; background: radial-gradient(circle at 50% 35%, #e23a40, #7a0f13 75%); border: 2px solid #2a0a0c; }
+.battle .b-start-wait { box-shadow: none; background: conic-gradient(from 0deg, #4a3a3a, #2a2020, #4a3a3a); }
+.battle .b-start-wait .b-start-inner { background: radial-gradient(circle at 50% 35%, #3a2a2a, #140d0d 75%); color: var(--b-muted); }
+.battle .b-start { width: 72px; height: 72px; }
+@media (min-width: 768px) { .battle .b-start { width: 92px; height: 92px; } }

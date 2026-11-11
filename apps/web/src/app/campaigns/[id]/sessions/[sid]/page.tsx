@@ -67,7 +67,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
 
   if (combat) {
     return (
-      <BattleScreen campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} protectRange={rules.protectRange}
+      <BattleScreen campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} rules={rules}
         sessionTitle={s.title} sceneTitle={current?.title ?? ""} backHref={`/campaigns/${id}`}
         sceneTools={isGm ? <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} /> : undefined}
         chat={<Chat sessionId={sid} sceneId={s.current_scene_id} meId={user.id} isGm={isGm} members={memberList} myChars={myChars} charNames={charNames}

@@ -7,7 +7,7 @@ import { SceneBar, type SceneRow } from "@/components/session/scene-bar";
 import { closeSession, deleteSession } from "@/app/campaigns/actions";
 import { DeleteSession } from "@/components/session/delete-session";
 import { Button } from "@/components/ui";
-import { BattleScreen } from "@/components/combat/battle-screen";
+import { BattleScreen, type EnemyInfo } from "@/components/combat/battle-screen";
 import { CombatSetup } from "@/components/combat/setup";
 import type { TokenSource } from "@/components/board/scene-board";
 import { SessionLive } from "@/components/session/session-live";
@@ -66,8 +66,20 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   }
 
   if (combat) {
+    // 적 카드용: 기믹 목록 + (플레이어는) 내 캐릭터에게 공개된 기믹만
+    const enemyIds = Array.from(new Set(combat.state.units.filter((u) => u.source.kind === "enemy").map((u) => u.source.id)));
+    const myCharIds = myChars.map((c) => c.id);
+    const { data: reveals } = !isGm && enemyIds.length && myCharIds.length
+      ? await supabase.from("enemy_reveals").select("enemy_id, revealed_gimmicks").in("enemy_id", enemyIds).in("character_id", myCharIds)
+      : { data: [] as { enemy_id: string; revealed_gimmicks: string[] }[] };
+    const enemyInfo: Record<string, EnemyInfo> = {};
+    for (const f of foes ?? []) {
+      if (!enemyIds.includes(f.id)) continue;
+      const d = f.data as unknown as EnemyData;
+      enemyInfo[f.id] = { threat: d.threat, description: d.description ?? "", gimmicks: (d.gimmicks ?? []).map((g) => ({ id: g.id, name: g.name, text: g.text })), revealed: Array.from(new Set((reveals ?? []).filter((r) => r.enemy_id === f.id).flatMap((r) => r.revealed_gimmicks ?? []))) };
+    }
     return (
-      <BattleScreen campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} rules={rules}
+      <BattleScreen campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} rules={rules} enemyInfo={enemyInfo}
         sessionTitle={s.title} sceneTitle={current?.title ?? ""} backHref={`/campaigns/${id}`}
         sceneTools={isGm ? <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} /> : undefined}
         chat={<Chat sessionId={sid} sceneId={s.current_scene_id} meId={user.id} isGm={isGm} members={memberList} myChars={myChars} charNames={charNames}

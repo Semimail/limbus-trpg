@@ -144,3 +144,19 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
 .battle .b-start-wait .b-start-inner { background: radial-gradient(circle at 50% 35%, #3a2a2a, #140d0d 75%); color: var(--b-muted); }
 .battle .b-start { width: 72px; height: 72px; }
 @media (min-width: 768px) { .battle .b-start { width: 92px; height: 92px; } }
+
+/* 전투 화면 v4 (림버스 UI 조각) */
+.battle .b-pane { background: rgba(14, 9, 9, .92); border: 1px solid #6a4e2a; box-shadow: 0 0 0 1px #000 inset, 0 6px 18px rgba(0,0,0,.6); backdrop-filter: blur(3px); }
+.battle .b-head-plate { background: linear-gradient(90deg, #4a3417, #2a1d0e 60%, #1a120a); color: #f1d9a0; border-bottom: 1px solid #8a6a3a; }
+.battle .b-head-plate[data-tone="red"] { background: linear-gradient(90deg, #7a1013, #3a0b0d 60%, #1a0607); color: #ffd7d7; border-bottom-color: #b3161c; }
+.battle .b-row { display:block; width:100%; text-align:left; padding: 4px 6px; color: var(--b-fg); }
+.battle .b-row:hover { background: rgba(255,255,255,.06); color: var(--b-gold); }
+.battle .b-banner { background: url("/assets/limbus/ui/banner-red.png") center / cover, #5a0c10; border-top: 2px solid #c9a24a; box-shadow: 0 -4px 16px rgba(0,0,0,.7); }
+.battle .b-logo { background: #120b0b; border: 1px solid #c9a24a; color: #e04b52; }
+.battle .b-tabx { border: 1px solid #c9a24a99; background: rgba(10,6,6,.75); color: #f1d9a0; padding: 2px 10px; font-weight: 600; }
+.battle .b-tabx-on { background: #c9a24a; color: #1a1208; }
+.battle .b-strip { background: linear-gradient(180deg, rgba(10,6,6,.55), rgba(10,6,6,.92) 40%, #0a0606); border-top: 1px solid rgba(217,179,91,.35); box-shadow: 0 -10px 30px rgba(0,0,0,.6); }
+.battle .b-pick-on { background: rgba(255,213,74,.1); outline: 1px solid rgba(255,213,74,.6); }
+@keyframes b-spin { to { transform: rotate(360deg); } }
+.battle .b-spin { animation: b-spin 24s linear infinite; }
+.battle .b-spin-fast { animation: b-spin 1.6s linear infinite; }

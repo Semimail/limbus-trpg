@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition, type ReactNode, type PointerEvent as RPointerEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, realtimeReady } from "@/lib/supabase/client";
 import { STATUS_IDS, SIN_LABEL, SINS, slotKey, isCorroded, reachableCells, dist, skillRange, estimateClash, describeEffect, type CombatState, type Unit, type StatusId, type Skill, type Pos, type RuleConfig, type Pick, type Sin } from "@limbus/rules";
 import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction, redrawHandAction, moveUnitAction } from "@/app/campaigns/[id]/sessions/[sid]/combat-actions";
 import { revealToAll } from "@/app/campaigns/[id]/enemies/actions";
@@ -63,11 +63,15 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   }, []);
   useEffect(() => {
     const supabase = createClient();
-    const ch = supabase.channel(`combat:${combatId}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "combats", filter: `id=eq.${combatId}` },
-        (p) => { const s = (p.new as { state?: CombatState }).state; if (s) applyState(s); })
-      .subscribe();
-    return () => { void supabase.removeChannel(ch); };
+    let cancelled = false; let ch: ReturnType<typeof supabase.channel> | null = null;
+    void realtimeReady(supabase).then(() => {
+      if (cancelled) return;
+      ch = supabase.channel(`combat:${combatId}:${Math.random().toString(36).slice(2, 8)}`)
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "combats", filter: `id=eq.${combatId}` },
+          (p) => { const s = (p.new as { state?: CombatState }).state; if (s) applyState(s); })
+        .subscribe();
+    });
+    return () => { cancelled = true; if (ch) void supabase.removeChannel(ch); };
   }, [combatId, applyState]);
   useEffect(() => { const prev = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = prev; }; }, []);
 

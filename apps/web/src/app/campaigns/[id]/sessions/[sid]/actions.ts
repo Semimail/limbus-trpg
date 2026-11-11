@@ -15,6 +15,8 @@ export interface SendInput {
   characterId?: string | null;
   toUserId?: string | null;
   imageUrl?: string | null;
+  /** GM이 NPC(적 도감 항목) 이름으로 말할 때 */
+  npc?: { id: string; name: string } | null;
 }
 
 /**
@@ -32,6 +34,7 @@ export async function sendMessage(input: SendInput): Promise<{ error?: string; m
 
   let kind = input.kind;
   let payload: Record<string, unknown> | null = input.imageUrl ? { image: input.imageUrl } : null;
+  if (input.npc && kind === "gm") payload = { ...(payload ?? {}), npc: { id: input.npc.id, name: input.npc.name } };
   let text = content;
 
   // 명령어 처리 → 시스템 메시지
@@ -99,6 +102,14 @@ export async function sendMessage(input: SendInput): Promise<{ error?: string; m
     payload: payload as never,
   }).select("id, kind, content, created_at, author_id, character_id, to_user_id, payload").single();
   if (error) return { error: error.message };
+  // 무대 자동 등장: 캐릭터 대사(또는 NPC 대사)면 장면 출연진에 올린다
+  const castId = kind === "ic" && input.characterId ? `c:${input.characterId}` : kind === "gm" && input.npc ? `e:${input.npc.id}` : null;
+  if (castId && input.sceneId) {
+    const { data: sc } = await supabase.from("scenes").select("board").eq("id", input.sceneId).single();
+    const cur = (sc?.board && typeof sc.board === "object" ? sc.board : {}) as Partial<BoardData>;
+    const cast = cur.stage?.cast ?? [];
+    if (!cast.includes(castId)) await supabase.from("scenes").update({ board: JSON.parse(JSON.stringify({ ...cur, stage: { ...(cur.stage ?? {}), cast: [...cast, castId] } })) }).eq("id", input.sceneId);
+  }
   return { message: row as unknown as Record<string, unknown> };
 }
 
@@ -129,7 +140,9 @@ export async function deleteMessage(sessionId: string, messageId: number): Promi
 
 /* ---------- 장면 보드 (배경 + 토큰) ---------- */
 export interface BoardToken { id: string; name: string; img: string | null; x: number; y: number; size: number; ownerId?: string | null; refKind?: "character" | "enemy" | "free"; refId?: string }
-export interface BoardData { background: string | null; tokens: BoardToken[] }
+/** 무대(비주얼 노벨) 상태: 출연진 id는 "c:<characterId>" 또는 "e:<enemyId>"(NPC) */
+export interface StageData { cast: string[]; split?: boolean }
+export interface BoardData { background: string | null; tokens: BoardToken[]; stage?: StageData }
 
 export async function updateBoard(campaignId: string, sceneId: string, patch: Partial<BoardData>): Promise<{ error?: string; board?: BoardData }> {
   const supabase = await createClient();
@@ -140,12 +153,22 @@ export async function updateBoard(campaignId: string, sceneId: string, patch: Pa
   const { data: sc } = await supabase.from("scenes").select("board").eq("id", sceneId).single();
   if (!sc) return { error: "장면이 없습니다" };
   const cur = (sc.board && typeof sc.board === "object" ? sc.board : {}) as Partial<BoardData>;
-  const board: BoardData = { background: cur.background ?? null, tokens: cur.tokens ?? [] };
+  const board: BoardData = { background: cur.background ?? null, tokens: cur.tokens ?? [], stage: cur.stage ?? { cast: [] } };
   if (isGm) {
     if (patch.background !== undefined) board.background = patch.background;
     if (patch.tokens) board.tokens = patch.tokens;
+    if (patch.stage) board.stage = { cast: patch.stage.cast ?? board.stage!.cast, split: patch.stage.split ?? board.stage!.split };
   } else {
     if (patch.background !== undefined) return { error: "GM만 배경을 바꿀 수 있습니다" };
+    if (patch.stage) {
+      // 플레이어: 자기 캐릭터의 등장/퇴장만
+      const { data: mine } = await supabase.from("characters").select("id").eq("owner_id", user.id).eq("campaign_id", campaignId);
+      const myIds = new Set((mine ?? []).map((c) => `c:${c.id}`));
+      const before = board.stage!.cast, after = patch.stage.cast ?? before;
+      const changed = [...before.filter((x) => !after.includes(x)), ...after.filter((x) => !before.includes(x))];
+      if (changed.some((x) => !myIds.has(x))) return { error: "자기 캐릭터만 등장·퇴장시킬 수 있습니다" };
+      board.stage = { ...board.stage!, cast: after };
+    }
     if (patch.tokens) {
       // 플레이어: 자기 토큰의 위치만
       const byId = new Map(patch.tokens.map((t) => [t.id, t]));

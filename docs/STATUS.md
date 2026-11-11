@@ -70,3 +70,17 @@ Battle Backgrounds 1nXRLjFglNgjithfvY1D_3AkSt_aDvhoa · Icons 1DkcKQWgYLf9Kzk3Jd
 - 무대 화살표는 림버스식 곡선: 적 빨강, 내 공격 하늘 점선, 합 노랑(+합 배지). 승률 표시(메뉴에서 토글) = 합이 성립한 내 다이스 아래 라벨·%.
 - `page.tsx`가 `enemyInfo`(기믹 목록 + 플레이어 캐릭터에게 공개된 기믹 id)를 계산해 전달.
 - 주의: 서랍을 transform으로 숨기면 overflow-hidden 셸이 가로 스크롤돼 화면이 밀림 → display:none으로 숨김.
+
+## 세션 화면 + GM 콘솔 (2026-11-11, 참고 영상 LIMBUS PLAY 모듈 레이아웃)
+- `components/session/session-screen.tsx`(비전투 장면 전체 화면): 무대(`stage.tsx`, 배경+출연진 스탠딩+대사 상자, 이름 플레이트 `plate-tag`)가 화면을 채우고, 좌상단 파티 초상(등장 중은 밝게, 누르면 등장/퇴장 — GM은 전부, 플레이어는 자기 캐릭터만), 아래 **입력 바**(화자 선택: 내 캐릭터 / GM 서술 / NPC(적 도감) / 플레이어 / 귓속말, 대사 입력 Enter, 이미지, 전송, 등장/퇴장), 맨 아래 붉은 바(스탠딩/지도 전환, 채팅·시트 서랍, GM 콘솔).
+- **입력 중 지문**: Supabase Realtime broadcast(`typing:<sceneId>`)로 "○○이(가) 잠시 말을 고른다…" 같은 무작위 지문(이/가 자동)을 모두의 대사 상자에 띄움. 4초 지나면 사라지고 전송하면 지움.
+- **자동 등장**: `sendMessage`가 캐릭터 대사(ic) / NPC 대사(gm+payload.npc)를 저장한 뒤 `scenes.board.stage.cast`에 없으면 추가. 출연진은 `board.stage = { cast: ["c:<charId>"|"e:<enemyId>"], split }`에 저장(`updateBoard`가 GM 전체/플레이어 자기 캐릭터만 허용).
+- **GM 콘솔**(`gm-console.tsx`, 오른쪽 서랍, 탭 진행/무대/전투/시트): 장면 목록·전환·추가(추가하면 바로 전환), 내보내기, 세션 종료 / 출연진·NPC 토글, 진영 배치, 전부 퇴장, 배경 업로드·URL·기본 / 전투 장면이면 `CombatSetup`(아군·적 선택 → 전투 시작), 아니면 전투 장면 추가 / 캐릭터 시트 링크·사무소·적 도감·룰 설정.
+- `openSession`이 첫 장면 "1장"(드라마)을 자동 생성해 세션을 열면 바로 무대가 뜬다. 옛 `SessionLive`·Panel 레이아웃 삭제. 종료된 세션은 GM에게 상단에 삭제 버튼만 추가로 보임.
+- 플레이어 화면은 sessions UPDATE(현재 장면 변경·종료)와 combats INSERT를 구독해 자동 새로고침.
+
+## Realtime 버그 수정 (중요)
+- 증상: 다른 탭/사용자의 메시지·전투 상태가 실시간으로 안 옴(같은 탭은 서버 액션 응답으로 갱신돼 눈치채기 어려웠음).
+- 원인: 마운트 직후 `supabase.channel(...).subscribe()`하면 `INITIAL_SESSION`보다 먼저 join 돼 access_token 없이(anon) 붙고, postgres_changes는 join 시점 권한으로 RLS를 평가해 이벤트가 0건. (웹소켓 프레임 추적으로 확인: 앱 채널 join에 토큰 없음, 나중에 만든 채널은 authenticated.)
+- 수정: `lib/supabase/client.ts`의 `realtimeReady(supabase)`(getSession → realtime.setAuth)를 모든 구독 effect 앞에 await. 채널 토픽에도 무작위 접미사를 붙여 StrictMode의 join/leave 경합을 피함. 두 탭 사이 전달 2~3초 확인.
+- 개발 모드에서는 `window.__sb`로 브라우저 Supabase 클라이언트에 접근 가능(디버그용).

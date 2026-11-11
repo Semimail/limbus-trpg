@@ -160,3 +160,10 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
 @keyframes b-spin { to { transform: rotate(360deg); } }
 .battle .b-spin { animation: b-spin 24s linear infinite; }
 .battle .b-spin-fast { animation: b-spin 1.6s linear infinite; }
+
+/* 세션 화면 (무대 + GM 콘솔) */
+.battle .st-dialog { background: linear-gradient(180deg, rgba(26,16,12,.94), rgba(12,8,7,.96)); border-top: 2px solid #8a6a3a; border-bottom: 1px solid #3a2a1a; box-shadow: 0 -6px 24px rgba(0,0,0,.5), inset 0 0 40px rgba(0,0,0,.5); }
+@keyframes st-typing { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+.battle .st-typing { animation: st-typing 1.6s ease-in-out infinite; }
+.battle .gm-sec { margin-top: 4px; padding: 3px 8px; background: linear-gradient(90deg, #4a3417, #2a1d0e); color: #f1d9a0; font-weight: 700; border-left: 3px solid #c9a24a; }
+.battle .gm-setup { --bg: #0e0b0b; --bg-elev: #171212; --fg: #efe7da; --muted: #9a8f86; --border: #3a2626; --accent: #d2242b; --gold: #d9b35b; --danger: #e04b52; --ok: #4fb374; }

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, realtimeReady } from "@/lib/supabase/client";
 import { updateBoard, type BoardData, type BoardToken } from "@/app/campaigns/[id]/sessions/[sid]/actions";
 import { Button } from "@/components/ui";
 
@@ -19,11 +19,15 @@ export function SceneBoard({ campaignId, sceneId, initial, isGm, meId, sources, 
 
   useEffect(() => {
     const supabase = createClient();
-    const ch = supabase.channel(`scene:${sceneId}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "scenes", filter: `id=eq.${sceneId}` },
-        (p) => { const b = (p.new as { board?: Partial<BoardData> }).board; if (b && !drag.current) setBoard({ background: b.background ?? null, tokens: b.tokens ?? [] }); })
-      .subscribe();
-    return () => { void supabase.removeChannel(ch); };
+    let cancelled = false; let ch: ReturnType<typeof supabase.channel> | null = null;
+    void realtimeReady(supabase).then(() => {
+      if (cancelled) return;
+      ch = supabase.channel(`scene:${sceneId}:${Math.random().toString(36).slice(2, 8)}`)
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "scenes", filter: `id=eq.${sceneId}` },
+          (p) => { const b = (p.new as { board?: Partial<BoardData> }).board; if (b && !drag.current) setBoard({ background: b.background ?? null, tokens: b.tokens ?? [] }); })
+        .subscribe();
+    });
+    return () => { cancelled = true; if (ch) void supabase.removeChannel(ch); };
   }, [sceneId]);
 
   const commit = (next: Partial<BoardData>, optimistic?: BoardData) => {

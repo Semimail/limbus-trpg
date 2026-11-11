@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, realtimeReady } from "@/lib/supabase/client";
 import { sendMessage, deleteMessage, type MessageKind } from "@/app/campaigns/[id]/sessions/[sid]/actions";
 import { CoinIcon } from "@/components/icons";
 import { KeywordText } from "@/components/keyword/keyword";
@@ -20,10 +20,37 @@ interface Props {
   onMessages?: (msgs: ChatMessage[]) => void;
   /** 부모 높이를 꽉 채운다 (전투 화면) */
   fill?: boolean;
+  /** 입력칸을 숨긴다 (세션 화면은 아래 바에서 입력) */
+  hideInput?: boolean;
+  /** 메시지 상태를 바깥(useSessionMessages)에서 관리할 때 */
+  store?: { msgs: ChatMessage[]; setMsgs: React.Dispatch<React.SetStateAction<ChatMessage[]>> };
 }
 
-export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNames, initial, sessionOpen, onMessages, fill }: Props) {
+/** 세션 메시지 상태 + 실시간 구독. 세션 화면과 채팅 서랍이 공유한다 */
+export function useSessionMessages(sessionId: string, initial: ChatMessage[]) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(initial);
+  useEffect(() => {
+    const supabase = createClient();
+    let cancelled = false; let ch: ReturnType<typeof supabase.channel> | null = null;
+    void realtimeReady(supabase).then(() => {
+      if (cancelled) return;
+      ch = supabase.channel(`session:${sessionId}:msgs:${Math.random().toString(36).slice(2, 8)}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `session_id=eq.${sessionId}` },
+          (p) => { const m = p.new as ChatMessage; setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m].sort((a, b) => a.id - b.id))); })
+        .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" },
+          (p) => setMsgs((prev) => prev.filter((m) => m.id !== (p.old as { id: number }).id)))
+        .subscribe();
+    });
+    return () => { cancelled = true; if (ch) void supabase.removeChannel(ch); };
+  }, [sessionId]);
+  const append = (m: ChatMessage) => setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m].sort((a, b) => a.id - b.id)));
+  return { msgs, setMsgs, append };
+}
+
+export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNames, initial, sessionOpen, onMessages, fill, hideInput, store }: Props) {
+  const [ownMsgs, setOwnMsgs] = useState<ChatMessage[]>(initial);
+  const msgs = store ? store.msgs : ownMsgs;
+  const setMsgs = store ? store.setMsgs : setOwnMsgs;
   const [kind, setKind] = useState<MessageKind>(myChars.length ? "ic" : "ooc");
   const [charId, setCharId] = useState<string | null>(myChars[0]?.id ?? null);
   const [toUser, setToUser] = useState<string | null>(members.find((m) => m.user_id !== meId)?.user_id ?? null);
@@ -36,15 +63,21 @@ export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNam
   const append = (m: ChatMessage) => setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m].sort((a, b) => a.id - b.id)));
 
   useEffect(() => {
+    if (store) return; // 바깥 스토어가 구독한다
     const supabase = createClient();
-    const ch = supabase.channel(`session:${sessionId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `session_id=eq.${sessionId}` },
-        (p) => append(p.new as ChatMessage))
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" },
-        (p) => setMsgs((prev) => prev.filter((m) => m.id !== (p.old as { id: number }).id)))
-      .subscribe();
-    return () => { void supabase.removeChannel(ch); };
-  }, [sessionId]);
+    let cancelled = false; let ch: ReturnType<typeof supabase.channel> | null = null;
+    void realtimeReady(supabase).then(() => {
+      if (cancelled) return;
+      ch = supabase.channel(`session:${sessionId}:${Math.random().toString(36).slice(2, 8)}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `session_id=eq.${sessionId}` },
+          (p) => append(p.new as ChatMessage))
+        .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" },
+          (p) => setMsgs((prev) => prev.filter((m) => m.id !== (p.old as { id: number }).id)))
+        .subscribe();
+    });
+    return () => { cancelled = true; if (ch) void supabase.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, !!store]);
 
   useEffect(() => { const el = bottom.current?.parentElement; if (el) el.scrollTop = el.scrollHeight; onMessages?.(msgs); }, [msgs, onMessages]);
 
@@ -84,7 +117,7 @@ export function Chat({ sessionId, sceneId, meId, isGm, members, myChars, charNam
         <div ref={bottom} />
       </div>
 
-      {sessionOpen ? (
+      {hideInput ? null : sessionOpen ? (
         <div className="mt-2 border-t border-border pt-2">
           <div className="mb-1 flex flex-wrap items-center gap-1 text-xs">
             {(["ic", "ooc", "gm", "whisper"] as const).filter((k) => k !== "gm" || isGm).map((k) => (

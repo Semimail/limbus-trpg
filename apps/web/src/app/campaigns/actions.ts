@@ -54,6 +54,12 @@ export async function openSession(campaignId: string, formData: FormData) {
   if (!user) redirect("/");
   const { data, error } = await supabase.from("sessions").insert({ campaign_id: campaignId, title, created_by: user.id }).select("id").single();
   if (error) throw new Error(error.message);
+  // 첫 장면(드라마)을 바로 만들어 무대가 뜨게 한다. 이후 장면은 GM 콘솔에서 추가·전환.
+  const { data: scene } = await supabase.from("scenes").insert({ session_id: data.id, title: "1장", kind: "drama", order_index: 0 }).select("id").single();
+  if (scene) {
+    await supabase.from("sessions").update({ current_scene_id: scene.id }).eq("id", data.id);
+    await supabase.from("messages").insert({ session_id: data.id, scene_id: scene.id, kind: "system", content: `── 세션 시작: ${title} ──`, payload: { type: "scene", sceneId: scene.id } as never });
+  }
   redirect(`/campaigns/${campaignId}/sessions/${data.id}`);
 }
 

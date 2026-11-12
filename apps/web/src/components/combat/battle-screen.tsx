@@ -9,7 +9,7 @@ import { revealToAll } from "@/app/campaigns/[id]/enemies/actions";
 import { formatRound, unitNames } from "@/lib/combat-log";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon, StatusBadge, StatusIcon, BACKGROUNDS } from "@/components/icons";
 import { Keyword, KeywordText } from "@/components/keyword/keyword";
-import { Cinematic } from "./cinematic";
+import { buildPlaySteps, type PlayStep } from "./playback";
 
 /*
  * 전투 화면 v4 — 림버스 컴퍼니 UI 조각(드라이브 UI/Battle 아틀라스) + 참고 영상(FVTT 림버스 모듈) 레이아웃
@@ -48,19 +48,32 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   const [state, setState] = useState<CombatState>(initial);
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const [cine, setCine] = useState<{ round: number; events: CombatState["lastRound"] } | null>(null);
+  // 판 위 합 연출 (영상처럼 한 단계씩). steps는 라운드 결과에서 만든다
+  const [play, setPlay] = useState<{ steps: PlayStep[]; i: number; paused: boolean } | null>(null);
   const seenRound = useRef<number>(initial.lastRound?.length && initial.lastRound[0]!.type === "roundStart" ? (initial.lastRound[0] as { round: number }).round : 0);
   const [autoCine, setAutoCine] = useState<boolean>(() => { if (typeof window === "undefined") return true; try { return localStorage.getItem("limbus.cinematic") !== "off"; } catch { return true; } });
   const autoRef = useRef(autoCine);
   useEffect(() => { autoRef.current = autoCine; }, [autoCine]);
+  const startPlay = useCallback((events: CombatState["lastRound"], units: Unit[]) => {
+    if (!events?.length) return;
+    const steps = buildPlaySteps(events, units);
+    if (steps.length) setPlay({ steps, i: 0, paused: false });
+  }, []);
   const applyState = useCallback((next: CombatState) => {
     setState(next);
     const lr = next.lastRound;
     if (lr && lr.length) {
       const rs = lr[0]!.type === "roundStart" ? (lr[0] as { round: number }).round : next.round;
-      if (rs > seenRound.current) { seenRound.current = rs; if (autoRef.current) setCine({ round: rs, events: lr }); }
+      if (rs > seenRound.current) { seenRound.current = rs; if (autoRef.current) startPlay(lr, next.units); }
     }
-  }, []);
+  }, [startPlay]);
+  const playStep = play ? play.steps[play.i] ?? null : null;
+  const playNext = useCallback(() => setPlay((p) => (!p ? p : p.i >= p.steps.length - 1 ? null : { ...p, i: p.i + 1 })), []);
+  useEffect(() => {
+    if (!play || play.paused || !playStep) return;
+    const t = setTimeout(playNext, playStep.hold);
+    return () => clearTimeout(t);
+  }, [play, playStep, playNext]);
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false; let ch: ReturnType<typeof supabase.channel> | null = null;
@@ -85,7 +98,8 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   const enemiesAlive = state.units.filter((u) => u.side === "enemy" && !u.incapacitated).length;
   const [drawer, setDrawer] = useState<null | "chat" | "log" | "roster">(null);
   const [showGrid, setShowGrid] = useState(true);
-  const [showOdds, setShowOdds] = useState(true);
+  const [oddsMode, setOddsMode] = useState<"odds" | "power" | "off">("odds");
+  const showOdds = oddsMode !== "off";
   const [logOpen, setLogOpen] = useState(true);
   const [menu, setMenu] = useState(false);
   // 로컬: 다이스에 "장전"된 스킬(아직 대상 없음), 활성 다이스, 스킬 선택 팝업, 보호 모드
@@ -182,7 +196,8 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return;
-      if (e.key === "Escape") { setPicker(null); setMenu(false); return; }
+      if (e.key === "Escape") { if (play) { setPlay(null); return; } setPicker(null); setMenu(false); return; }
+      if (play && (e.key === " " || e.key === "ArrowRight")) { e.preventDefault(); playNext(); return; }
       const n = Number(e.key); if (!(n >= 1 && n <= 3) || !activeDie) return;
       const unit = state.units.find((u) => activeDie.startsWith(u.id + ":")); if (!unit || !mine(unit)) return;
       const sk = unit.skills.find((s) => s.id === unit.hand[n - 1]); if (sk) chooseSkill(unit, Number(activeDie.split(":")[1]), sk);
@@ -229,13 +244,32 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   const phaseText = state.phase === "select" ? "선택 단계" : state.phase === "ended" ? (state.winner === "ally" ? "승리" : "패배") : "처리 중";
   const pickerUnit = picker ? state.units.find((u) => picker.startsWith(u.id + ":")) : undefined;
   const pickerSlot = picker ? Number(picker.split(":")[1]) : undefined;
+  // 스킬 선택 카드의 대상 드롭다운 (영상처럼): 적 토큰(일방) + 적 다이스(합/가로채기/보호, 승률 추정)
+  const pickerTargets = useMemo(() => {
+    if (!pickerUnit || pickerSlot === undefined) return null;
+    const key = slotKey(pickerUnit.id, pickerSlot); const cur = state.picks[key];
+    const sk = pickerUnit.skills.find((s) => s.id === (cur?.skillId ?? loaded[key])); if (!sk) return null;
+    const opts: { value: string; label: string }[] = [];
+    for (const t of state.units.filter((x) => x.side === "enemy" && !x.incapacitated)) {
+      const d = state.grid ? dist(pickerUnit.pos, t.pos) : 0; const oor = !!state.grid && d > skillRange(sk);
+      opts.push({ value: `unit|${t.id}`, label: `${names[t.id]} · 일방 공격 · 거리 ${d}${oor ? " · 사거리 밖" : ""}` });
+      for (const s of state.slots.filter((x) => x.combatantId === t.id)) {
+        const tp = state.picks[slotKey(t.id, s.slot)]; const ts = tp ? t.skills.find((x) => x.id === tp.skillId) : undefined;
+        const mode = tp?.targetId === pickerUnit.id ? "합" : protectMode[pickerUnit.id] ? "보호" : "가로채기";
+        const est = ts ? estimateClash(sk, pickerUnit.sanity, ts, t.sanity, rules, 120) : null;
+        opts.push({ value: `slot|${t.id}|${s.slot}`, label: `${names[t.id]} 다이스 ${s.speed} · ${ts ? (isGm ? ts.name : "???") : "미선택"} · ${mode}${est ? ` · ${est.label} ${Math.round(est.winRate * 100)}%` : ""}${oor && mode !== "보호" ? " · 사거리 밖" : ""}` });
+      }
+    }
+    const value = cur ? (cur.targetSlot !== undefined ? `slot|${cur.targetId}|${cur.targetSlot}` : `unit|${cur.targetId}`) : "";
+    return { opts, value, locked: !!cur?.locked };
+  }, [pickerUnit, pickerSlot, state, loaded, protectMode, rules, isGm, names]);
   const sinCounts = useMemo(() => { const c: Partial<Record<Sin, number>> = {}; for (const [k, p] of Object.entries(state.picks)) { const u = state.units.find((x) => k.startsWith(x.id + ":")); if (u?.side !== "ally") continue; const s = u.skills.find((x) => x.id === p.skillId); if (s) c[s.sin] = (c[s.sin] ?? 0) + 1; } return c; }, [state]);
 
   return (
     <div className="battle fixed inset-0 z-40 select-none overflow-hidden">
       <Arena state={state} names={names} isGm={isGm} selId={selId} onSelect={setSelId} mine={mine} showGrid={showGrid} drag={drag}
         startDrag={startDrag} draggedRef={draggedRef} disabled={pending || state.phase !== "select"}
-        onMove={(unitId, to) => act(() => moveUnitAction(campaignId, combatId, unitId, to))} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} />
+        onMove={(unitId, to) => act(() => moveUnitAction(campaignId, combatId, unitId, to))} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} oddsMode={oddsMode} play={playStep} onPlayTap={play ? playNext : undefined} />
 
       {/* 좌상단 HUD */}
       <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-1">
@@ -251,10 +285,19 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
         <HudFrame img="enemy-frame" value={enemiesAlive} title="남은 적" />
         <span className="b-muted pl-1 text-[11px]">{phaseText}{state.phase === "select" && allyUnpicked.length ? ` · 미선택 ${allyUnpicked.length}` : state.phase === "select" ? " · 준비 완료" : ""}</span>
       </div>
-      {/* 상단 가운데: 오류·공지 (영상의 "차례" 띠 자리) */}
-      <div className="pointer-events-none absolute left-1/2 top-2 z-10 flex w-[min(60vw,34rem)] -translate-x-1/2 flex-col items-center gap-1 text-xs">
-        {err ? <div data-role="err" className="pointer-events-auto b-pane w-full border-l-2 px-3 py-1 text-center" style={{ borderLeftColor: "var(--b-red)", color: "#ffb3b3" }} onClick={() => setErr(null)}>{err}</div> : null}
-        {state.notices?.slice(-2).map((n, i) => <div key={i} className="b-pane w-full border-l-2 px-3 py-1 text-center" style={{ borderLeftColor: "var(--b-gold)" }}><KeywordText text={n} /></div>)}
+      {/* 상단 가운데: 연출 띠 / 오류·공지 (영상의 "차례" 띠 자리) */}
+      <div className="pointer-events-none absolute left-1/2 top-2 z-10 flex w-[min(80vw,40rem)] -translate-x-1/2 flex-col items-center gap-1 text-xs">
+        {play && playStep ? (
+          <div className="pointer-events-auto b-play-bar flex w-full items-center gap-2 px-3 py-1.5" data-role="play">
+            <span className="min-w-0 flex-1 truncate text-center text-[12px] font-semibold text-[#f7e7c3]">{playStep.header}</span>
+            <span className="b-muted shrink-0 tabular-nums">{play.i + 1}/{play.steps.length}</span>
+            <button type="button" className="b-tabx shrink-0 px-2 py-0 text-[10px]" onClick={() => setPlay({ ...play, paused: !play.paused })}>{play.paused ? "재생" : "일시정지"}</button>
+            <button type="button" className="b-tabx shrink-0 px-2 py-0 text-[10px]" onClick={() => setPlay(null)}>건너뛰기</button>
+          </div>
+        ) : (<>
+          {err ? <div data-role="err" className="pointer-events-auto b-pane w-full border-l-2 px-3 py-1 text-center" style={{ borderLeftColor: "var(--b-red)", color: "#ffb3b3" }} onClick={() => setErr(null)}>{err}</div> : null}
+          {state.notices?.slice(-2).map((n, i) => <div key={i} className="b-pane w-full border-l-2 px-3 py-1 text-center" style={{ borderLeftColor: "var(--b-gold)" }}><KeywordText text={n} /></div>)}
+        </>)}
       </div>
 
       {/* 왼쪽: 행동 순서 */}
@@ -262,7 +305,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
 
       {/* 우상단 버튼 */}
       <div className="absolute right-2 top-2 z-20 flex items-start gap-1">
-        {state.lastRound?.length ? <IconBtn img="btn-play" label="다시 보기" onClick={() => setCine({ round: state.round, events: state.lastRound })} /> : null}
+        {state.lastRound?.length ? <IconBtn img="btn-play" label="다시 보기" onClick={() => startPlay(state.lastRound, state.units)} /> : null}
         <IconBtn img="btn-brackets" label="격자" on={showGrid} onClick={() => setShowGrid(!showGrid)} />
         <IconBtn img="btn-pause" label="연출" on={autoCine} onClick={() => { const v = !autoCine; setAutoCine(v); autoRef.current = v; try { localStorage.setItem("limbus.cinematic", v ? "on" : "off"); } catch {} }} />
         <div className="relative">
@@ -272,7 +315,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
               <button type="button" className="b-row" onClick={() => { setDrawer("chat"); setMenu(false); }}>채팅</button>
               <button type="button" className="b-row" onClick={() => { setDrawer("log"); setMenu(false); }}>전체 로그</button>
               <button type="button" className="b-row" onClick={() => { setDrawer("roster"); setMenu(false); }}>명단 · 순서</button>
-              <button type="button" className="b-row" onClick={() => setShowOdds(!showOdds)}>승률 표시 {showOdds ? "끄기" : "켜기"}</button>
+              <button type="button" className="b-row" onClick={() => setOddsMode(oddsMode === "off" ? "odds" : "off")}>승률 표시 {showOdds ? "끄기" : "켜기"}</button>
               {sceneTools ? <details className="mt-1 border-t pt-1" style={{ borderColor: "var(--b-line)" }}><summary className="b-row cursor-pointer list-none">장면 전환 ▾</summary><div className="mt-1">{sceneTools}</div></details> : null}
               {isGm && state.phase !== "ended" ? <button type="button" className="b-row text-red-300" onClick={() => { if (confirm("전투를 종료할까요? 체력과 정신력이 캐릭터에 반영됩니다.")) act(() => endCombatAction(campaignId, combatId)); setMenu(false); }}>전투 종료</button> : null}
               <Link href={backHref} className="b-row block">사무소로</Link>
@@ -288,7 +331,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       </div>
 
       {/* 오른쪽: 유닛 카드 */}
-      {selected ? (
+      {selected && !play ? (
         <div className="absolute right-2 top-16 z-10 w-[min(92vw,20rem)] max-h-[46vh] overflow-y-auto md:right-14 lg:right-16">
           <UnitCard u={selected} state={state} isGm={isGm} names={names} rules={rules} campaignId={campaignId} combatId={combatId} onApply={applyState} onClose={() => setSelId(null)} info={selected.source.kind === "enemy" ? enemyInfo[selected.source.id] : undefined} />
         </div>
@@ -319,11 +362,13 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
           ) : null}
           {pickerUnit && pickerSlot !== undefined && mine(pickerUnit) ? (
             <div className="absolute inset-x-0 bottom-[13.4rem] z-20 flex justify-center px-2">
-              <SkillPicker unit={pickerUnit} slot={pickerSlot} state={state} loaded={loaded} startDrag={startDrag} onPick={(s) => chooseSkill(pickerUnit, pickerSlot, s)} onClose={() => setPicker(null)} />
+              <SkillPicker unit={pickerUnit} slot={pickerSlot} state={state} loaded={loaded} startDrag={startDrag} onPick={(s) => chooseSkill(pickerUnit, pickerSlot, s)} onClose={() => setPicker(null)}
+                targets={pickerTargets} onTarget={(v) => { const t = parseDrop(v); if (t) handleDrop({ kind: "die", unitId: pickerUnit.id, slot: pickerSlot }, t); }}
+                onClear={() => { const k = slotKey(pickerUnit.id, pickerSlot); if (state.picks[k]) pick(pickerUnit.id, pickerSlot, null); else setLoaded((l) => { const n = { ...l }; delete n[k]; return n; }); }} />
             </div>
           ) : null}
           <div className="absolute inset-x-0 bottom-8 z-10 flex justify-center">
-            <SkillStrip units={myUnits} state={state} names={names} loaded={loaded} activeDie={activeDie} picker={picker} selId={selId}
+            <SkillStrip units={myUnits} state={state} names={names} loaded={loaded} activeDie={activeDie} picker={picker} selId={selId} odds={odds}
               onDie={(u, slot) => { const k = slotKey(u.id, slot); setActiveDie(k); setSelId(u.id); setPicker(picker === k ? null : k); }}
               onPortrait={(u) => { setSelId(u.id); const d = firstFreeDie(u.id); if (d) setActiveDie(slotKey(u.id, d.slot)); }}
               onDefense={(u, s) => { const slot = dieFor(u.id); if (slot !== undefined) chooseSkill(u, slot, s); }}
@@ -335,8 +380,15 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
 
       {/* 우하단: 라운드 버튼 */}
       <div className="absolute bottom-10 right-3 z-20 flex flex-col items-center gap-1 md:bottom-12 md:right-5">
-        <RoundButton isGm={isGm} phase={state.phase} winner={state.winner} pending={pending} unpicked={allyUnpicked.length}
-          onStart={() => act(() => resolveRoundAction(campaignId, combatId))} onClose={() => router.refresh()} />
+        <div className="flex items-end gap-1">
+          <div className="mb-3 hidden flex-col items-end gap-1 md:flex">
+            <button type="button" onClick={() => setOddsMode(oddsMode === "odds" ? "off" : "odds")} title="합 승률 표시" className={`h-7 w-16 ${oddsMode === "odds" ? "" : "opacity-50 grayscale"}`} style={{ backgroundImage: `url(${ui("plate-winrate")})`, backgroundSize: "100% 100%" }} />
+            <button type="button" onClick={() => setOddsMode(oddsMode === "power" ? "off" : "power")} title="기대 위력 표시" className={`relative h-7 w-16 text-[11px] font-black text-[#ffd0d0] ${oddsMode === "power" ? "" : "opacity-50 grayscale"}`} style={{ backgroundImage: `url(${ui("plate-red")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>피해량</button>
+            <span className="b-muted text-[10px] tabular-nums">선택 {state.slots.filter((s) => state.units.find((x) => x.id === s.combatantId)!.side === "ally").length - allyUnpicked.length}/{state.slots.filter((s) => state.units.find((x) => x.id === s.combatantId)!.side === "ally").length}</span>
+          </div>
+          <RoundButton isGm={isGm} phase={state.phase} winner={state.winner} pending={pending} unpicked={allyUnpicked.length} playing={!!play} onNext={playNext}
+            onStart={() => act(() => resolveRoundAction(campaignId, combatId))} onClose={() => router.refresh()} />
+        </div>
       </div>
 
       {/* 맨 아래 바 */}
@@ -379,7 +431,8 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
         {drawer === "roster" ? <div className="min-h-0 flex-1 overflow-auto p-2"><Roster state={state} selId={selId} onSelect={(id) => { setSelId(id); }} isGm={isGm} names={names} /></div> : null}
       </div>
 
-      {cine?.events ? <div className="absolute inset-x-0 bottom-8 top-0 z-40"><Cinematic inline events={cine.events} units={state.units} onClose={() => setCine(null)} /></div> : null}
+      {/* 연출 배너 (합 승리 · 전투불능 · 승패) */}
+      {playStep?.banner ? <div className="pointer-events-none absolute inset-x-0 top-[34%] z-30 flex justify-center"><div className="b-play-banner px-8 py-2 text-3xl font-black tracking-widest md:text-5xl" style={{ color: playStep.banner.tone === "gold" ? "#ffd54a" : playStep.banner.tone === "red" ? "#ff4d55" : "#f1ebe0" }}>{playStep.banner.text}</div></div> : null}
     </div>
   );
 }
@@ -430,10 +483,11 @@ function Tracker({ state, names, selId, onSelect, className }: { state: CombatSt
 }
 
 /* ---------- 무대 ---------- */
-function Arena({ state, names, isGm, selId, onSelect, mine, showGrid, drag, startDrag, draggedRef, disabled, onMove, loaded, activeDie, onEnemyTap, odds }: {
+function Arena({ state, names, isGm, selId, onSelect, mine, showGrid, drag, startDrag, draggedRef, disabled, onMove, loaded, activeDie, onEnemyTap, odds, oddsMode, play, onPlayTap }: {
   state: CombatState; names: Record<string, string>; isGm: boolean; selId: string | null; onSelect: (id: string | null) => void; mine: (u: Unit) => boolean; showGrid: boolean;
   drag: { payload: DragPayload; over: DropId | null } | null; startDrag: (p: DragPayload) => (e: RPointerEvent) => void; draggedRef: React.MutableRefObject<boolean>;
   disabled: boolean; onMove: (unitId: string, to: Pos) => void; loaded: Record<string, string>; activeDie: string | null; onEnemyTap: (t: DropId) => boolean; odds: Record<string, ReturnType<typeof estimateClash>>;
+  oddsMode: "odds" | "power" | "off"; play: PlayStep | null; onPlayTap?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 1200, h: 700 });
@@ -476,9 +530,14 @@ function Arena({ state, names, isGm, selId, onSelect, mine, showGrid, drag, star
   }).filter(Boolean) as { from: Pos; to: Pos; enemy: boolean; mutual: boolean; protect: boolean; key: string }[];
   const arc = (a: Pos, b: Pos) => { const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; const d = Math.hypot(b.x - a.x, b.y - a.y); const cy = my - Math.min(140, 30 + d * 0.25); return `M ${a.x} ${a.y} Q ${mx} ${cy} ${b.x} ${b.y}`; };
   const overId = drag?.over;
+  // 연출 중: 두 유닛 사이 강조 선 + 유닛 옆 카드 위치
+  const playArc = play?.arc ? (() => { const a = state.units.find((x) => x.id === play.arc!.from), b = state.units.find((x) => x.id === play.arc!.to); if (!a || !b) return null; return { d: arc(center(a), center(b)), color: play.arc!.kind === "clash" ? "#ffd54a" : play.arc!.kind === "ally" ? "#37d5ff" : "#ff3b3b" }; })() : null;
+  // 카드는 쌍의 바깥쪽(아군은 왼쪽, 적은 오른쪽)에 두어 서로 겹치지 않게 한다. 화면 밖이면 안쪽으로
+  const cardPos = (u: Unit, i: number) => { const c = center(u); const w = 176; const minL = wide ? padL : 8; let left = u.side === "ally" ? c.x - cell * 0.4 - w : c.x + cell * 0.4; if (left < minL) left = c.x + cell * 0.4; if (left + w > size.w - 8) left = Math.max(minL, c.x - cell * 0.4 - w); const top = Math.max(54, c.y - cell * 0.9 - 96 - i * 4); return { left, top, width: w }; };
+  const powerRange = (s: Skill) => { const lo = s.basePower + Math.min(0, s.coinPower) * s.coinCount, hi = s.basePower + Math.max(0, s.coinPower) * s.coinCount; return lo === hi ? `${hi}` : `${Math.max(0, lo)}-${hi}`; };
 
   return (
-    <div ref={ref} className="b-canvas absolute inset-0 overflow-hidden" onClick={(e) => { if (e.target === e.currentTarget) onSelect(null); }}>
+    <div ref={ref} className="b-canvas absolute inset-0 overflow-hidden" onClick={(e) => { if (onPlayTap) { onPlayTap(); return; } if (e.target === e.currentTarget) onSelect(null); }}>
       <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${BACKGROUNDS.backstreet})`, filter: "brightness(.42) saturate(.75)" }} />
       <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 30%, rgba(0,0,0,.55) 100%), linear-gradient(180deg, rgba(0,0,0,.6) 0%, rgba(0,0,0,.05) 25%, rgba(0,0,0,.1) 65%, rgba(0,0,0,.85) 100%)" }} />
       <svg className="absolute inset-0" width={size.w} height={size.h}>
@@ -494,13 +553,24 @@ function Arena({ state, names, isGm, selId, onSelect, mine, showGrid, drag, star
         })) : null}
         {lines.map((l) => { const color = l.mutual ? "#ffd54a" : l.enemy ? "#ff3b3b" : l.protect ? "#f5e6b5" : "#37d5ff"; const mk = l.mutual ? "gold" : l.enemy ? "red" : l.protect ? "white" : "cyan";
           return (
-            <g key={l.key}>
+            <g key={l.key} opacity={play ? 0.18 : 1}>
               <path d={arc(l.from, l.to)} fill="none" stroke="rgba(0,0,0,.6)" strokeWidth={l.mutual ? 5 : 4} />
               <path d={arc(l.from, l.to)} fill="none" stroke={color} strokeWidth={l.mutual ? 2.6 : 2} strokeDasharray={l.enemy || l.mutual ? undefined : "7 5"} markerEnd={`url(#arr-${mk})`} />
               {l.mutual ? <g transform={`translate(${(l.from.x + l.to.x) / 2},${(l.from.y + l.to.y) / 2 - Math.min(140, 30 + Math.hypot(l.to.x - l.from.x, l.to.y - l.from.y) * 0.25) / 2})`}><circle r={11} fill="#0b0707" stroke="#ffd54a" /><text textAnchor="middle" dy="4" fontSize="11" fontWeight="700" fill="#ffd54a">합</text></g> : null}
             </g>
           ); })}
+        {playArc ? (<g><path d={playArc.d} fill="none" stroke={playArc.color} strokeWidth={9} opacity={0.25} /><path d={playArc.d} fill="none" stroke="#fff" strokeWidth={3.5} opacity={0.9} /><path d={playArc.d} fill="none" stroke={playArc.color} strokeWidth={2} className="b-arc-flow" /></g>) : null}
       </svg>
+      {/* 연출 카드 (유닛 옆) */}
+      {play ? play.cards.map((cd, i) => { const u = state.units.find((x) => x.id === cd.unitId); if (!u) return null; const p = cardPos(u, i); const ally = u.side === "ally";
+        return (
+          <div key={`${cd.unitId}-${i}`} className="b-play-card pointer-events-none absolute z-20" data-tone={cd.tone} style={{ left: p.left, top: p.top, width: p.width, borderColor: ally ? "#c9a24a" : "#b3161c" }}>
+            <div className="truncate px-2 pt-1 text-[10px] text-[#d9c08a]">{cd.title}</div>
+            {cd.coins ? <div className="flex items-center justify-center gap-1 px-2 pt-1">{cd.coins.map((h, k) => <span key={k} className="flex flex-col items-center"><CoinIcon heads={h} size={22} /><span className="text-[9px] leading-none" style={{ color: h ? "#ffd54a" : "#9a8f86" }}>{h ? "앞" : "뒤"}</span></span>)}</div> : null}
+            {cd.big ? <div className="px-2 text-center text-xl font-black leading-tight" style={{ color: cd.tone === "gold" ? "#ffd54a" : cd.tone === "red" ? "#ff5a5a" : cd.tone === "dim" ? "#8a8078" : "#fff" }}>{cd.big}</div> : null}
+            {cd.sub ? <div className="px-2 pb-1 text-center text-[10px]" style={{ color: cd.tone === "dim" ? "#8a8078" : "#e9dcc2" }}>{cd.sub}</div> : <div className="pb-1" />}
+          </div>
+        ); }) : null}
       {/* 이동 칸 */}
       {gridOn && ((canMove && selected) || tokenReach) ? Array.from((tokenReach ?? reach).entries()).map(([k, cost]) => { if (cost === 0) return null; const [x, y] = k.split(",").map(Number) as [number, number]; if (occupied(x, y)) return null;
         const over = overId?.kind === "cell" && overId.x === x && overId.y === y;
@@ -551,7 +621,8 @@ function Arena({ state, names, isGm, selId, onSelect, mine, showGrid, drag, star
               {over ? <span className="absolute -inset-1 rounded-full" style={{ boxShadow: "0 0 0 2px #fff, 0 0 16px #ff3b3b" }} /> : null}
               <span className="absolute -left-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-sm px-0.5 text-[10px] font-black leading-none text-white" style={{ background: u.side === "enemy" ? "#b3161c" : "#2d6fb3", border: "1px solid #0008" }}>{s.speed}</span>
               {p?.protect ? <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-amber-200 px-0.5 text-[7px] font-black text-black">보호</span> : null}
-              {o ? <span className={`absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm bg-black/80 px-1 text-[9px] font-bold ${oddsColor(o.label)}`}>{o.label} {Math.round(o.winRate * 100)}%</span> : null}
+              {o ? <span className={`absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm bg-black/80 px-1 text-[9px] font-bold ${oddsColor(o.label)}`}>{oddsMode === "power" ? `${o.aPower} : ${o.bPower}` : `${o.label} ${Math.round(o.winRate * 100)}%`}</span> : null}
+              {!o && sk ? <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] tabular-nums" style={{ color: u.side === "enemy" ? "#ffb3b3" : "#bfe9ff", textShadow: "0 1px 2px #000" }}>{powerRange(sk)}</span> : null}
             </button>
           ); }); })}
       <div className="pointer-events-none absolute bottom-9 left-2 hidden text-[10px] md:block" style={{ color: "var(--b-muted)" }}>
@@ -608,7 +679,7 @@ function StatusBar({ u, state, rules, protect, setProtect, onRedraw, hint }: { u
 }
 
 /* ---------- 스킬 선택 팝업 (영상처럼: 누르면 1·2·3 + 방어 + E.G.O) ---------- */
-function SkillPicker({ unit, slot, state, loaded, startDrag, onPick, onClose }: { unit: Unit; slot: number; state: CombatState; loaded: Record<string, string>; startDrag: (p: DragPayload) => (e: RPointerEvent) => void; onPick: (s: Skill) => void; onClose: () => void }) {
+function SkillPicker({ unit, slot, state, loaded, startDrag, onPick, onClose, targets, onTarget, onClear }: { unit: Unit; slot: number; state: CombatState; loaded: Record<string, string>; startDrag: (p: DragPayload) => (e: RPointerEvent) => void; onPick: (s: Skill) => void; onClose: () => void; targets: { opts: { value: string; label: string }[]; value: string; locked: boolean } | null; onTarget: (v: string) => void; onClear: () => void }) {
   const key = slotKey(unit.id, slot); const cur = state.picks[key]?.skillId ?? loaded[key];
   const speed = state.slots.find((s) => s.combatantId === unit.id && s.slot === slot)?.speed;
   const corroded = isCorroded(unit, state.round);
@@ -646,13 +717,23 @@ function SkillPicker({ unit, slot, state, loaded, startDrag, onPick, onClose }: 
         {egos.length ? <span className="mx-1 h-16 w-px shrink-0 self-center" style={{ background: "rgba(217,179,91,.3)" }} /> : null}
         {egos.map((s) => chip(s, null))}
       </div>
+      {targets ? (
+        <div className="mt-1 flex flex-wrap items-center gap-1 border-t pt-1" style={{ borderColor: "var(--b-line)" }}>
+          <span className="b-gold font-semibold">대상</span>
+          <select value={targets.value} disabled={targets.locked} onChange={(e) => { if (e.target.value) onTarget(e.target.value); }} className="b-input min-w-0 flex-1 px-1 py-0.5 text-[11px]">
+            <option value="">대상을 고르세요 (또는 적을 누르거나 다이스를 끌어 놓기)</option>
+            {targets.opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          {!targets.locked ? <button type="button" className="b-btn text-[10px]" onClick={onClear}>선택 해제</button> : <span className="b-muted text-[10px]">E.G.O 확정</span>}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 /* ---------- 하단 스킬 띠 (림버스 슬롯) ---------- */
-function SkillStrip({ units, state, names, loaded, activeDie, picker, selId, onDie, onPortrait, onDefense, onCancel, startDrag }: {
-  units: Unit[]; state: CombatState; names: Record<string, string>; loaded: Record<string, string>; activeDie: string | null; picker: string | null; selId: string | null;
+function SkillStrip({ units, state, names, loaded, activeDie, picker, selId, odds, onDie, onPortrait, onDefense, onCancel, startDrag }: {
+  units: Unit[]; state: CombatState; names: Record<string, string>; loaded: Record<string, string>; activeDie: string | null; picker: string | null; selId: string | null; odds: Record<string, ReturnType<typeof estimateClash>>;
   onDie: (u: Unit, slot: number) => void; onPortrait: (u: Unit) => void; onDefense: (u: Unit, s: Skill) => void; onCancel: (u: Unit, slot: number) => void; startDrag: (p: DragPayload) => (e: RPointerEvent) => void;
 }) {
   return (
@@ -683,7 +764,8 @@ function SkillStrip({ units, state, names, loaded, activeDie, picker, selId, onD
                     </button>
                     {(p && !p.locked) || (!p && loaded[key]) ? <button type="button" onClick={() => onCancel(u, s.slot)} className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-black text-[9px] text-white/80 ring-1 ring-white/30 hover:bg-red-700" title="선택 취소">✕</button> : null}
                   </div>
-                  <span className="mt-0.5 h-3 w-full truncate text-center text-[9px] leading-none">{p ? <span className="b-gold">→ {names[p.targetId]}</span> : sk ? <span className="text-sky-300">대상?</span> : <span className="b-muted">선택</span>}</span>
+                  <span className="mt-0.5 w-full truncate text-center text-[9px] leading-none"><b className="text-sky-300">{s.speed}</b> <span className={sk ? "" : "b-muted"}>{sk ? sk.name : "스킬 선택"}</span></span>
+                  <span className="mt-0.5 h-3 w-full truncate text-center text-[9px] leading-none">{p ? (odds[key] ? <span className={oddsColor(odds[key]!.label)}>{odds[key]!.label} {Math.round(odds[key]!.winRate * 100)}%</span> : <span className="b-gold">→ {names[p.targetId]}</span>) : sk ? <span className="text-sky-300">대상?</span> : <span className="b-muted">—</span>}</span>
                 </div>
               ); })}
             {/* 초상 + 방어 */}
@@ -701,6 +783,7 @@ function SkillStrip({ units, state, names, loaded, activeDie, picker, selId, onD
                 {!u.sanityLocked ? <span className="absolute -bottom-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full px-0.5 text-[10px] font-black tabular-nums text-white" style={{ background: "#2d6fb3", border: "1px solid #fff4" }}>{u.sanity}</span> : null}
               </button>
               <span className="mt-1 w-16 truncate text-center text-[10px] leading-none">{u.name}</span>
+              <span className="mt-0.5 w-16 truncate text-center text-[9px] leading-none" style={{ color: slots.length === 0 ? "#9a8f86" : slots.every((s) => state.picks[slotKey(u.id, s.slot)]) ? "#7fd39a" : "#d9c08a" }}>{slots.length === 0 ? "행동 불가" : slots.every((s) => state.picks[slotKey(u.id, s.slot)]) ? "✓ 선택 완료" : "선택 중"}</span>
             </div>
             {defense.length ? (
               <div className="flex flex-col items-center gap-0.5 pb-3">
@@ -716,7 +799,7 @@ function SkillStrip({ units, state, names, loaded, activeDie, picker, selId, onD
 }
 
 /* ---------- 라운드 버튼 (FVTT END 느낌 + 림버스 기어) ---------- */
-function RoundButton({ isGm, phase, winner, pending, unpicked, onStart, onClose }: { isGm: boolean; phase: CombatState["phase"]; winner: CombatState["winner"]; pending: boolean; unpicked: number; onStart: () => void; onClose: () => void }) {
+function RoundButton({ isGm, phase, winner, pending, unpicked, playing, onNext, onStart, onClose }: { isGm: boolean; phase: CombatState["phase"]; winner: CombatState["winner"]; pending: boolean; unpicked: number; playing: boolean; onNext: () => void; onStart: () => void; onClose: () => void }) {
   // eslint-disable-next-line @next/next/no-img-element
   const gear = <img src={ui("gear-end")} alt="" className={`pointer-events-none absolute -inset-3 h-[calc(100%+1.5rem)] w-[calc(100%+1.5rem)] ${pending ? "b-spin-fast" : "b-spin"}`} style={{ mixBlendMode: "screen", opacity: 0.9 }} draggable={false} />;
   const inner = (txt: ReactNode, sub: ReactNode, dim?: boolean) => (
@@ -727,6 +810,7 @@ function RoundButton({ isGm, phase, winner, pending, unpicked, onStart, onClose 
   );
   const frame = (children: ReactNode) => <span className="absolute inset-0 rounded-full" style={{ backgroundImage: `url(${ui("btn-round-frame")})`, backgroundSize: "100% 100%" }}><span className="absolute inset-[11%]">{children}</span></span>;
   const size = "h-20 w-20 md:h-24 md:w-24";
+  if (playing) return <button type="button" onClick={onNext} className={`relative ${size} transition-transform hover:scale-105`} title="다음 단계 (스페이스)">{gear}{frame(inner("NEXT", "다음 단계"))}</button>;
   if (isGm && phase === "select") return <button type="button" disabled={pending} onClick={onStart} className={`relative ${size} transition-transform hover:scale-105 disabled:scale-100`} title="라운드 진행">{gear}{frame(inner(pending ? "…" : "START", pending ? "처리 중" : unpicked ? `미선택 ${unpicked}` : "라운드 진행"))}</button>;
   if (phase === "ended") return <button type="button" onClick={onClose} className={`relative ${size}`} title="닫기">{frame(inner(winner === "ally" ? "승리" : "패배", "닫기", winner !== "ally"))}</button>;
   return <div className={`relative ${size}`} title="GM이 라운드를 진행합니다">{gear}{frame(inner("대기", unpicked ? `미선택 ${unpicked}` : "준비 완료", true))}</div>;

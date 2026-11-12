@@ -84,3 +84,9 @@ Battle Backgrounds 1nXRLjFglNgjithfvY1D_3AkSt_aDvhoa · Icons 1DkcKQWgYLf9Kzk3Jd
 - 원인: 마운트 직후 `supabase.channel(...).subscribe()`하면 `INITIAL_SESSION`보다 먼저 join 돼 access_token 없이(anon) 붙고, postgres_changes는 join 시점 권한으로 RLS를 평가해 이벤트가 0건. (웹소켓 프레임 추적으로 확인: 앱 채널 join에 토큰 없음, 나중에 만든 채널은 authenticated.)
 - 수정: `lib/supabase/client.ts`의 `realtimeReady(supabase)`(getSession → realtime.setAuth)를 모든 구독 effect 앞에 await. 채널 토픽에도 무작위 접미사를 붙여 StrictMode의 join/leave 경합을 피함. 두 탭 사이 전달 2~3초 확인.
 - 개발 모드에서는 `window.__sb`로 브라우저 Supabase 클라이언트에 접근 가능(디버그용).
+
+## 전투 v5: 판 위 합 연출 (2026-11-12, 사용자 영상 "이런 느낌으로 전투하자 그냥 림버스로")
+- 사용자가 올린 영상(FVTT 림버스 모듈의 합 연출)을 프레임으로 뜯어 분석: 전체 덮개 대신 **판 위에서** 한 단계씩 재생 — 상단 띠("적 → 캐릭터 · 코인 2 앞면 · 피해 13 · HP 77", n/N, 건너뛰기), 두 유닛 옆에 카드(코인 앞/뒤, "6 → 12", "위력 9", "-7 · HP 77"), 두 유닛 사이 강조 선(다른 선은 흐리게), 합 승리·전투불능·승패는 가운데 배너. 라운드 버튼은 연출 중 **NEXT**(스페이스/→/화면 클릭도 다음, Esc 건너뛰기, 일시정지).
+- 구현: `components/combat/playback.ts`(`buildPlaySteps`: 라운드 이벤트 → 단계), `battle-screen.tsx`의 `play` 상태 + Arena가 카드·강조 선 렌더. 옛 `cinematic.tsx` 삭제. 라운드 이벤트의 스킬 필드는 **이름**(로그용)이라 id·이름 둘 다로 찾는다.
+- 스킬 선택 카드에 **대상 드롭다운**(적 토큰: 일방 공격·거리 / 적 다이스: 합·가로채기·보호 + 승률 추정, 사거리 밖 표시) + 선택 해제. 슬롯 띠는 다이스 아래 "속도 · 스킬명 / 승률", 초상 아래 "✓ 선택 완료 / 선택 중 / 행동 불가". START 옆 승률/피해량 토글 플레이트 + "선택 n/N". 다이스 아래 위력 범위(예 3-7).
+- 연출 카드는 쌍의 바깥쪽(아군 왼쪽, 적 오른쪽)에 두고 화면·순서 트래커를 피해 안쪽으로 접는다. 연출 중 유닛 카드는 숨김.

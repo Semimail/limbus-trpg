@@ -69,6 +69,17 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
     }
   }, [startPlay]);
   const playStep = play ? play.steps[play.i] ?? null : null;
+  // 합 컷인(림버스식) on/off. 끄면 유닛 옆 카드 방식
+  const [cutin, setCutin] = useState<boolean>(() => { if (typeof window === "undefined") return true; try { return localStorage.getItem("limbus.cutin") !== "off"; } catch { return true; } });
+  // 라운드 시작 플래시 ("TURN n"): 연출이 끝난 뒤 한 번
+  const [flash, setFlash] = useState<number | null>(null);
+  const flashedRef = useRef<number>(initial.round);
+  useEffect(() => {
+    if (play || state.round === flashedRef.current) return;
+    flashedRef.current = state.round; setFlash(state.round);
+    const t = setTimeout(() => setFlash(null), 1700);
+    return () => clearTimeout(t);
+  }, [state.round, play]);
   const playNext = useCallback(() => setPlay((p) => (!p ? p : p.i >= p.steps.length - 1 ? null : { ...p, i: p.i + 1 })), []);
   useEffect(() => {
     if (!play || play.paused || !playStep) return;
@@ -263,7 +274,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   return (
     <div className="battle fixed inset-0 z-40 select-none overflow-hidden">
       <Arena state={state} names={names} isGm={isGm} selId={selId} onSelect={setSelId} mine={mine} drag={drag} background={background}
-        startDrag={startDrag} draggedRef={draggedRef} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} oddsMode={oddsMode} play={playStep} onPlayTap={play ? playNext : undefined} />
+        startDrag={startDrag} draggedRef={draggedRef} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} oddsMode={oddsMode} play={playStep} onPlayTap={play ? playNext : undefined} cutin={cutin} />
 
       {/* 좌상단 HUD */}
       <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-1">
@@ -309,6 +320,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
               <button type="button" className="b-row" onClick={() => { setDrawer("log"); setMenu(false); }}>전체 로그</button>
               <button type="button" className="b-row" onClick={() => { setDrawer("roster"); setMenu(false); }}>명단 · 순서</button>
               <button type="button" className="b-row" onClick={() => setOddsMode(oddsMode === "off" ? "odds" : "off")}>승률 표시 {showOdds ? "끄기" : "켜기"}</button>
+              <button type="button" className="b-row" onClick={() => { const v = !cutin; setCutin(v); try { localStorage.setItem("limbus.cutin", v ? "on" : "off"); } catch {} }}>합 컷인 연출 {cutin ? "끄기 (카드 방식)" : "켜기"}</button>
               {sceneTools ? <details className="mt-1 border-t pt-1" style={{ borderColor: "var(--b-line)" }}><summary className="b-row cursor-pointer list-none">장면 전환 ▾</summary><div className="mt-1">{sceneTools}</div></details> : null}
               {isGm && state.phase !== "ended" ? <button type="button" className="b-row text-red-300" onClick={() => { if (confirm("전투를 종료할까요? 체력과 정신력이 캐릭터에 반영됩니다.")) act(() => endCombatAction(campaignId, combatId)); setMenu(false); }}>전투 종료</button> : null}
               <Link href={backHref} className="b-row block">사무소로</Link>
@@ -374,7 +386,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       {/* 우하단: 라운드 버튼 */}
       <div className="absolute bottom-10 right-3 z-20 flex flex-col items-center gap-1 md:bottom-12 md:right-5">
         <div className="flex items-end gap-1">
-          <div className="mb-3 hidden flex-col items-end gap-1 md:flex">
+          <div className="mb-3 mr-3 hidden flex-col items-end gap-1 md:flex">
             <button type="button" onClick={() => setOddsMode(oddsMode === "odds" ? "off" : "odds")} title="합 승률 표시" className={`h-7 w-16 ${oddsMode === "odds" ? "" : "opacity-50 grayscale"}`} style={{ backgroundImage: `url(${ui("plate-winrate")})`, backgroundSize: "100% 100%" }} />
             <button type="button" onClick={() => setOddsMode(oddsMode === "power" ? "off" : "power")} title="기대 위력 표시" className={`relative h-7 w-16 text-[11px] font-black text-[#ffd0d0] ${oddsMode === "power" ? "" : "opacity-50 grayscale"}`} style={{ backgroundImage: `url(${ui("plate-red")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>피해량</button>
             <span className="b-muted text-[10px] tabular-nums">선택 {state.slots.filter((s) => state.units.find((x) => x.id === s.combatantId)!.side === "ally").length - allyUnpicked.length}/{state.slots.filter((s) => state.units.find((x) => x.id === s.combatantId)!.side === "ally").length}</span>
@@ -424,6 +436,8 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
         {drawer === "roster" ? <div className="min-h-0 flex-1 overflow-auto p-2"><Roster state={state} selId={selId} onSelect={(id) => { setSelId(id); }} isGm={isGm} names={names} /></div> : null}
       </div>
 
+      {/* 라운드 시작 플래시 */}
+      {flash !== null && !play ? <div className="pointer-events-none absolute inset-x-0 top-[26%] z-30 flex justify-center"><div className="b-turn-flash flex items-center gap-3">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={ui("turn-text")} alt="TURN" className="h-14 md:h-20" draggable={false} /><span className="text-5xl font-black text-[#ffb347] md:text-7xl" style={{ textShadow: "0 0 24px rgba(255,120,40,.8), 0 2px 0 #000" }}>{flash}</span></div></div> : null}
       {/* 연출 배너 (합 승리 · 전투불능 · 승패) */}
       {playStep?.banner ? <div className="pointer-events-none absolute inset-x-0 top-[34%] z-30 flex justify-center"><div className="b-play-banner px-8 py-2 text-3xl font-black tracking-widest md:text-5xl" style={{ color: playStep.banner.tone === "gold" ? "#ffd54a" : playStep.banner.tone === "red" ? "#ff4d55" : "#f1ebe0" }}>{playStep.banner.text}</div></div> : null}
     </div>
@@ -479,11 +493,11 @@ function Tracker({ state, names, selId, onSelect, className }: { state: CombatSt
 // 바닥 좌표 (u: 가로 0~1, v: 깊이 0=뒤 1=앞). 아군은 왼쪽 앞에서 뒤로 지그재그, 적은 좌우 반전
 const FORMATION: [number, number][] = [[0.17, 0.92], [0.31, 0.68], [0.43, 0.96], [0.10, 0.60], [0.47, 0.72], [0.25, 0.46], [0.37, 0.42], [0.06, 0.80], [0.20, 0.30], [0.44, 0.52]];
 
-function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, draggedRef, loaded, activeDie, onEnemyTap, odds, oddsMode, play, onPlayTap, background }: {
+function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, draggedRef, loaded, activeDie, onEnemyTap, odds, oddsMode, play, onPlayTap, background, cutin }: {
   state: CombatState; names: Record<string, string>; isGm: boolean; selId: string | null; onSelect: (id: string | null) => void; mine: (u: Unit) => boolean;
   drag: { payload: DragPayload; over: DropId | null } | null; startDrag: (p: DragPayload) => (e: RPointerEvent) => void; draggedRef: React.MutableRefObject<boolean>;
   loaded: Record<string, string>; activeDie: string | null; onEnemyTap: (t: DropId) => boolean; odds: Record<string, ReturnType<typeof estimateClash>>;
-  oddsMode: "odds" | "power" | "off"; play: PlayStep | null; onPlayTap?: () => void; background: string | null;
+  oddsMode: "odds" | "power" | "off"; play: PlayStep | null; onPlayTap?: () => void; background: string | null; cutin: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 1200, h: 700 });
@@ -600,8 +614,9 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
               {!o && sk ? <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] tabular-nums" style={{ color: u.side === "enemy" ? "#ffb3b3" : "#bfe9ff", textShadow: "0 1px 2px #000" }}>{powerRange(sk)}</span> : null}
             </button>
           ); }); })}
-      {/* 연출 카드 (유닛 옆) */}
-      {play ? play.cards.map((cd, i) => { const u = state.units.find((x) => x.id === cd.unitId); if (!u) return null; const p = cardPos(u, i); const ally = u.side === "ally";
+      {/* 연출: 컷인(두 유닛) 또는 유닛 옆 카드 */}
+      {play && cutin && play.cards.length === 2 ? <CutIn step={play} state={state} names={names} w={size.w} bottom={floorBot + 8} /> : null}
+      {play && !(cutin && play.cards.length === 2) ? play.cards.map((cd, i) => { const u = state.units.find((x) => x.id === cd.unitId); if (!u) return null; const p = cardPos(u, i); const ally = u.side === "ally";
         return (
           <div key={`${cd.unitId}-${i}`} className="b-play-card pointer-events-none absolute z-20" data-tone={cd.tone} style={{ left: p.left, top: p.top, width: p.width, borderColor: ally ? "#c9a24a" : "#b3161c" }}>
             <div className="truncate px-2 pt-1 text-[10px] text-[#d9c08a]">{cd.title}</div>
@@ -610,6 +625,60 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
             {cd.sub ? <div className="px-2 pb-1 text-center text-[10px]" style={{ color: cd.tone === "dim" ? "#8a8078" : "#e9dcc2" }}>{cd.sub}</div> : <div className="pb-1" />}
           </div>
         ); }) : null}
+    </div>
+  );
+}
+
+/* ---------- 합 컷인: 두 유닛을 가운데로 당겨 크게, 가운데에 스킬·위력·코인 ---------- */
+function CutIn({ step, state, names, w, bottom }: { step: PlayStep; state: CombatState; names: Record<string, string>; w: number; bottom: number }) {
+  const [c0, c1] = step.cards as [PlayStep["cards"][number], PlayStep["cards"][number]];
+  const u0 = state.units.find((u) => u.id === c0.unitId), u1 = state.units.find((u) => u.id === c1.unitId);
+  if (!u0 || !u1) return null;
+  // 왼쪽 = 아군 쪽
+  const [L, R] = u0.side === "ally" || u1.side !== "ally" ? [{ u: u0, c: c0 }, { u: u1, c: c1 }] : [{ u: u1, c: c1 }, { u: u0, c: c0 }];
+  const wide = w >= 768;
+  const figH = Math.min(bottom * 0.62, wide ? 380 : 260);
+  const skillOf = (u: Unit, name?: string) => (name ? u.skills.find((s) => s.name === name) : undefined);
+  const side = (p: { u: Unit; c: PlayStep["cards"][number] }, pos: "l" | "r") => {
+    const sk = skillOf(p.u, p.c.skill); const tone = p.c.tone;
+    const color = tone === "gold" ? "#ffd54a" : tone === "red" ? "#ff5a5a" : tone === "dim" ? "#8a8078" : "#fff";
+    const glow = tone === "gold" ? "drop-shadow(0 0 26px rgba(255,213,74,.75))" : tone === "red" ? "drop-shadow(0 0 20px rgba(255,59,59,.6))" : tone === "dim" ? "grayscale(.6) brightness(.7)" : "drop-shadow(0 10px 20px rgba(0,0,0,.8))";
+    return (
+      <div key={p.u.id} className={`absolute bottom-0 flex flex-col items-center ${pos === "l" ? "b-cut-fig-l" : "b-cut-fig-r"}`} style={{ left: pos === "l" ? (wide ? "27%" : "22%") : (wide ? "73%" : "78%"), transform: "translateX(-50%)", width: 0 }}>
+        <div className="flex flex-col items-center" style={{ filter: glow, transition: "filter .25s" }}>
+          {p.u.spriteUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={p.u.spriteUrl} alt="" draggable={false} className="w-auto max-w-none object-contain" style={{ height: figH, transform: p.u.side === "enemy" ? "scaleX(-1)" : undefined }} />
+          ) : (
+            <span className="block overflow-hidden rounded-full" style={{ width: figH * 0.42, height: figH * 0.42, border: `4px solid ${p.u.side === "ally" ? "#d9b35b" : "#e04b52"}`, background: "rgba(10,6,6,.92)" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {p.u.portraitUrl ? <img src={p.u.portraitUrl} alt="" draggable={false} className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center text-4xl font-bold">{p.u.name.slice(0, 1)}</span>}
+            </span>
+          )}
+        </div>
+        {/* 이름 플레이트 */}
+        <div className="mt-1 flex h-8 min-w-[7rem] items-center justify-center whitespace-nowrap px-4 text-sm font-bold text-[#f7e7c3]" style={{ backgroundImage: `url(${ui("plate-tag")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>{names[p.u.id]}</div>
+        {/* 스킬 · 위력 · 코인 */}
+        <div className="b-cut-skill mt-2 flex w-[11rem] flex-col items-center gap-1 px-2 py-2 md:w-[13rem]" data-tone={tone}>
+          <div className="flex items-center gap-2">
+            {sk ? <SkillChip skill={sk} size={44} /> : null}
+            <div className="min-w-0"><div className="truncate text-[11px] text-[#d9c08a]">{p.c.title}</div>{p.c.skill ? <div className="truncate text-xs font-semibold">{p.c.skill}</div> : null}</div>
+          </div>
+          {p.c.coins ? <div className="flex items-center justify-center gap-1.5" style={{ perspective: 300 }}>{p.c.coins.map((h, k) => <span key={`${step.header}-${k}`} className="b-coin-flip flex flex-col items-center" style={{ animationDelay: `${k * 140}ms` }}><CoinIcon heads={h} size={26} /><span className="text-[9px] leading-none" style={{ color: h ? "#ffd54a" : "#9a8f86" }}>{h ? "앞" : "뒤"}</span></span>)}</div> : null}
+          {p.c.big ? <div key={`${step.header}-big`} className="b-num-pop text-3xl font-black leading-none tracking-wide md:text-4xl" style={{ color, textShadow: "0 2px 0 #000, 0 0 18px rgba(0,0,0,.8)" }}>{p.c.big}</div> : null}
+          {p.c.sub ? <div className="text-center text-[11px]" style={{ color: tone === "dim" ? "#8a8078" : "#e9dcc2" }}>{p.c.sub}</div> : null}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div className="pointer-events-none absolute inset-0 z-20">
+      <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 50% 60%, rgba(0,0,0,.35) 0%, rgba(0,0,0,.8) 70%)" }} />
+      <div className="absolute inset-x-0 top-0" style={{ height: bottom }}>
+        {side(L, "l")}
+        {side(R, "r")}
+        <div className="absolute left-1/2 -translate-x-1/2 text-4xl font-black italic text-white/80 md:text-6xl" style={{ top: Math.max(60, bottom * 0.35), textShadow: "0 0 20px rgba(0,0,0,.9)" }}>VS</div>
+      </div>
     </div>
   );
 }

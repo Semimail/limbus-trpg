@@ -437,7 +437,9 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       </div>
 
       {/* 라운드 시작 플래시 */}
-      {flash !== null && !play ? <div className="pointer-events-none absolute inset-x-0 top-[26%] z-30 flex justify-center"><div className="b-turn-flash flex items-center gap-3">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={ui("turn-text")} alt="TURN" className="h-14 md:h-20" draggable={false} /><span className="text-5xl font-black text-[#ffb347] md:text-7xl" style={{ textShadow: "0 0 24px rgba(255,120,40,.8), 0 2px 0 #000" }}>{flash}</span></div></div> : null}
+      {flash !== null && !play ? <div className="pointer-events-none absolute inset-x-0 top-[26%] z-30 flex justify-center"><div className="b-turn-flash flex items-center gap-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={ui("turn-text")} alt="TURN" className="h-14 md:h-20" draggable={false} /><span className="text-5xl font-black text-[#ffb347] md:text-7xl" style={{ textShadow: "0 0 24px rgba(255,120,40,.8), 0 2px 0 #000" }}>{flash}</span></div></div> : null}
       {/* 연출 배너 (합 승리 · 전투불능 · 승패) */}
       {playStep?.banner ? <div className="pointer-events-none absolute inset-x-0 top-[34%] z-30 flex justify-center"><div className="b-play-banner px-8 py-2 text-3xl font-black tracking-widest md:text-5xl" style={{ color: playStep.banner.tone === "gold" ? "#ffd54a" : playStep.banner.tone === "red" ? "#ff4d55" : "#f1ebe0" }}>{playStep.banner.text}</div></div> : null}
     </div>

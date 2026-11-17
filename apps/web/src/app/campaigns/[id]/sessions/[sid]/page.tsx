@@ -81,7 +81,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       enemyInfo[f.id] = { threat: d.threat, description: d.description ?? "", gimmicks: (d.gimmicks ?? []).map((g) => ({ id: g.id, name: g.name, text: g.text })), revealed: Array.from(new Set((reveals ?? []).filter((r) => r.enemy_id === f.id).flatMap((r) => r.revealed_gimmicks ?? []))) };
     }
     return (
-      <BattleScreen campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} rules={rules} enemyInfo={enemyInfo}
+      <BattleScreen campaignId={id} combatId={combat.id} initial={combat.state} meId={user.id} isGm={isGm} rules={rules} enemyInfo={enemyInfo} background={boardData.background}
         sessionTitle={s.title} sceneTitle={current?.title ?? ""} backHref={`/campaigns/${id}`}
         sceneTools={isGm ? <SceneBar campaignId={id} sessionId={sid} scenes={(scenes ?? []) as SceneRow[]} currentId={s.current_scene_id} isGm={isGm} sessionOpen={open} /> : undefined}
         chat={<Chat sessionId={sid} sceneId={s.current_scene_id} meId={user.id} isGm={isGm} members={memberList} myChars={myChars} charNames={charNames}

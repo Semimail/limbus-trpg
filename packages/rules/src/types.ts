@@ -126,7 +126,7 @@ export const DEFAULT_RULES: RuleConfig = {
   egoCorrosionSanityBelow: 0,
   erosionMax: 100,
   lightRedrawCost: 1,
-  gridEnabled: true,
+  gridEnabled: false,
   gridCols: 10,
   gridRows: 6,
   moveBonus: 3,

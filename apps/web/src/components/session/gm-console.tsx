@@ -6,7 +6,7 @@ import { createScene, setCurrentScene, updateBoard, type BoardData } from "@/app
 import { closeSession } from "@/app/campaigns/actions";
 import { createClient } from "@/lib/supabase/client";
 import { CombatSetup, type AllyOption, type EnemyOption } from "@/components/combat/setup";
-import { BACKGROUNDS } from "@/components/icons";
+import { BACKGROUNDS, BACKGROUND_LIST } from "@/components/icons";
 import type { SceneRow } from "./scene-bar";
 import type { StageActor } from "./stage";
 
@@ -104,7 +104,7 @@ export function GmConsole(p: Props) {
             {sec("배경")}
             <div className="flex flex-wrap items-center gap-1">
               <label className="b-btn cursor-pointer">{uploading ? "업로드 중…" : "이미지 업로드"}<input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadBg(f); e.target.value = ""; }} /></label>
-              <button type="button" className="b-btn" onClick={() => patchBoard({ background: BACKGROUNDS.backstreet })}>뒷골목</button>
+              {BACKGROUND_LIST.map((b) => <button key={b.key} type="button" className="b-btn" onClick={() => patchBoard({ background: BACKGROUNDS[b.key] })}>{b.label}</button>)}
               <button type="button" className="b-btn" onClick={() => patchBoard({ background: null })}>기본</button>
             </div>
             <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const v = String(new FormData(e.currentTarget).get("url") ?? "").trim(); if (v) patchBoard({ background: v }); }}>

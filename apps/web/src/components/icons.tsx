@@ -44,4 +44,11 @@ export function StatusBadge({ status, value, size = 18 }: { status: StatusId; va
 export const BACKGROUNDS = {
   backstreet: `${BASE}/bg/backstreet.jpg`,
   backstreetSm: `${BASE}/bg/backstreet-sm.jpg`,
+  underground: `${BASE}/bg/underground.jpg`,
+  checkpoint: `${BASE}/bg/checkpoint.jpg`,
+  fathoms: `${BASE}/bg/fathoms.jpg`,
 } as const;
+/** GM 콘솔·전투 배경 선택용 목록 */
+export const BACKGROUND_LIST: { key: keyof typeof BACKGROUNDS; label: string }[] = [
+  { key: "backstreet", label: "뒷골목" }, { key: "underground", label: "지하 통로" }, { key: "checkpoint", label: "검문소" }, { key: "fathoms", label: "빙굴" },
+];

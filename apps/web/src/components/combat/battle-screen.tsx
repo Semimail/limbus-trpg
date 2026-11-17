@@ -3,8 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient, realtimeReady } from "@/lib/supabase/client";
-import { STATUS_IDS, SIN_LABEL, SINS, slotKey, isCorroded, reachableCells, dist, skillRange, estimateClash, describeEffect, type CombatState, type Unit, type StatusId, type Skill, type Pos, type RuleConfig, type Pick, type Sin } from "@limbus/rules";
-import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction, redrawHandAction, moveUnitAction } from "@/app/campaigns/[id]/sessions/[sid]/combat-actions";
+import { STATUS_IDS, SIN_LABEL, SINS, slotKey, isCorroded, dist, skillRange, estimateClash, describeEffect, type CombatState, type Unit, type StatusId, type Skill, type Pos, type RuleConfig, type Pick, type Sin } from "@limbus/rules";
+import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction, redrawHandAction } from "@/app/campaigns/[id]/sessions/[sid]/combat-actions";
 import { revealToAll } from "@/app/campaigns/[id]/enemies/actions";
 import { formatRound, unitNames } from "@/lib/combat-log";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon, StatusBadge, StatusIcon, BACKGROUNDS } from "@/components/icons";
@@ -24,13 +24,15 @@ interface Props {
   campaignId: string; combatId: string; initial: CombatState; meId: string; isGm: boolean; rules: RuleConfig;
   sessionTitle: string; sceneTitle: string; backHref: string;
   chat: ReactNode; sceneTools?: ReactNode; enemyInfo: Record<string, EnemyInfo>;
+  /** 장면 배경(GM 콘솔 무대 탭). 없으면 기본 전투 배경 */
+  background: string | null;
 }
 
 const UI = "/assets/limbus/ui";
 const ui = (n: string) => `${UI}/${n}.png`;
 const SIN_COLOR: Record<string, string> = { wrath: "#b3161c", lust: "#d4621c", sloth: "#c9a227", gluttony: "#4f8a3a", gloom: "#2e6f9e", pride: "#2b3f8c", envy: "#6a3d9a" };
 
-type DragPayload = { kind: "skill"; unitId: string; skillId: string } | { kind: "die"; unitId: string; slot: number } | { kind: "token"; unitId: string };
+type DragPayload = { kind: "skill"; unitId: string; skillId: string } | { kind: "die"; unitId: string; slot: number };
 type DropId = { kind: "unit"; unitId: string } | { kind: "slot"; unitId: string; slot: number } | { kind: "cell"; x: number; y: number };
 function parseDrop(s: string | null | undefined): DropId | null {
   if (!s) return null;
@@ -40,10 +42,9 @@ function parseDrop(s: string | null | undefined): DropId | null {
   if (k === "cell" && a !== undefined && b !== undefined) return { kind: "cell", x: Number(a), y: Number(b) };
   return null;
 }
-const rangeLabel = (s: Skill) => { const r = skillRange(s); return r <= 1 ? "근접 1칸" : `원거리 ${r}칸`; };
 const powerText = (s: Skill) => `${s.basePower}${s.coinPower >= 0 ? "+" : ""}${s.coinPower}×${s.coinCount}`;
 
-export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules, sessionTitle, sceneTitle, backHref, chat, sceneTools, enemyInfo }: Props) {
+export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules, sessionTitle, sceneTitle, backHref, chat, sceneTools, enemyInfo, background }: Props) {
   const router = useRouter();
   const [state, setState] = useState<CombatState>(initial);
   const [err, setErr] = useState<string | null>(null);
@@ -97,7 +98,6 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   const alliesAlive = state.units.filter((u) => u.side === "ally" && !u.incapacitated).length;
   const enemiesAlive = state.units.filter((u) => u.side === "enemy" && !u.incapacitated).length;
   const [drawer, setDrawer] = useState<null | "chat" | "log" | "roster">(null);
-  const [showGrid, setShowGrid] = useState(true);
   const [oddsMode, setOddsMode] = useState<"odds" | "power" | "off">("odds");
   const showOdds = oddsMode !== "off";
   const [logOpen, setLogOpen] = useState(true);
@@ -154,11 +154,6 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   };
   const confirmEgo = (skill: Skill | undefined, key: string) => !(skill?.ego && !state.picks[key]?.locked) || confirm(`E.G.O [${skill!.name}] 발현: 정신력 -${skill!.ego!.sanityCost}, 침식도 +${skill!.ego!.erosionGain}. 발현 후에는 바꿀 수 없습니다.`);
   const handleDrop = (payload: DragPayload, target: DropId) => {
-    if (payload.kind === "token") {
-      if (target.kind !== "cell") return;
-      act(() => moveUnitAction(campaignId, combatId, payload.unitId, { x: target.x, y: target.y }));
-      return;
-    }
     const unit = state.units.find((u) => u.id === payload.unitId); if (!unit) return;
     const slot = payload.kind === "die" ? payload.slot : dieFor(unit.id);
     if (slot === undefined) { setErr("행동 슬롯이 없습니다"); return; }
@@ -207,7 +202,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
 
   /* ---- 합 예측 (드래그 중) ---- */
   const preview = useMemo(() => {
-    if (!drag || !drag.over || drag.payload.kind === "token" || drag.over.kind === "cell") return null;
+    if (!drag || !drag.over || drag.over.kind === "cell") return null;
     const unit = state.units.find((u) => u.id === drag.payload.unitId); if (!unit) return null;
     const slot = drag.payload.kind === "die" ? drag.payload.slot : dieFor(unit.id);
     const skillId = drag.payload.kind === "skill" ? drag.payload.skillId : slot !== undefined ? (loaded[slotKey(unit.id, slot)] ?? state.picks[slotKey(unit.id, slot)]?.skillId) : undefined;
@@ -252,7 +247,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
     const opts: { value: string; label: string }[] = [];
     for (const t of state.units.filter((x) => x.side === "enemy" && !x.incapacitated)) {
       const d = state.grid ? dist(pickerUnit.pos, t.pos) : 0; const oor = !!state.grid && d > skillRange(sk);
-      opts.push({ value: `unit|${t.id}`, label: `${names[t.id]} · 일방 공격 · 거리 ${d}${oor ? " · 사거리 밖" : ""}` });
+      opts.push({ value: `unit|${t.id}`, label: `${names[t.id]} · 일방 공격${state.grid ? ` · 거리 ${d}` : ""}${oor ? " · 사거리 밖" : ""}` });
       for (const s of state.slots.filter((x) => x.combatantId === t.id)) {
         const tp = state.picks[slotKey(t.id, s.slot)]; const ts = tp ? t.skills.find((x) => x.id === tp.skillId) : undefined;
         const mode = tp?.targetId === pickerUnit.id ? "합" : protectMode[pickerUnit.id] ? "보호" : "가로채기";
@@ -267,9 +262,8 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
 
   return (
     <div className="battle fixed inset-0 z-40 select-none overflow-hidden">
-      <Arena state={state} names={names} isGm={isGm} selId={selId} onSelect={setSelId} mine={mine} showGrid={showGrid} drag={drag}
-        startDrag={startDrag} draggedRef={draggedRef} disabled={pending || state.phase !== "select"}
-        onMove={(unitId, to) => act(() => moveUnitAction(campaignId, combatId, unitId, to))} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} oddsMode={oddsMode} play={playStep} onPlayTap={play ? playNext : undefined} />
+      <Arena state={state} names={names} isGm={isGm} selId={selId} onSelect={setSelId} mine={mine} drag={drag} background={background}
+        startDrag={startDrag} draggedRef={draggedRef} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} oddsMode={oddsMode} play={playStep} onPlayTap={play ? playNext : undefined} />
 
       {/* 좌상단 HUD */}
       <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-1">
@@ -306,7 +300,6 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       {/* 우상단 버튼 */}
       <div className="absolute right-2 top-2 z-20 flex items-start gap-1">
         {state.lastRound?.length ? <IconBtn img="btn-play" label="다시 보기" onClick={() => startPlay(state.lastRound, state.units)} /> : null}
-        <IconBtn img="btn-brackets" label="격자" on={showGrid} onClick={() => setShowGrid(!showGrid)} />
         <IconBtn img="btn-pause" label="연출" on={autoCine} onClick={() => { const v = !autoCine; setAutoCine(v); autoRef.current = v; try { localStorage.setItem("limbus.cinematic", v ? "on" : "off"); } catch {} }} />
         <div className="relative">
           <IconBtn img="btn-gear" label="메뉴" on={menu} onClick={() => setMenu(!menu)} />
@@ -402,7 +395,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       </div>
 
       {/* 드래그 미리보기 */}
-      {drag && drag.payload.kind !== "token" ? (
+      {drag ? (
         <div className="pointer-events-none fixed z-50" style={{ left: drag.x + 14, top: drag.y - 10 }}>
           {preview ? (
             <div className="b-pane w-60 p-2 text-[11px]">
@@ -417,7 +410,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
           ) : null}
         </div>
       ) : null}
-      {drag && drag.payload.kind !== "token" ? <DragGhost drag={drag} state={state} loaded={loaded} dieFor={dieFor} /> : null}
+      {drag ? <DragGhost drag={drag} state={state} loaded={loaded} dieFor={dieFor} /> : null}
 
       {/* 서랍 */}
       {/* 숨길 때 transform 대신 display:none — 변형된 요소는 overflow-hidden 부모를 가로로 스크롤시킬 수 있다 */}
@@ -482,12 +475,15 @@ function Tracker({ state, names, selId, onSelect, className }: { state: CombatSt
   );
 }
 
-/* ---------- 무대 ---------- */
-function Arena({ state, names, isGm, selId, onSelect, mine, showGrid, drag, startDrag, draggedRef, disabled, onMove, loaded, activeDie, onEnemyTap, odds, oddsMode, play, onPlayTap }: {
-  state: CombatState; names: Record<string, string>; isGm: boolean; selId: string | null; onSelect: (id: string | null) => void; mine: (u: Unit) => boolean; showGrid: boolean;
+/* ---------- 무대: 림버스식 진형 (격자 없음, 비스듬한 바닥) ---------- */
+// 바닥 좌표 (u: 가로 0~1, v: 깊이 0=뒤 1=앞). 아군은 왼쪽 앞에서 뒤로 지그재그, 적은 좌우 반전
+const FORMATION: [number, number][] = [[0.17, 0.92], [0.31, 0.68], [0.43, 0.96], [0.10, 0.60], [0.47, 0.72], [0.25, 0.46], [0.37, 0.42], [0.06, 0.80], [0.20, 0.30], [0.44, 0.52]];
+
+function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, draggedRef, loaded, activeDie, onEnemyTap, odds, oddsMode, play, onPlayTap, background }: {
+  state: CombatState; names: Record<string, string>; isGm: boolean; selId: string | null; onSelect: (id: string | null) => void; mine: (u: Unit) => boolean;
   drag: { payload: DragPayload; over: DropId | null } | null; startDrag: (p: DragPayload) => (e: RPointerEvent) => void; draggedRef: React.MutableRefObject<boolean>;
-  disabled: boolean; onMove: (unitId: string, to: Pos) => void; loaded: Record<string, string>; activeDie: string | null; onEnemyTap: (t: DropId) => boolean; odds: Record<string, ReturnType<typeof estimateClash>>;
-  oddsMode: "odds" | "power" | "off"; play: PlayStep | null; onPlayTap?: () => void;
+  loaded: Record<string, string>; activeDie: string | null; onEnemyTap: (t: DropId) => boolean; odds: Record<string, ReturnType<typeof estimateClash>>;
+  oddsMode: "odds" | "power" | "off"; play: PlayStep | null; onPlayTap?: () => void; background: string | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 1200, h: 700 });
@@ -497,26 +493,24 @@ function Arena({ state, names, isGm, selId, onSelect, mine, showGrid, drag, star
     ro.observe(el); setSize({ w: el.clientWidth, h: el.clientHeight });
     return () => ro.disconnect();
   }, []);
-  const { cols, rows } = state.grid ?? { cols: 10, rows: 6 };
   const wide = size.w >= 768;
-  const padL = wide ? 100 : 8, padR = wide ? 340 : 8, padT = 70, padB = wide ? 270 : 250;
-  const cell = Math.max(30, Math.min(104, Math.floor((size.w - padL - padR) / cols), Math.floor((size.h - padT - padB) / rows)));
-  const W = cols * cell, H = rows * cell;
-  const ox = Math.max(4, Math.floor(padL + (size.w - padL - padR - W) / 2)), oy = Math.max(padT, Math.floor(padT + (size.h - padT - padB - H) / 2));
-  const gridOn = !!state.grid;
-  const posOf = (u: Unit): Pos => gridOn ? u.pos : (() => { const side = state.units.filter((x) => x.side === u.side); const i = side.indexOf(u); return { x: u.side === "ally" ? 1 : cols - 2, y: Math.min(rows - 1, Math.floor((rows - side.length) / 2) + i) }; })();
-  const center = (u: Unit) => { const p = posOf(u); return { x: ox + p.x * cell + cell / 2, y: oy + p.y * cell + cell / 2 }; };
-  const dieSize = Math.max(24, Math.min(40, Math.round(cell * 0.42)));
-  const diePos = (u: Unit, idx: number, n: number) => { const c = center(u); return { x: c.x + (idx - (n - 1) / 2) * (dieSize + 4), y: oy + posOf(u).y * cell - dieSize * 0.65 }; };
+  const padT = 60, padB = wide ? 236 : 220, padL = wide ? 90 : 4, padR = wide ? 300 : 4;
+  // 지평선(뒤)에서 앞까지의 바닥. 뒤로 갈수록 좁아지고 작아진다 (카메라를 살짝 위에서 내려다보는 림버스 앵글)
+  const floorTop = padT + (size.h - padT - padB) * 0.22, floorBot = size.h - padB;
+  const fh = Math.max(140, floorBot - floorTop), fw = Math.max(240, size.w - padL - padR), cx = padL + fw / 2;
+  const project = (u: number, v: number) => ({ x: cx + (u - 0.5) * fw * (0.6 + 0.4 * v), y: floorTop + v * fh, s: 0.72 + 0.4 * v });
+  const slotOf = (u: Unit): [number, number] => { const side = state.units.filter((x) => x.side === u.side); const i = side.indexOf(u); const [su, sv] = FORMATION[i % FORMATION.length]!; return u.side === "ally" ? [su, sv] : [1 - su, sv]; };
+  const foot = (u: Unit) => { const [su, sv] = slotOf(u); return project(su, sv); };
+  const spriteH = (u: Unit) => Math.max(80, Math.min(fh * 0.62, 260)) * foot(u).s;
+  const tokenD = (u: Unit) => Math.max(52, Math.min(fh * 0.24, 100)) * foot(u).s;
+  const bodyH = (u: Unit) => (u.spriteUrl ? spriteH(u) : tokenD(u) + 6);
+  const center = (u: Unit) => { const f = foot(u); return { x: f.x, y: f.y - bodyH(u) * 0.5 }; };
+  const headY = (u: Unit) => foot(u).y - bodyH(u);
+  const dieSize = (u: Unit) => Math.round(Math.max(26, Math.min(40, 34 * foot(u).s)));
+  const diePos = (u: Unit, idx: number, n: number) => { const f = foot(u); const ds = dieSize(u); return { x: f.x + (idx - (n - 1) / 2) * (ds + 4), y: headY(u) - ds * 0.75 }; };
   const selected = selId ? state.units.find((u) => u.id === selId) : undefined;
-  const canMove = !!selected && mine(selected) && !selected.incapacitated && !selected.staggered && !isCorroded(selected, state.round) && state.phase === "select" && gridOn;
-  const reach = useMemo(() => (canMove && selected ? reachableCells(state, selected.id) : new Map<string, number>()), [state, selected, canMove]);
-  const occupied = (x: number, y: number) => state.units.some((u) => !u.incapacitated && u.pos.x === x && u.pos.y === y);
-  const maxRange = selected ? Math.max(1, ...selected.skills.filter((s) => s.kind === "attack").map(skillRange)) : 0;
-  const draggingToken = drag?.payload.kind === "token" ? drag.payload.unitId : null;
-  const tokenReach = useMemo(() => (draggingToken ? reachableCells(state, draggingToken) : null), [state, draggingToken]);
   const slotsOf = (u: Unit) => state.slots.filter((s) => s.combatantId === u.id);
-  // 의도 선 (림버스: 적 빨강, 내 공격 하늘색 점선, 합 노랑)
+  // 의도 선 (림버스: 적 빨강, 내 공격 하늘 점선, 합 노랑)
   const lines = Object.entries(state.picks).map(([k, p]) => {
     const [uid, sl] = k.split(":"); const a = state.units.find((u) => u.id === uid); const t = state.units.find((u) => u.id === p.targetId);
     if (!a || !t || a.incapacitated) return null;
@@ -525,42 +519,87 @@ function Arena({ state, names, isGm, selId, onSelect, mine, showGrid, drag, star
     let to = center(t);
     if (p.targetSlot !== undefined) { const ts = slotsOf(t); const ti = ts.findIndex((s) => s.slot === p.targetSlot); if (ti >= 0) to = diePos(t, ti, ts.length); }
     const mutual = Object.entries(state.picks).some(([k2, p2]) => k2.startsWith(t.id + ":") && p2.targetId === a.id);
-    if (mutual && a.side === "enemy") return null; // 합은 아군 쪽 선 하나로
+    if (mutual && a.side === "enemy") return null;
     return { from, to, enemy: a.side === "enemy", mutual, protect: !!p.protect, key: k };
   }).filter(Boolean) as { from: Pos; to: Pos; enemy: boolean; mutual: boolean; protect: boolean; key: string }[];
-  const arc = (a: Pos, b: Pos) => { const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; const d = Math.hypot(b.x - a.x, b.y - a.y); const cy = my - Math.min(140, 30 + d * 0.25); return `M ${a.x} ${a.y} Q ${mx} ${cy} ${b.x} ${b.y}`; };
+  const arc = (a: Pos, b: Pos) => { const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; const d = Math.hypot(b.x - a.x, b.y - a.y); const cy = my - Math.min(160, 30 + d * 0.28); return `M ${a.x} ${a.y} Q ${mx} ${cy} ${b.x} ${b.y}`; };
   const overId = drag?.over;
-  // 연출 중: 두 유닛 사이 강조 선 + 유닛 옆 카드 위치
   const playArc = play?.arc ? (() => { const a = state.units.find((x) => x.id === play.arc!.from), b = state.units.find((x) => x.id === play.arc!.to); if (!a || !b) return null; return { d: arc(center(a), center(b)), color: play.arc!.kind === "clash" ? "#ffd54a" : play.arc!.kind === "ally" ? "#37d5ff" : "#ff3b3b" }; })() : null;
-  // 카드는 쌍의 바깥쪽(아군은 왼쪽, 적은 오른쪽)에 두어 서로 겹치지 않게 한다. 화면 밖이면 안쪽으로
-  const cardPos = (u: Unit, i: number) => { const c = center(u); const w = 176; const minL = wide ? padL : 8; let left = u.side === "ally" ? c.x - cell * 0.4 - w : c.x + cell * 0.4; if (left < minL) left = c.x + cell * 0.4; if (left + w > size.w - 8) left = Math.max(minL, c.x - cell * 0.4 - w); const top = Math.max(54, c.y - cell * 0.9 - 96 - i * 4); return { left, top, width: w }; };
+  // 연출 카드: 쌍의 바깥쪽(아군 왼쪽, 적 오른쪽). 화면·순서 트래커 밖이면 안쪽으로
+  const cardPos = (u: Unit, i: number) => { const c = center(u); const w = 176; const half = bodyH(u) * 0.45; const minL = wide ? padL : 8; let left = u.side === "ally" ? c.x - half - w : c.x + half; if (left < minL) left = c.x + half; if (left + w > size.w - 8) left = Math.max(minL, c.x - half - w); const top = Math.max(54, headY(u) - 100 - i * 4); return { left, top, width: w }; };
   const powerRange = (s: Skill) => { const lo = s.basePower + Math.min(0, s.coinPower) * s.coinCount, hi = s.basePower + Math.max(0, s.coinPower) * s.coinCount; return lo === hi ? `${hi}` : `${Math.max(0, lo)}-${hi}`; };
+  const ordered = [...state.units].sort((a, b) => foot(a).y - foot(b).y); // 뒤 → 앞
 
   return (
     <div ref={ref} className="b-canvas absolute inset-0 overflow-hidden" onClick={(e) => { if (onPlayTap) { onPlayTap(); return; } if (e.target === e.currentTarget) onSelect(null); }}>
-      <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${BACKGROUNDS.backstreet})`, filter: "brightness(.42) saturate(.75)" }} />
-      <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 30%, rgba(0,0,0,.55) 100%), linear-gradient(180deg, rgba(0,0,0,.6) 0%, rgba(0,0,0,.05) 25%, rgba(0,0,0,.1) 65%, rgba(0,0,0,.85) 100%)" }} />
+      <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${background ?? BACKGROUNDS.underground})`, filter: "brightness(.78) saturate(.9)" }} />
+      <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.05) 28%, rgba(0,0,0,0) 55%, rgba(0,0,0,.75) 100%)" }} />
+      {/* 바닥 조명: 진형 아래 타원 빛 */}
+      <div className="pointer-events-none absolute" style={{ left: padL, width: fw, top: floorTop, height: fh, background: "radial-gradient(ellipse at 50% 60%, rgba(255,235,200,.10) 0%, rgba(255,235,200,.03) 45%, rgba(0,0,0,0) 70%)" }} />
       <svg className="absolute inset-0" width={size.w} height={size.h}>
         <defs>
-          <pattern id="bgrid" x={ox} y={oy} width={cell} height={cell} patternUnits="userSpaceOnUse"><path d={`M ${cell} 0 L 0 0 0 ${cell}`} fill="none" stroke="rgba(217,179,91,.2)" strokeWidth="1" /></pattern>
           {[["red", "#ff3b3b"], ["cyan", "#37d5ff"], ["gold", "#ffd54a"], ["white", "#f5e6b5"]].map(([n, c]) => <marker key={n} id={`arr-${n}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill={c} /></marker>)}
         </defs>
-        {showGrid && gridOn ? (<><rect x={ox} y={oy} width={W} height={H} fill="rgba(10,6,6,.3)" /><rect x={ox} y={oy} width={W} height={H} fill="url(#bgrid)" /><rect x={ox + 0.5} y={oy + 0.5} width={W - 1} height={H - 1} fill="none" stroke="rgba(217,179,91,.45)" /></>) : null}
-        {canMove && selected ? Array.from({ length: rows }).map((_, y) => Array.from({ length: cols }).map((_, x) => {
-          const inR = dist(selected.pos, { x, y }) <= maxRange; const cost = reach.get(`${x},${y}`);
-          if (!inR && cost === undefined) return null;
-          return <rect key={`${x},${y}`} x={ox + x * cell + 1} y={oy + y * cell + 1} width={cell - 2} height={cell - 2} fill={inR ? "rgba(210,36,43,.16)" : "rgba(79,179,116,.06)"} />;
-        })) : null}
+        {/* 발밑 그림자 */}
+        {ordered.map((u) => { const f = foot(u); const d = tokenD(u); return <ellipse key={`sh-${u.id}`} cx={f.x} cy={f.y} rx={d * 0.62} ry={d * 0.17} fill="rgba(0,0,0,.55)" />; })}
+        {selected ? (() => { const f = foot(selected); const d = tokenD(selected); return <ellipse cx={f.x} cy={f.y} rx={d * 0.7} ry={d * 0.2} fill="none" stroke="#ffd54a" strokeWidth={2} className="b-pulse" />; })() : null}
         {lines.map((l) => { const color = l.mutual ? "#ffd54a" : l.enemy ? "#ff3b3b" : l.protect ? "#f5e6b5" : "#37d5ff"; const mk = l.mutual ? "gold" : l.enemy ? "red" : l.protect ? "white" : "cyan";
           return (
             <g key={l.key} opacity={play ? 0.18 : 1}>
               <path d={arc(l.from, l.to)} fill="none" stroke="rgba(0,0,0,.6)" strokeWidth={l.mutual ? 5 : 4} />
               <path d={arc(l.from, l.to)} fill="none" stroke={color} strokeWidth={l.mutual ? 2.6 : 2} strokeDasharray={l.enemy || l.mutual ? undefined : "7 5"} markerEnd={`url(#arr-${mk})`} />
-              {l.mutual ? <g transform={`translate(${(l.from.x + l.to.x) / 2},${(l.from.y + l.to.y) / 2 - Math.min(140, 30 + Math.hypot(l.to.x - l.from.x, l.to.y - l.from.y) * 0.25) / 2})`}><circle r={11} fill="#0b0707" stroke="#ffd54a" /><text textAnchor="middle" dy="4" fontSize="11" fontWeight="700" fill="#ffd54a">합</text></g> : null}
+              {l.mutual ? <g transform={`translate(${(l.from.x + l.to.x) / 2},${(l.from.y + l.to.y) / 2 - Math.min(160, 30 + Math.hypot(l.to.x - l.from.x, l.to.y - l.from.y) * 0.28) / 2})`}><circle r={11} fill="#0b0707" stroke="#ffd54a" /><text textAnchor="middle" dy="4" fontSize="11" fontWeight="700" fill="#ffd54a">합</text></g> : null}
             </g>
           ); })}
         {playArc ? (<g><path d={playArc.d} fill="none" stroke={playArc.color} strokeWidth={9} opacity={0.25} /><path d={playArc.d} fill="none" stroke="#fff" strokeWidth={3.5} opacity={0.9} /><path d={playArc.d} fill="none" stroke={playArc.color} strokeWidth={2} className="b-arc-flow" /></g>) : null}
       </svg>
+      {/* 유닛 (뒤 → 앞 순서로 겹침) */}
+      {ordered.map((u) => { const f = foot(u); const isSel = u.id === selId; const over = overId && overId.kind === "unit" && overId.unitId === u.id; const d = tokenD(u); const sh = spriteH(u);
+        return (
+          <div key={u.id} className={`absolute ${u.incapacitated ? "opacity-40 grayscale" : ""}`} style={{ left: f.x, top: f.y, width: 0, height: 0 }}>
+            <button type="button" data-drop={u.side === "enemy" ? `unit|${u.id}` : undefined}
+              onClick={() => { if (draggedRef.current) return; if (u.side === "enemy" && !u.incapacitated && onEnemyTap({ kind: "unit", unitId: u.id })) { onSelect(u.id); return; } onSelect(isSel ? null : u.id); }} title={names[u.id]}
+              className="absolute bottom-0 left-0 flex -translate-x-1/2 items-end justify-center" style={{ width: u.spriteUrl ? sh * 0.6 : d, height: u.spriteUrl ? sh : d }}>
+              {u.spriteUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={u.spriteUrl} alt="" draggable={false} className={`pointer-events-none absolute bottom-0 left-1/2 w-auto max-w-none object-contain drop-shadow-[0_8px_12px_rgba(0,0,0,.9)] ${over ? "brightness-125" : ""}`} style={{ height: sh, transform: `translateX(-50%)${u.side === "enemy" ? " scaleX(-1)" : ""}` }} />
+              ) : (
+                <span className={`relative block overflow-hidden rounded-full ${over ? "ring-2 ring-red-400" : ""}`} style={{ width: d, height: d, border: `3px solid ${u.side === "ally" ? "rgba(217,179,91,.95)" : "rgba(224,75,82,.95)"}`, background: "rgba(10,6,6,.9)", boxShadow: "0 6px 14px rgba(0,0,0,.8)" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {u.portraitUrl ? <img src={u.portraitUrl} alt="" draggable={false} className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center text-lg font-bold">{u.name.slice(0, 1)}</span>}
+                </span>
+              )}
+              {over ? <span className="pointer-events-none absolute -inset-1 rounded-full" style={{ boxShadow: "0 0 0 2px #ff3b3b, 0 0 18px rgba(255,59,59,.8)" }} /> : null}
+            </button>
+            {/* 체력·이름 */}
+            <div className="pointer-events-none absolute left-0 top-1 w-28 -translate-x-1/2 text-center">
+              <span className="mx-auto block h-1.5 w-[70%] overflow-hidden bg-black/70"><span className="block h-full" style={{ width: `${Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100))}%`, background: u.side === "ally" ? "linear-gradient(90deg,#2f7a4a,#4fb374)" : "linear-gradient(90deg,#7a0f13,#e04b52)" }} /></span>
+              <span className="block truncate text-[10px] leading-tight" style={{ textShadow: "0 1px 2px #000, 0 0 4px #000" }}>{names[u.id]}{u.side === "ally" && !u.sanityLocked ? <span className="text-sky-300"> {u.sanity > 0 ? "+" : ""}{u.sanity}</span> : null}</span>
+            </div>
+            {u.staggered ? <span className="pointer-events-none absolute left-0 -translate-x-1/2 bg-yellow-400 px-1 text-[9px] font-black text-black" style={{ top: -bodyH(u) * 0.5 }}>흐트러짐</span> : null}
+            {isCorroded(u, state.round) ? <span className="pointer-events-none absolute left-0 -translate-x-1/2 bg-red-700 px-1 text-[9px] font-black text-white" style={{ top: -bodyH(u) * 0.5 }}>침식</span> : null}
+          </div>
+        ); })}
+      {/* 속도 다이스 (머리 위) */}
+      {ordered.filter((u) => !u.incapacitated).map((u) => { const ss = slotsOf(u); if (!ss.length) return null; const my = mine(u) && u.side === "ally"; const ds = dieSize(u);
+        return ss.map((s, i) => { const key = slotKey(u.id, s.slot); const p = state.picks[key]; const sk = p ? u.skills.find((x) => x.id === p.skillId) : (my && loaded[key] ? u.skills.find((x) => x.id === loaded[key]) : undefined); const dp = diePos(u, i, ss.length);
+          const over = overId?.kind === "slot" && overId.unitId === u.id && overId.slot === s.slot;
+          const hidden = u.side === "enemy" && !isGm; const o = odds[key];
+          return (
+            <button key={key} type="button" data-drop={u.side === "enemy" ? `slot|${u.id}|${s.slot}` : undefined} onPointerDown={my && sk && !p?.locked && state.phase === "select" ? startDrag({ kind: "die", unitId: u.id, slot: s.slot }) : undefined}
+              onClick={() => { if (draggedRef.current) return; if (u.side === "enemy" && onEnemyTap({ kind: "slot", unitId: u.id, slot: s.slot })) { onSelect(u.id); return; } onSelect(u.id); }} title={`${names[u.id]} 속도 ${s.speed}${sk ? ` · ${hidden ? "???" : sk.name}${p ? ` → ${names[p.targetId]}` : " (대상 없음)"}` : ""}`}
+              className={`absolute -translate-x-1/2 -translate-y-1/2 ${my && sk ? "touch-none cursor-grab" : ""}`} style={{ left: dp.x, top: dp.y, width: ds, height: ds }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={ui(u.side === "enemy" ? "hept-rune" : "hex-frame")} alt="" draggable={false} className={`absolute inset-0 h-full w-full ${activeDie === key ? "drop-shadow-[0_0_6px_#fff]" : ""}`} style={u.side === "enemy" ? undefined : { filter: "sepia(1) saturate(2) hue-rotate(5deg) brightness(1.05)" }} />
+              {!sk ? <span className="absolute inset-[22%] rounded-full" style={{ background: u.side === "enemy" ? "#2a0d0f" : "#1a1410" }} /> : null}
+              {sk ? <span className="absolute inset-[16%]"><SkillChip skill={sk} size={Math.round(ds * 0.68)} bare /></span> : null}
+              {over ? <span className="absolute -inset-1 rounded-full" style={{ boxShadow: "0 0 0 2px #fff, 0 0 16px #ff3b3b" }} /> : null}
+              <span className="absolute -left-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-sm px-0.5 text-[10px] font-black leading-none text-white" style={{ background: u.side === "enemy" ? "#b3161c" : "#2d6fb3", border: "1px solid #0008" }}>{s.speed}</span>
+              {p?.protect ? <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-amber-200 px-0.5 text-[7px] font-black text-black">보호</span> : null}
+              {o ? <span className={`absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm bg-black/80 px-1 text-[9px] font-bold ${oddsColor(o.label)}`}>{oddsMode === "power" ? `${o.aPower} : ${o.bPower}` : `${o.label} ${Math.round(o.winRate * 100)}%`}</span> : null}
+              {!o && sk ? <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] tabular-nums" style={{ color: u.side === "enemy" ? "#ffb3b3" : "#bfe9ff", textShadow: "0 1px 2px #000" }}>{powerRange(sk)}</span> : null}
+            </button>
+          ); }); })}
       {/* 연출 카드 (유닛 옆) */}
       {play ? play.cards.map((cd, i) => { const u = state.units.find((x) => x.id === cd.unitId); if (!u) return null; const p = cardPos(u, i); const ally = u.side === "ally";
         return (
@@ -571,69 +610,11 @@ function Arena({ state, names, isGm, selId, onSelect, mine, showGrid, drag, star
             {cd.sub ? <div className="px-2 pb-1 text-center text-[10px]" style={{ color: cd.tone === "dim" ? "#8a8078" : "#e9dcc2" }}>{cd.sub}</div> : <div className="pb-1" />}
           </div>
         ); }) : null}
-      {/* 이동 칸 */}
-      {gridOn && ((canMove && selected) || tokenReach) ? Array.from((tokenReach ?? reach).entries()).map(([k, cost]) => { if (cost === 0) return null; const [x, y] = k.split(",").map(Number) as [number, number]; if (occupied(x, y)) return null;
-        const over = overId?.kind === "cell" && overId.x === x && overId.y === y;
-        return <button key={k} type="button" data-drop={`cell|${x}|${y}`} disabled={disabled} title={`이동 ${cost}칸`} onClick={() => { if (!draggedRef.current && selected) onMove(selected.id, { x, y }); }}
-          className={`group absolute flex items-end justify-end p-0.5 text-[9px] text-emerald-200/80 hover:bg-emerald-400/25 ${over ? "bg-emerald-400/30" : ""}`} style={{ left: ox + x * cell, top: oy + y * cell, width: cell, height: cell }}><span className="opacity-0 group-hover:opacity-100">{cost}</span></button>; }) : null}
-      {/* 토큰 */}
-      {state.units.map((u) => { const p = posOf(u); const isSel = u.id === selId; const my = mine(u); const draggable = my && u.side === "ally" && !u.incapacitated && !u.staggered && state.phase === "select" && gridOn;
-        const over = overId && overId.kind === "unit" && overId.unitId === u.id;
-        const sprite = u.spriteUrl; const tokenH = sprite ? cell * 1.55 : cell - 8;
-        return (
-          <div key={u.id} className={`absolute ${u.incapacitated ? "opacity-40 grayscale" : ""}`} style={{ left: ox + p.x * cell, top: oy + p.y * cell, width: cell, height: cell }}>
-            <button type="button" data-drop={u.side === "enemy" ? `unit|${u.id}` : undefined} onPointerDown={draggable ? startDrag({ kind: "token", unitId: u.id }) : undefined}
-              onClick={() => { if (draggedRef.current) return; if (u.side === "enemy" && !u.incapacitated && onEnemyTap({ kind: "unit", unitId: u.id })) { onSelect(u.id); return; } onSelect(isSel ? null : u.id); }} title={names[u.id]}
-              className={`absolute bottom-1 left-1/2 flex -translate-x-1/2 items-end justify-center ${draggable ? "touch-none cursor-grab" : ""}`} style={{ width: cell - 4, height: cell - 8 }}>
-              {sprite ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={sprite} alt="" draggable={false} className={`pointer-events-none absolute bottom-0 left-1/2 w-auto max-w-none object-contain drop-shadow-[0_6px_10px_rgba(0,0,0,.9)] ${over ? "brightness-125" : ""}`} style={{ height: tokenH, transform: `translateX(-50%)${u.side === "enemy" ? " scaleX(-1)" : ""}` }} />
-              ) : (
-                <span className={`relative block overflow-hidden rounded-full ${over ? "ring-2 ring-red-400" : ""}`} style={{ width: cell - 12, height: cell - 12, border: `2px solid ${u.side === "ally" ? "rgba(217,179,91,.95)" : "rgba(224,75,82,.95)"}`, background: "rgba(10,6,6,.85)" }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {u.portraitUrl ? <img src={u.portraitUrl} alt="" draggable={false} className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center text-base font-bold">{u.name.slice(0, 1)}</span>}
-                </span>
-              )}
-              {isSel ? <span className="pointer-events-none absolute -inset-1 rounded-full" style={{ boxShadow: "0 0 0 2px #d9b35b, 0 0 18px rgba(217,179,91,.6)" }} /> : null}
-              {over ? <span className="pointer-events-none absolute -inset-1 rounded-full" style={{ boxShadow: "0 0 0 2px #ff3b3b, 0 0 18px rgba(255,59,59,.8)" }} /> : null}
-            </button>
-            <div className="pointer-events-none absolute -bottom-4 left-0 right-0 text-center">
-              <span className="mx-auto block h-1.5 w-[86%] overflow-hidden bg-black/70"><span className="block h-full" style={{ width: `${Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100))}%`, background: u.side === "ally" ? "linear-gradient(90deg,#2f7a4a,#4fb374)" : "linear-gradient(90deg,#7a0f13,#e04b52)" }} /></span>
-              {cell >= 44 ? <span className="block truncate text-[9px] leading-tight" style={{ textShadow: "0 1px 2px #000" }}>{names[u.id]}{u.side === "ally" && !u.sanityLocked ? <span className="text-sky-300"> {u.sanity > 0 ? "+" : ""}{u.sanity}</span> : null}</span> : null}
-            </div>
-            {u.staggered ? <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-yellow-400 px-1 text-[9px] font-black text-black">흐트러짐</span> : null}
-            {isCorroded(u, state.round) ? <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-red-700 px-1 text-[9px] font-black text-white">침식</span> : null}
-          </div>
-        ); })}
-      {/* 속도 다이스 */}
-      {state.units.filter((u) => !u.incapacitated).map((u) => { const ss = slotsOf(u); if (!ss.length) return null; const my = mine(u) && u.side === "ally";
-        return ss.map((s, i) => { const key = slotKey(u.id, s.slot); const p = state.picks[key]; const sk = p ? u.skills.find((x) => x.id === p.skillId) : (my && loaded[key] ? u.skills.find((x) => x.id === loaded[key]) : undefined); const d = diePos(u, i, ss.length);
-          const over = overId?.kind === "slot" && overId.unitId === u.id && overId.slot === s.slot;
-          const hidden = u.side === "enemy" && !isGm; const o = odds[key];
-          return (
-            <button key={key} type="button" data-drop={u.side === "enemy" ? `slot|${u.id}|${s.slot}` : undefined} onPointerDown={my && sk && !p?.locked && state.phase === "select" ? startDrag({ kind: "die", unitId: u.id, slot: s.slot }) : undefined}
-              onClick={() => { if (draggedRef.current) return; if (u.side === "enemy" && onEnemyTap({ kind: "slot", unitId: u.id, slot: s.slot })) { onSelect(u.id); return; } onSelect(u.id); }} title={`${names[u.id]} 속도 ${s.speed}${sk ? ` · ${hidden ? "???" : sk.name}${p ? ` → ${names[p.targetId]}` : " (대상 없음)"}` : ""}`}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 ${my && sk ? "touch-none cursor-grab" : ""}`} style={{ left: d.x, top: d.y, width: dieSize, height: dieSize }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={ui(u.side === "enemy" ? "hept-rune" : sk ? "hex-frame" : "hex-frame")} alt="" draggable={false} className={`absolute inset-0 h-full w-full ${activeDie === key ? "drop-shadow-[0_0_6px_#fff]" : ""}`} style={u.side === "enemy" ? undefined : { filter: "sepia(1) saturate(2) hue-rotate(5deg) brightness(1.05)" }} />
-              {!sk ? <span className="absolute inset-[22%] rounded-full" style={{ background: u.side === "enemy" ? "#2a0d0f" : "#1a1410" }} /> : null}
-              {sk ? <span className="absolute inset-[16%]"><SkillChip skill={sk} size={Math.round(dieSize * 0.68)} bare /></span> : null}
-              {over ? <span className="absolute -inset-1 rounded-full" style={{ boxShadow: "0 0 0 2px #fff, 0 0 16px #ff3b3b" }} /> : null}
-              <span className="absolute -left-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-sm px-0.5 text-[10px] font-black leading-none text-white" style={{ background: u.side === "enemy" ? "#b3161c" : "#2d6fb3", border: "1px solid #0008" }}>{s.speed}</span>
-              {p?.protect ? <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-amber-200 px-0.5 text-[7px] font-black text-black">보호</span> : null}
-              {o ? <span className={`absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm bg-black/80 px-1 text-[9px] font-bold ${oddsColor(o.label)}`}>{oddsMode === "power" ? `${o.aPower} : ${o.bPower}` : `${o.label} ${Math.round(o.winRate * 100)}%`}</span> : null}
-              {!o && sk ? <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] tabular-nums" style={{ color: u.side === "enemy" ? "#ffb3b3" : "#bfe9ff", textShadow: "0 1px 2px #000" }}>{powerRange(sk)}</span> : null}
-            </button>
-          ); }); })}
-      <div className="pointer-events-none absolute bottom-9 left-2 hidden text-[10px] md:block" style={{ color: "var(--b-muted)" }}>
-        {selected ? `${selected.name} · 이동력 ${selected.move ?? 0} · 최대 사거리 ${maxRange}칸${canMove ? " · 초록 칸을 누르거나 토큰을 끌어 이동" : ""}` : ""}
-      </div>
     </div>
   );
 }
 
 function DragGhost({ drag, state, loaded, dieFor }: { drag: { payload: DragPayload; x: number; y: number }; state: CombatState; loaded: Record<string, string>; dieFor: (unitId: string) => number | undefined }) {
-  if (drag.payload.kind === "token") return null;
   const unit = state.units.find((u) => u.id === drag.payload.unitId); if (!unit) return null;
   const slot = drag.payload.kind === "die" ? drag.payload.slot : dieFor(unit.id);
   const skillId = drag.payload.kind === "skill" ? drag.payload.skillId : slot !== undefined ? (loaded[slotKey(unit.id, slot)] ?? state.picks[slotKey(unit.id, slot)]?.skillId) : undefined;
@@ -690,13 +671,12 @@ function SkillPicker({ unit, slot, state, loaded, startDrag, onPick, onClose, ta
     const used = s.ego ? (unit.egoUsed?.[s.id] ?? 0) : 0; const blocked = corroded || (s.ego ? used >= s.ego.usesPerCombat : false); const on = cur === s.id;
     return (
       <button key={`${s.id}-${idx}`} type="button" disabled={blocked} onPointerDown={blocked ? undefined : startDrag({ kind: "skill", unitId: unit.id, skillId: s.id })} onClick={() => onPick(s)}
-        title={`${s.name} · ${SIN_LABEL[s.sin]} · ${powerText(s)} · ${rangeLabel(s)}${s.effectText ? `\n${s.effectText}` : ""}`}
+        title={`${s.name} · ${SIN_LABEL[s.sin]} · ${powerText(s)}${s.effectText ? `\n${s.effectText}` : ""}`}
         className={`relative flex w-[4.6rem] shrink-0 touch-none cursor-grab flex-col items-center gap-0.5 px-1 py-1 text-[10px] disabled:cursor-not-allowed disabled:opacity-35 ${on ? "b-pick-on" : "hover:bg-white/5"}`}>
         {idx !== null ? <span className="absolute left-1 top-0.5 flex h-4 w-4 items-center justify-center rounded-sm bg-black/80 text-[10px] font-black text-amber-300 ring-1 ring-amber-300/60">{idx}</span> : null}
         <SkillChip skill={s} size={44} selected={on} />
         <span className="w-full truncate text-center leading-tight">{s.name}</span>
         <span className="b-muted flex items-center gap-0.5 tabular-nums">{s.basePower}{s.coinPower >= 0 ? "+" : ""}{s.coinPower}<span className="inline-flex">{Array.from({ length: Math.min(s.coinCount, 6) }).map((_, j) => <CoinIcon key={j} heads size={8} />)}</span></span>
-        <span className="rounded-sm px-1 text-[9px]" style={{ background: "#2a1d12", color: "#e3c27a", border: "1px solid #7a5a2a" }}>{rangeLabel(s)}</span>
         {s.ego ? <span className="b-gold leading-none">E.G.O {used}/{s.ego.usesPerCombat}</span> : null}
       </button>
     );
@@ -836,7 +816,7 @@ function UnitCard({ u, state, isGm, names, rules, campaignId, combatId, onApply,
     </div>
   );
   const skillRow = (s: Skill) => (
-    <div key={s.id} className="flex items-center gap-2 text-[11px]"><SkillChip skill={s} size={26} /><span className="min-w-0 flex-1"><span className="font-semibold">{s.name}</span> <span className="b-muted">{powerText(s)} · {rangeLabel(s)}</span>{s.effectText ? <span className="b-muted block truncate">{s.effectText}</span> : null}</span></div>
+    <div key={s.id} className="flex items-center gap-2 text-[11px]"><SkillChip skill={s} size={26} /><span className="min-w-0 flex-1"><span className="font-semibold">{s.name}</span> <span className="b-muted">{powerText(s)}</span>{s.effectText ? <span className="b-muted block truncate">{s.effectText}</span> : null}</span></div>
   );
   return (
     <div className="b-pane text-xs">

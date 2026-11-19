@@ -10,7 +10,7 @@
 # 필터 정규식은 아래 Filters 목록에서 고친다. 목록(index.json)의 container 경로를 보고 맞추면 된다.
 param(
   [string]$Game = "C:\Program Files (x86)\Steam\steamapps\common\Limbus Company",
-  [string]$Cache = "$env:USERPROFILE\AppData\LocalLow\ProjectMoon\LimbusCompany",
+  [string[]]$Cache = @(),   # 비우면 LocalLow 아래 후보를 자동으로 찾는다
   [string]$Out = "$PSScriptRoot\extracted",
   [string]$UnityVersion = "",
   [switch]$ListOnly,
@@ -21,10 +21,23 @@ $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 if (-not (Test-Path $Game)) { throw "게임 폴더가 없습니다: $Game  (-Game 로 지정)" }
-if (-not (Test-Path $Cache)) {
-  Write-Warning "캐시 폴더가 없습니다: $Cache  — LocalLow 안에서 __data 파일을 찾아보세요. 게임 폴더만으로 진행합니다."
-  $Cache = ""
+if ($Cache.Count -eq 0) {
+  # Unity 기본 캐시(LocalLow\Unity\<회사>_<제품>)에 Addressables 번들(__data)이 쌓인다. 그 외 후보도 함께.
+  $low = "$env:USERPROFILE\AppData\LocalLow"
+  $Cache = @(
+    "$low\Unity\ProjectMoon_LimbusCompany",
+    "$low\ProjectMoon\LimbusCompany"
+  ) | Where-Object { Test-Path $_ }
+  # 그래도 __data 가 하나도 없으면 LocalLow 전체에서 __data 가 있는 최상위 폴더를 찾는다
+  $hasData = $Cache | Where-Object { Get-ChildItem $_ -Recurse -Filter __data -ErrorAction SilentlyContinue | Select-Object -First 1 }
+  if (-not $hasData) {
+    $found = Get-ChildItem $low -Recurse -Filter __data -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "(?i)limbus" } | Select-Object -First 1
+    if ($found) { $Cache += $found.Directory.Parent.FullName }
+  }
 }
+$Cache = @($Cache | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique)
+if ($Cache.Count -eq 0) { Write-Warning "캐시 폴더를 못 찾았습니다. 게임 폴더만으로 진행합니다. (-Cache 로 지정 가능)" }
+else { Write-Host "캐시 폴더: $($Cache -join ' ; ')" }
 
 # 가상환경 + UnityPy
 if (-not (Test-Path ".venv\Scripts\python.exe")) {
@@ -35,7 +48,7 @@ $py = ".\.venv\Scripts\python.exe"
 & $py -m pip install -q -r requirements.txt
 
 $common = @("--game", $Game)
-if ($Cache) { $common += @("--cache", $Cache) }
+foreach ($c in $Cache) { $common += @("--cache", $c) }
 if ($UnityVersion) { $common += @("--unity-version", $UnityVersion) }
 
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
@@ -53,7 +66,7 @@ if ($ListOnly) { Write-Host "목록만 뽑았습니다. $Out\summary.txt 를 보
 function Extract-Banks {
   $bankDir = Join-Path $Out "music\bank"
   $banks = @(Get-ChildItem -Path $Game -Recurse -Filter *.bank -ErrorAction SilentlyContinue)
-  if ($Cache) { $banks += @(Get-ChildItem -Path $Cache -Recurse -Filter *.bank -ErrorAction SilentlyContinue) }
+  foreach ($c in $Cache) { $banks += @(Get-ChildItem -Path $c -Recurse -Filter *.bank -ErrorAction SilentlyContinue) }
   if ($banks.Count -eq 0) { Write-Host "FMOD .bank 파일이 없습니다."; return }
   New-Item -ItemType Directory -Force -Path $bankDir | Out-Null
   $banks | ForEach-Object { "$($_.Length)`t$($_.FullName)" } | Set-Content (Join-Path $bankDir "banks.txt")

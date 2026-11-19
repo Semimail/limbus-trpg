@@ -13,7 +13,8 @@ pip install -r requirements.txt
 - 설치 폴더(스팀 기본): `C:\Program Files (x86)\Steam\steamapps\common\Limbus Company\`
   - `LimbusCompany_Data\sharedassets*.assets`, `resources.assets`, `*.resource`(오디오 원본), `globalgamemanagers`
   - `LimbusCompany_Data\StreamingAssets\aa\...\*.bundle` (Addressables 로컬 번들)
-- 런타임 다운로드 캐시(대부분의 캐릭터·배경·UI·음악은 여기): `%USERPROFILE%\AppData\LocalLow\ProjectMoon\LimbusCompany\` 아래 (`com.unity.addressables` 폴더 또는 해시 이름 폴더의 `__data`). 폴더명이 다르면 `LocalLow` 안에서 `__data` 파일을 검색해 찾는다.
+- 런타임 다운로드 캐시(캐릭터·배경 대부분): Unity 기본 캐시 `%USERPROFILE%\AppData\LocalLow\Unity\ProjectMoon_LimbusCompany\` 아래 해시 이름 폴더의 `__data`. (`LocalLow\ProjectMoon\LimbusCompany`는 저장 데이터뿐이라 번들이 없다.) `run-windows.ps1`은 `-Cache`를 비우면 이 후보들을 자동으로 찾고, 없으면 LocalLow 전체에서 `__data`를 검색한다.
+- 실측(2026-11-19): 설치 폴더 기본 에셋(resources/sharedassets)에 UI·아이콘이 대부분 있다(mainui 2.5천, battleui 677, icon 257, skill 356 스프라이트). 음악·효과음은 `StreamingAssets\Assets\Sound\FMODBuilds\Desktop\*.bank`(BGM_Default*.bank 등 761개).
 
 ## 3. 한 번에 돌리기 (권장)
 PowerShell에서 아래 한 줄이면 가상환경 설치 → 전체 목록(`extracted\list\index.json` + `summary.txt`) → UI·아이콘(`ui\`) / 배경(`bg\`) / 음악(`music\`) 추출까지 이어서 한다.

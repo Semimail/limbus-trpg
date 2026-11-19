@@ -69,6 +69,21 @@ def main() -> int:
         print("\n입력 루트")
         for r in st.get("roots", []):
             print(f"  {'OK ' if r['exists'] else '없음'} {r['path']}  ({r['files']}개 파일)")
+        files = st.get("files", [])
+        if files:
+            by = Counter(f.get("status", "?") for f in files)
+            print(f"\n입력 파일 {len(files)}개 처리 결과: " + ", ".join(f"{k} {v}" for k, v in by.most_common()))
+            zero = [f for f in files if f.get("status") == "ok" and not f.get("objects")]
+            if zero:
+                print(f"  읽혔지만 오브젝트 0개: {len(zero)}개")
+            errs = Counter((f.get("status"), (f.get("error") or "")[:120]) for f in files if f.get("error"))
+            for (stt, msg), n in errs.most_common(8):
+                print(f"  {n:>5}× {stt}: {msg}")
+            magics = Counter(repr(f.get("magic", ""))[:12] for f in files)
+            print("  파일 머리글(magic)별: " + ", ".join(f"{m} {n}" for m, n in magics.most_common(6)))
+            print("  오브젝트가 많은 파일:")
+            for f in sorted(files, key=lambda f: -(f.get("objects") or 0))[:12]:
+                print(f"    {f.get('objects') or 0:>6} obj / {f.get('picked') or 0:>5} 선택  {Path(f['path']).parent.name}/{Path(f['path']).name}  {f.get('types')}")
         banks = st.get("banks", [])
         print(f"\nFMOD .bank 파일 {len(banks)}개 (음악·효과음은 여기에 있음)")
         for b in banks[: args.top]:

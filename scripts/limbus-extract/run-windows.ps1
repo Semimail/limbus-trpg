@@ -52,6 +52,7 @@ foreach ($c in $Cache) { $common += @("--cache", $c) }
 if ($UnityVersion) { $common += @("--unity-version", $UnityVersion) }
 
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
+Start-Transcript -Path (Join-Path $Out "run.log") -Append | Out-Null
 
 # 1) 목록
 $listDir = Join-Path $Out "list"
@@ -60,7 +61,7 @@ if (-not $SkipList) {
   & $py extract.py @common --out $listDir --list
   & $py summarize.py (Join-Path $listDir "index.json") --depth 3 | Tee-Object -FilePath (Join-Path $Out "summary.txt")
 }
-if ($ListOnly) { Write-Host "목록만 뽑았습니다. $Out\summary.txt 를 보고 필터를 정하세요."; exit 0 }
+if ($ListOnly) { Write-Host "목록만 뽑았습니다. $Out\summary.txt 를 보고 필터를 정하세요."; Stop-Transcript | Out-Null; exit 0 }
 
 # FMOD .bank → wav (림버스 음악·효과음은 Unity AudioClip 이 아니라 FMOD 뱅크에 들어 있다)
 function Extract-Banks {
@@ -93,6 +94,7 @@ if ($All) {
   Extract-Banks
   Write-Host ""
   Write-Host "완료. $dir\sprite, $dir\tex, $dir\text, $dir\font / $Out\music\bank"
+  Stop-Transcript | Out-Null
   exit 0
 }
 
@@ -117,3 +119,4 @@ Write-Host "완료. 결과: $Out"
 Write-Host "  list\index.json  전체 목록 / summary.txt 요약"
 Write-Host "  ui\sprite, ui\tex / bg\tex / music\audio  (.fsb 가 있으면 vgmstream-cli -o out.wav in.fsb)"
 Write-Host "필터가 안 맞으면 summary.txt 의 container 경로를 보고 run-windows.ps1 의 `$Filters 를 고쳐 -SkipList 로 다시 돌리세요."
+Stop-Transcript | Out-Null

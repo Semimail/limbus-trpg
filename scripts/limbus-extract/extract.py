@@ -208,7 +208,7 @@ def main() -> int:
         ap.error("--game / --cache / --file 중 하나는 필요합니다")
     want = {t.strip() for t in args.types.split(",") if t.strip()}
     matcher = re.compile(args.match) if args.match else None
-    stats: dict = {"roots": [], "banks": []}
+    stats: dict = {"roots": [], "banks": [], "files": []}
     for r in roots:
         n = len(iter_input_files([r])) if r.exists() else None
         stats["roots"].append({"path": str(r), "exists": r.exists(), "files": n})
@@ -226,15 +226,34 @@ def main() -> int:
         UnityPy.config.FALLBACK_UNITY_VERSION = args.unity_version
 
     for i, f in enumerate(files, 1):
+        rec = {"path": str(f), "bytes": f.stat().st_size}
+        stats["files"].append(rec)
         try:
+            with open(f, "rb") as fh:
+                rec["magic"] = fh.read(8).decode("latin-1")
             env = UnityPy.load(str(f))
         except Exception as e:
+            rec["status"] = "load_error"
+            rec["error"] = repr(e)[:300]
             print(f"[{i}/{len(files)}] 건너뜀 {f}: {e}", file=sys.stderr)
             continue
         before = len(index)
-        for obj in env.objects:
-            export_obj(obj, args.out, want, matcher, index, args.list)
+        total = 0
+        types: dict[str, int] = {}
+        try:
+            for obj in env.objects:
+                total += 1
+                types[obj.type.name] = types.get(obj.type.name, 0) + 1
+                export_obj(obj, args.out, want, matcher, index, args.list)
+            rec["status"] = "ok"
+        except Exception as e:
+            rec["status"] = "iter_error"
+            rec["error"] = repr(e)[:300]
+            print(f"[{i}/{len(files)}] 오류 {f}: {e}", file=sys.stderr)
         got = len(index) - before
+        rec["objects"] = total
+        rec["picked"] = got
+        rec["types"] = dict(sorted(types.items(), key=lambda kv: -kv[1])[:8])
         if got:
             print(f"[{i}/{len(files)}] {f.name}: {got}개", file=sys.stderr)
 

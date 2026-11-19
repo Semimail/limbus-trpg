@@ -123,7 +123,8 @@
 - **포즈 이미지 + 연출 강화(2026-11-20, 사용자 "2번까지 가는 게 좋을 것 같은데")**: 마이그레이션 0012 — `sprite_jobs.pose`(idle/attack/hit/evade/down/win)·`parent_job_id`. 로그의 완료된 대기 이미지에서 "포즈 생성"(포즈당 호출 1회, 대기 결과를 참고 이미지로 `buildPosePrompt`). 결과는 적/캐릭터 `data.spritePoses`에 병합(`SpritePoses` 타입, rules character.ts). `SdSprite`가 모션 동안 포즈 이미지를 대기 위에 교차 페이드(전투불능은 유지). 코드 연출도 강화: 숨쉬기에 기울기·위상차(`phase`), 공격·회피 잔상, 피격 섬광·베기선·붉은 틴트, 전투불능 먼지, 승리 빛, 전투 보드 화면 흔들림(`.b-shake`). 전투 유닛(`UnitInput.spritePoses`)·무대(`StageActor.spritePoses`)로 전달. **0012 적용 필요.**
 - 포즈 생성은 성공했으나 사용자 피드백 "포즈가 단일이라서 별로" → 프레임 띠로 확장.
 - **프레임 띠 애니메이션(2026-11-20)**: 마이그레이션 0013 — `sprite_jobs.kind`(still|strip)·`frames`·`frame_urls`. 모션당 호출 1회로 N칸 한 줄 띠(`buildStripPrompt`, 크기는 `lib/sprite/strip.ts` 규격: 칸 512px, 띠 비율 3:1 이내)를 받고, **브라우저에서** `lib/sprite/slice.ts`가 칸을 잘라 알파 경계 상자로 발밑 가운데 정렬 → 프레임 PNG를 `sprites/<uid>/<jobId>-f<i>.png`로 올리고 `saveStripFrames`로 기록·적용. 적/캐릭터 `data.spriteAnims[모션] = { frames: string[], fps }` (`SpriteAnims` 타입). 칸 수·fps: idle 4/3(루프), attack 6/10, hit 4/8, evade 4/9, down 5/6(마지막 유지), win 4/5. `SdSprite`가 띠 > 포즈 이미지 > 코드 모션 순으로 우선 적용(StripPlayer: 프레임 겹쳐 두고 opacity 전환). 미리보기 ◆=띠, ●=포즈. **0013 적용 필요.** 띠 생성 품질(칸 균등·인물 일관성)은 미확인.
-- 미결: 띠 품질 확인, 결과 PNG 여백 트리밍·축소(이미지 라이브러리 없음).
+- **스킬별 띠(2026-11-20, 사용자가 원작 추출 묶음 idle/dmg/gud/miss/skill1_*… 을 예로 듦, "방어 대신 반격이라 막고 때리는 거")**: 키 `skill:<스킬 id>` (`SpriteAnimKey` 템플릿). 부모가 적/캐릭터에 연결돼 있어야 그 대상의 스킬 목록이 뜨고, 공격 스킬은 피해 유형(참격·관통·타격)별 6칸, 방어 스킬은 종류별(방어 4칸·회피 4칸·반격 6칸 "막고 되치기") `buildSkillStripPrompt`. 연출 카드에 `skillId`를 실어 준비·공격·승리 단계에서 그 스킬 띠를 우선 재생(`SdSprite.animKey`). fps 는 컬럼 없이 `fpsFor(키, 칸 수)`로 정한다. 마이그레이션 불필요(pose 컬럼에 키 저장).
+- 미결: 띠 품질 확인(칸 균등·인물 일관성·스킬 동작 구분), 결과 PNG 여백 트리밍·축소(이미지 라이브러리 없음).
 - 로컬 환경 메모: 2026-11-20 "환경 일치화" 항목 참고.
 
 ## 환경 일치화: 사용자 Windows PC (2026-11-20)

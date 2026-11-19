@@ -2,7 +2,7 @@
  * SD 스프라이트 프롬프트. 스타일 문장은 여기 한 곳에서만 관리한다.
  * 원작 이미지를 참고 이미지로 보내지 않고, 스타일은 글로만 지정한다.
  */
-import type { SpritePose, SpriteAnimKey } from "@limbus/rules";
+import type { SpritePose, SpriteAnimKey, DamageType, DefenseKind } from "@limbus/rules";
 
 export const SPRITE_STYLE = [
   "Full-body chibi (super-deformed) battle sprite of a single character, about 2.5 heads tall with a large head and small body.",
@@ -65,6 +65,33 @@ export const STRIPS: { id: SpriteAnimKey; label: string; frames: string[] }[] = 
   { id: "down", label: "전투불능", frames: ["struck hard, reeling", "knees buckling", "falling forward", "landing on one knee, hand on the ground", "collapsed on one knee, head hanging, weapon dropped (final pose held)"] },
   { id: "win", label: "승리", frames: ["lifting the weapon or fist", "raised high, chest out", "small hop or flourish", "settling into a confident stance"] },
 ];
+
+/** 스킬 띠 프레임 설명: 공격은 피해 유형별, 방어는 종류별 (원작의 skill1/2/3·gud 에 해당) */
+export interface SkillForStrip { name: string; kind: "attack" | "defense"; damageType: DamageType; defenseKind?: DefenseKind }
+const ATTACK_FRAMES: Record<DamageType, string[]> = {
+  slash: ["anticipation: weapon drawn back across the body, weight on the back foot", "coiled, blade edge glinting", "lunge forward, beginning a wide horizontal slash", "full slash arc sweeping to the right with motion lines", "follow-through, blade past the target, body twisted", "recovering toward the idle stance"],
+  pierce: ["anticipation: weapon pulled back to the hip, aiming", "stance low, ready to thrust", "step forward, thrust beginning", "full extension — a straight, sharp thrust to the right with speed lines", "retracting the weapon", "recovering toward the idle stance"],
+  blunt: ["anticipation: weapon raised high overhead (or fists cocked)", "leaning back, maximum wind-up", "beginning the downward swing", "heavy impact — weapon smashed down to the lower right with shock lines", "weight sunk into the blow", "recovering toward the idle stance"],
+};
+const DEFENSE_FRAMES: Record<DefenseKind, string[]> = {
+  guard: ["alert, weapon or arms starting to rise", "weapon/arms raised across the body in a firm block", "bracing against an impact, feet planted, slight recoil", "holding the guard steadily"],
+  evade: ["alert, knees bending", "leaning back and away to the left with a quick side-step, one foot lifted", "fully dodged, body stretched back", "returning to stance"],
+  counter: ["weapon raised to block", "parrying an incoming strike, sparks at the point of contact", "deflecting it aside, body turning", "stepping in for the riposte", "quick counter-strike to the right with motion lines", "recovering toward the idle stance"],
+};
+export function buildSkillStripPrompt(skill: SkillForStrip, frames: number, label?: string): string {
+  const seq = skill.kind === "attack" ? ATTACK_FRAMES[skill.damageType] : DEFENSE_FRAMES[skill.defenseKind ?? "guard"];
+  const what = skill.kind === "attack" ? `the attack skill "${skill.name}" (a ${skill.damageType === "slash" ? "slashing" : skill.damageType === "pierce" ? "piercing" : "blunt"} strike)` : `the defensive skill "${skill.name}" (${skill.defenseKind === "counter" ? "block and counter-attack" : skill.defenseKind === "evade" ? "dodge" : "guard"})`;
+  const list = seq.slice(0, frames).map((d, i) => `panel ${i + 1}: ${d}`).join("; ");
+  return [
+    `A sprite sheet animation strip: exactly ${frames} panels of equal width arranged in a single horizontal row, left to right, with no gaps, borders, numbers or labels.`,
+    `Every panel shows the same character at the same scale, feet on the same baseline, centered horizontally in its panel, facing to the right in three-quarter view.`,
+    SAME_CHARACTER,
+    label?.trim() ? `Character name: ${label.trim()}.` : "",
+    `The panels are consecutive animation frames of ${what}, using the character's own weapon from the reference. ${list}.`,
+    "Make each frame clearly different so the motion reads when played in sequence.",
+    SPRITE_STYLE.replace("Full-body chibi (super-deformed) battle sprite of a single character,", "Full-body chibi (super-deformed) battle sprite of a single character in every panel,"),
+  ].filter(Boolean).join(" ");
+}
 
 /** 한 번의 호출로 N칸 띠를 그리게 한다. 칸은 같은 너비·같은 크기의 인물·같은 발 위치 */
 export function buildStripPrompt(key: SpriteAnimKey, frames: number, label?: string): string {

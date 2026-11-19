@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { newEnemyData, type EnemyData, type SpritePose, type SpritePoses, type SpriteAnimKey, type SpriteAnims } from "@limbus/rules";
-import { buildSpritePrompt, buildPosePrompt, buildStripPrompt, POSES, STRIPS } from "@/lib/sprite/prompt";
-import { STRIP_SPECS, stripSize } from "@/lib/sprite/strip";
+import { buildSpritePrompt, buildPosePrompt, buildStripPrompt, buildSkillStripPrompt, POSES, STRIPS, type SkillForStrip } from "@/lib/sprite/prompt";
+import { STRIP_SPECS, stripSize, skillStripSpec, fpsFor, isSkillKey, type StripSpec } from "@/lib/sprite/strip";
 import { resolveSpriteProvider, type SpriteProvider } from "@/lib/sprite/provider";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -30,7 +30,7 @@ async function requireMember(campaignId: string) {
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
 const targetOf = (j: { enemy_id: string | null; character_id: string | null }): SpriteTarget => j.enemy_id ? { kind: "enemy", id: j.enemy_id } : j.character_id ? { kind: "character", id: j.character_id } : null;
-const isAnimKey = (k: string): k is SpriteAnimKey => k === "idle" || POSES.some((p) => p.id === k);
+const isAnimKey = (k: string): k is SpriteAnimKey => k === "idle" || POSES.some((p) => p.id === k) || isSkillKey(k);
 
 async function fetchSource(url: string): Promise<{ bytes: Uint8Array; mime: string }> {
   const r = await fetch(url, { cache: "no-store" });
@@ -126,17 +126,31 @@ export async function generatePose(campaignId: string, parentJobId: string, pose
  */
 export async function generateStrip(campaignId: string, parentJobId: string, key: SpriteAnimKey): Promise<{ error?: string; jobId?: string; resultUrl?: string; frames?: number }> {
   const { supabase, user, isGm } = await requireMember(campaignId);
-  if (!isAnimKey(key) || !STRIPS.some((s) => s.id === key)) return { error: "알 수 없는 모션입니다" };
+  if (!isAnimKey(key)) return { error: "알 수 없는 모션입니다" };
   let parent: SpriteJobRow;
   try { parent = await loadParent(supabase, campaignId, parentJobId, isGm); } catch (e) { return { error: e instanceof Error ? e.message : "오류" }; }
-  const spec = STRIP_SPECS[key];
+  let spec: StripSpec; let prompt: string; let stripLabel: string;
+  if (isSkillKey(key)) {
+    // 스킬 띠: 부모가 연결된 적/캐릭터의 스킬에서 이름·피해 유형·방어 종류를 가져온다
+    const target = targetOf(parent);
+    if (!target) return { error: "스킬 띠는 먼저 적이나 캐릭터에 적용한 뒤 만들 수 있습니다" };
+    const table = target.kind === "enemy" ? "enemies" : "characters";
+    const { data: row } = await supabase.from(table).select("data").eq("id", target.id).single();
+    const d = row?.data as { skills?: SkillForStrip[] & { id: string }[]; ego?: (SkillForStrip & { id: string })[] } | undefined;
+    const sid = key.slice("skill:".length);
+    const skill = [...(d?.skills ?? []), ...(d?.ego ?? [])].find((s) => (s as { id: string }).id === sid);
+    if (!skill) return { error: "대상에 그 스킬이 없습니다" };
+    spec = skillStripSpec(skill); prompt = buildSkillStripPrompt(skill, spec.frames, parent.label); stripLabel = skill.name || "스킬";
+  } else {
+    if (!STRIPS.some((s) => s.id === key)) return { error: "알 수 없는 모션입니다" };
+    spec = STRIP_SPECS[key as keyof typeof STRIP_SPECS]; prompt = buildStripPrompt(key, spec.frames, parent.label); stripLabel = STRIPS.find((s) => s.id === key)!.label;
+  }
   const { w, h } = stripSize(spec.frames);
   const provider = resolveSpriteProvider();
-  const prompt = buildStripPrompt(key, spec.frames, parent.label);
   const { data: job, error: insErr } = await supabase.from("sprite_jobs").insert({
     campaign_id: campaignId, created_by: user.id, status: "running", pose: key, kind: "strip", frames: spec.frames, parent_job_id: parent.id,
     enemy_id: parent.enemy_id, character_id: parent.character_id,
-    provider: provider.name, model: provider.model, label: `${parent.label} · ${STRIPS.find((s) => s.id === key)!.label} 띠`, prompt, source_url: parent.result_url,
+    provider: provider.name, model: provider.model, label: `${parent.label} · ${stripLabel} 띠`, prompt, source_url: parent.result_url,
   }).select("id").single();
   if (insErr || !job) return { error: insErr?.message ?? "작업을 기록하지 못했습니다" };
   let resultUrl: string;
@@ -156,7 +170,7 @@ export async function saveStripFrames(campaignId: string, jobId: string, frameUr
   if (error) return { error: error.message };
   const target = targetOf(job);
   if (target && isAnimKey(job.pose)) {
-    try { await patchSprite(campaignId, target, { spriteAnims: { [job.pose]: { frames: frameUrls, fps: STRIP_SPECS[job.pose].fps } } }); }
+    try { await patchSprite(campaignId, target, { spriteAnims: { [job.pose]: { frames: frameUrls, fps: fpsFor(job.pose, frameUrls.length) } } }); }
     catch (e) { return { error: `프레임은 저장됐지만 적용 실패: ${e instanceof Error ? e.message : "오류"}` }; }
   }
   revalidatePath(`/campaigns/${campaignId}/sprites`);
@@ -187,7 +201,7 @@ async function doneChildren(supabase: Supa, parentJobId: string): Promise<{ pose
   const { data: kids } = await supabase.from("sprite_jobs").select("pose, kind, result_url, frame_urls, status").eq("parent_job_id", parentJobId).eq("status", "done");
   const poses: SpritePoses = {}; const anims: SpriteAnims = {};
   for (const k of kids ?? []) {
-    if (k.kind === "strip") { if (k.frame_urls?.length && isAnimKey(k.pose)) anims[k.pose] = { frames: k.frame_urls, fps: STRIP_SPECS[k.pose].fps }; }
+    if (k.kind === "strip") { if (k.frame_urls?.length && isAnimKey(k.pose)) anims[k.pose] = { frames: k.frame_urls, fps: fpsFor(k.pose, k.frame_urls.length) }; }
     else if (k.result_url && POSES.some((p) => p.id === k.pose)) poses[k.pose as SpritePose] = k.result_url;
   }
   return { poses, anims };
@@ -207,7 +221,7 @@ export async function applySprite(campaignId: string, jobId: string, target: Non
       await supabase.from("sprite_jobs").update(link).eq("parent_job_id", jobId);
     } else if (job.kind === "strip") {
       if (!job.frame_urls?.length || !isAnimKey(job.pose)) return { error: "아직 잘라 올린 프레임이 없습니다" };
-      await patchSprite(campaignId, target, { spriteAnims: { [job.pose]: { frames: job.frame_urls, fps: STRIP_SPECS[job.pose].fps } } });
+      await patchSprite(campaignId, target, { spriteAnims: { [job.pose]: { frames: job.frame_urls, fps: fpsFor(job.pose, job.frame_urls.length) } } });
     } else {
       await patchSprite(campaignId, target, { spritePoses: { [job.pose as SpritePose]: job.result_url } });
     }

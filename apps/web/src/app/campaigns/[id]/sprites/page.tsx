@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { PageTitle } from "@/components/ui";
 import { SpriteStudio } from "@/components/sprite/sprite-studio";
-import type { CharacterData, EnemyData } from "@limbus/rules";
+import type { CharacterData, EnemyData, SkillDraft } from "@limbus/rules";
+
+const skillsOf = (list: SkillDraft[] | undefined) => (list ?? []).map((s) => ({ id: s.id, name: s.name, kind: s.kind, damageType: s.damageType, defenseKind: s.defenseKind }));
 
 /** 이미지 생성이 수십 초 걸리므로 서버 액션 시간 제한을 늘린다 */
 export const maxDuration = 120;
@@ -33,8 +35,8 @@ export default async function SpritesPage({ params, searchParams }: { params: Pr
       <div className="mb-2 flex gap-3"><Link href={`/campaigns/${id}`} className="text-sm text-muted hover:text-fg">← 사무소</Link>{isGm ? <Link href={`/campaigns/${id}/enemies`} className="text-sm text-muted hover:text-fg">적 도감</Link> : null}</div>
       <PageTitle>SD 스프라이트 공방</PageTitle>
       <SpriteStudio campaignId={id} isGm={isGm} initialTarget={initialTarget}
-        enemies={(enemies ?? []).map((e) => ({ id: e.id, name: e.name, spriteUrl: (e.data as unknown as Partial<EnemyData>)?.spriteUrl ?? null }))}
-        characters={(chars ?? []).map((c) => ({ id: c.id, name: c.name, mine: c.owner_id === user.id, spriteUrl: (c.data as unknown as Partial<CharacterData>)?.spriteUrl ?? null }))}
+        enemies={(enemies ?? []).map((e) => { const d = e.data as unknown as Partial<EnemyData>; return { id: e.id, name: e.name, spriteUrl: d?.spriteUrl ?? null, skills: skillsOf(d?.skills) }; })}
+        characters={(chars ?? []).map((c) => { const d = c.data as unknown as Partial<CharacterData>; return { id: c.id, name: c.name, mine: c.owner_id === user.id, spriteUrl: d?.spriteUrl ?? null, skills: [...skillsOf(d?.skills), ...skillsOf(d?.ego)] }; })}
         jobs={jobs ?? []} provider={{ name: providerName, model, configured }} />
     </div>
   );

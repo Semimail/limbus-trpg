@@ -42,13 +42,13 @@ function StripPlayer({ anim, loop, holdLast, imgH, imgCls, alt }: { anim: Sprite
   );
 }
 
-export function SdSprite({ src, poses, anims, height, flip, motion = "idle", motionKey, phase = 0, className = "", style, alt = "", shadow = true }: {
-  src: string; poses?: SpritePoses | null; anims?: SpriteAnims | null; height: number | string; flip?: boolean; motion?: SpriteMotion; motionKey?: string | number; phase?: number; className?: string; style?: CSSProperties; alt?: string; shadow?: boolean;
+export function SdSprite({ src, poses, anims, animKey, height, flip, motion = "idle", motionKey, phase = 0, className = "", style, alt = "", shadow = true }: {
+  src: string; poses?: SpritePoses | null; anims?: SpriteAnims | null; /** 우선 재생할 띠 키 (예: "skill:<id>"). 없으면 모션 이름의 띠 */ animKey?: string | null; height: number | string; flip?: boolean; motion?: SpriteMotion; motionKey?: string | number; phase?: number; className?: string; style?: CSSProperties; alt?: string; shadow?: boolean;
 }) {
   const full = typeof height === "string";
   const h = full ? "h-full" : "";
   const imgH: CSSProperties = full ? { maxHeight: "100%" } : { height };
-  const anim = motion !== "idle" && motion !== "ready" && anims ? anims[motion] ?? null : null;
+  const anim = anims ? ((animKey ? anims[animKey as keyof SpriteAnims] : null) ?? (motion !== "idle" && motion !== "ready" ? anims[motion] ?? null : null)) : null;
   const idleAnim = anims?.idle ?? null;
   const poseSrc = !anim && motion !== "idle" && motion !== "ready" && poses ? poses[motion] ?? null : null;
   const key = `${motion}:${motionKey ?? ""}`;

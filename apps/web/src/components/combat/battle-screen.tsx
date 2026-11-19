@@ -547,7 +547,10 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
   const powerRange = (s: Skill) => { const lo = s.basePower + Math.min(0, s.coinPower) * s.coinCount, hi = s.basePower + Math.max(0, s.coinPower) * s.coinCount; return lo === hi ? `${hi}` : `${Math.max(0, lo)}-${hi}`; };
   const ordered = [...state.units].sort((a, b) => foot(a).y - foot(b).y); // 뒤 → 앞
   // 현재 연출 단계에서 이 유닛의 코드 모션 (공격·피격·회피·전투불능…)
-  const motionOf = (u: Unit) => play?.cards.find((c) => c.unitId === u.id)?.motion ?? "idle";
+  const cardOf = (u: Unit) => play?.cards.find((c) => c.unitId === u.id);
+  const motionOf = (u: Unit) => cardOf(u)?.motion ?? "idle";
+  // 쓴 스킬의 띠가 있으면 준비·공격·승리 단계에서 그 띠를 재생
+  const animKeyOf = (c: { motion?: string; skillId?: string } | undefined) => c?.skillId && (c.motion === "attack" || c.motion === "ready" || c.motion === "win") ? `skill:${c.skillId}` : null;
   // 피격·전투불능 단계에서 화면 흔들림
   const shake = !!play?.cards.some((c) => c.motion === "hit" || c.motion === "down");
 
@@ -584,7 +587,7 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
               className="absolute bottom-0 left-0 flex -translate-x-1/2 items-end justify-center" style={{ width: u.spriteUrl ? sh * 0.6 : d, height: u.spriteUrl ? sh : d }}>
               {u.spriteUrl ? (
                 <span className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2">
-                  <SdSprite src={u.spriteUrl} poses={u.spritePoses} anims={u.spriteAnims} height={sh} flip={u.side === "enemy"} motion={motionOf(u)} motionKey={playKey} phase={(state.units.indexOf(u) % 5) * 0.4} className={over ? "brightness-125" : ""} />
+                  <SdSprite src={u.spriteUrl} poses={u.spritePoses} anims={u.spriteAnims} animKey={animKeyOf(cardOf(u))} height={sh} flip={u.side === "enemy"} motion={motionOf(u)} motionKey={playKey} phase={(state.units.indexOf(u) % 5) * 0.4} className={over ? "brightness-125" : ""} />
                 </span>
               ) : (
                 <span className={`relative block overflow-hidden rounded-full ${over ? "ring-2 ring-red-400" : ""}`} style={{ width: d, height: d, border: `3px solid ${u.side === "ally" ? "rgba(217,179,91,.95)" : "rgba(224,75,82,.95)"}`, background: "rgba(10,6,6,.9)", boxShadow: "0 6px 14px rgba(0,0,0,.8)" }}>
@@ -657,7 +660,7 @@ function CutIn({ step, playKey, state, names, w, bottom }: { step: PlayStep; pla
       <div key={p.u.id} className={`absolute bottom-0 flex flex-col items-center ${pos === "l" ? "b-cut-fig-l" : "b-cut-fig-r"}`} style={{ left: pos === "l" ? (wide ? "27%" : "22%") : (wide ? "73%" : "78%"), transform: "translateX(-50%)", width: 0 }}>
         <div className="flex flex-col items-center" style={{ filter: glow, transition: "filter .25s" }}>
           {p.u.spriteUrl ? (
-            <SdSprite src={p.u.spriteUrl} poses={p.u.spritePoses} anims={p.u.spriteAnims} height={figH} flip={p.u.side === "enemy"} motion={p.c.motion ?? "idle"} motionKey={playKey} phase={pos === "l" ? 0 : 1} shadow={false} />
+            <SdSprite src={p.u.spriteUrl} poses={p.u.spritePoses} anims={p.u.spriteAnims} animKey={p.c.skillId && (p.c.motion === "attack" || p.c.motion === "ready" || p.c.motion === "win") ? `skill:${p.c.skillId}` : null} height={figH} flip={p.u.side === "enemy"} motion={p.c.motion ?? "idle"} motionKey={playKey} phase={pos === "l" ? 0 : 1} shadow={false} />
           ) : (
             <span className="block overflow-hidden rounded-full" style={{ width: figH * 0.42, height: figH * 0.42, border: `4px solid ${p.u.side === "ally" ? "#d9b35b" : "#e04b52"}`, background: "rgba(10,6,6,.92)" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}

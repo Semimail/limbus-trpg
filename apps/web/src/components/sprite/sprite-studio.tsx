@@ -2,14 +2,14 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { SpritePose, SpritePoses, SpriteAnimKey, SpriteAnims } from "@limbus/rules";
+import { DAMAGE_TYPE_LABEL, type SpritePose, type SpritePoses, type SpriteAnimKey, type SpriteAnims, type DamageType, type DefenseKind } from "@limbus/rules";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input } from "@/components/ui";
 import { Panel } from "@/components/office/panel";
 import { BACKGROUNDS } from "@/components/icons";
 import { SdSprite, SPRITE_MOTIONS, type SpriteMotion } from "./sd-sprite";
 import { buildSpritePrompt, POSES, STRIPS } from "@/lib/sprite/prompt";
-import { STRIP_SPECS } from "@/lib/sprite/strip";
+import { STRIP_SPECS, skillStripSpec, fpsFor, isSkillKey, type StripSpec } from "@/lib/sprite/strip";
 import { sliceStrip } from "@/lib/sprite/slice";
 import { generateSprite, generatePose, generateStrip, saveStripFrames, applySprite, createEnemyFromSprite, deleteSpriteJob, type SpriteJobRow, type SpriteTarget } from "@/app/campaigns/[id]/sprites/actions";
 
@@ -21,8 +21,11 @@ import { generateSprite, generatePose, generateStrip, saveStripFrames, applySpri
  *  - 로그는 본인 것만 보인다. GM은 캠페인 전체를 보지만, GM이 만든 것은 플레이어에게 보이지 않는다.
  */
 
-interface EnemyLite { id: string; name: string; spriteUrl: string | null }
-interface CharLite { id: string; name: string; mine: boolean; spriteUrl: string | null }
+interface SkillLite { id: string; name: string; kind: "attack" | "defense"; damageType: DamageType; defenseKind?: DefenseKind }
+interface EnemyLite { id: string; name: string; spriteUrl: string | null; skills: SkillLite[] }
+interface CharLite { id: string; name: string; mine: boolean; spriteUrl: string | null; skills: SkillLite[] }
+const DEFENSE_LABEL: Record<DefenseKind, string> = { guard: "방어", evade: "회피", counter: "반격" };
+const skillLabel = (sk: SkillLite) => `${sk.name || "(이름 없음)"} · ${sk.kind === "attack" ? DAMAGE_TYPE_LABEL[sk.damageType] : DEFENSE_LABEL[sk.defenseKind ?? "guard"]}`;
 interface QueueItem { key: string; file: File | null; preview: string | null; label: string; notes: string; target: string; status: "wait" | "upload" | "gen" | "done" | "fail"; result?: string; error?: string }
 interface PreviewSet { src: string; poses: SpritePoses; anims: SpriteAnims }
 
@@ -33,11 +36,11 @@ const field = "w-full rounded-md border border-border bg-elev px-2 py-1 text-sm 
 const encodeTarget = (t: SpriteTarget): string => (t ? `${t.kind === "enemy" ? "e" : "c"}:${t.id}` : "");
 const decodeTarget = (v: string): SpriteTarget => { const [k, id] = v.split(":"); return id ? { kind: k === "e" ? "enemy" : "character", id } : null; };
 const isPose = (p: string): p is SpritePose => POSES.some((x) => x.id === p);
-const isAnimKey = (p: string): p is SpriteAnimKey => p === "idle" || isPose(p);
+const isAnimKey = (p: string): p is SpriteAnimKey => p === "idle" || isPose(p) || isSkillKey(p);
 const isStrip = (j: SpriteJobRow) => j.kind === "strip";
 /** 완료된 자식 포즈 이미지 / 프레임 띠를 모은다 */
 const posesOf = (kids: SpriteJobRow[]): SpritePoses => { const o: SpritePoses = {}; for (const k of kids) if (!isStrip(k) && k.status === "done" && k.result_url && isPose(k.pose)) o[k.pose] = k.result_url; return o; };
-const animsOf = (kids: SpriteJobRow[]): SpriteAnims => { const o: SpriteAnims = {}; for (const k of kids) if (isStrip(k) && k.status === "done" && k.frame_urls?.length && isAnimKey(k.pose)) o[k.pose] = { frames: k.frame_urls, fps: STRIP_SPECS[k.pose].fps }; return o; };
+const animsOf = (kids: SpriteJobRow[]): SpriteAnims => { const o: SpriteAnims = {}; for (const k of kids) if (isStrip(k) && k.status === "done" && k.frame_urls?.length && isAnimKey(k.pose)) o[k.pose] = { frames: k.frame_urls, fps: fpsFor(k.pose, k.frame_urls.length) }; return o; };
 
 function TargetSelect({ value, onChange, name, enemies, characters, className = field, disabled, none = "적용 안 함" }: { value?: string; onChange?: (v: string) => void; name?: string; enemies: EnemyLite[]; characters: CharLite[]; className?: string; disabled?: boolean; none?: string }) {
   return (
@@ -63,6 +66,8 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
   const orphans = useMemo(() => jobs.filter((j) => j.parent_job_id && !jobs.some((p) => p.id === j.parent_job_id)), [jobs]);
   // 미리보기는 대기 이미지 URL 만 기억하고, 포즈·띠는 그 URL 의 부모 작업에서 매번 끌어온다 (새로 완료되면 자동 반영)
   const [previewSrc, setPreviewSrc] = useState<string | null>(() => parents.find((j) => j.result_url)?.result_url ?? null);
+  // 스킬 id → 스킬 정보 (스킬 띠 이름 표시·미리보기용)
+  const skillInfo = useMemo(() => { const m: Record<string, SkillLite> = {}; for (const e of enemies) for (const sk of e.skills) m[sk.id] = sk; for (const c of characters) for (const sk of c.skills) m[sk.id] = sk; return m; }, [enemies, characters]);
   const preview = useMemo<PreviewSet | null>(() => { if (!previewSrc) return null; const p = parents.find((j) => j.result_url === previewSrc); const kids = p ? kidsOf[p.id] ?? [] : []; return { src: previewSrc, poses: posesOf(kids), anims: animsOf(kids) }; }, [previewSrc, parents, kidsOf]);
 
   // 미리보기 URL 정리
@@ -175,24 +180,26 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
         </Panel>
 
         {/* 오른쪽: 미리보기 + 코드 모션 (+ 포즈·띠) */}
-        <MotionPreview set={preview} />
+        <MotionPreview set={preview} skillInfo={skillInfo} />
       </div>
 
-      <JobLog campaignId={campaignId} isGm={isGm} parents={parents} kidsOf={kidsOf} orphans={orphans} enemies={enemies} characters={characters} configured={provider.configured}
+      <JobLog campaignId={campaignId} isGm={isGm} parents={parents} kidsOf={kidsOf} orphans={orphans} enemies={enemies} characters={characters} skillInfo={skillInfo} configured={provider.configured}
         onPreview={(p) => setPreviewSrc(p.result_url!)} />
     </div>
   );
 }
 
-function MotionPreview({ set }: { set: PreviewSet | null }) {
+function MotionPreview({ set, skillInfo }: { set: PreviewSet | null; skillInfo: Record<string, SkillLite> }) {
   const [motion, setMotion] = useState<SpriteMotion>("idle");
+  const [animKey, setAnimKey] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [flip, setFlip] = useState(false);
   const [bg, setBg] = useState(true);
   const [usePoses, setUsePoses] = useState(true);
   const [useAnims, setUseAnims] = useState(true);
   const [h, setH] = useState(220);
-  const play = (m: SpriteMotion) => { setMotion(m); setTick((t) => t + 1); };
+  const play = (m: SpriteMotion, key: string | null = null) => { setMotion(m); setAnimKey(key); setTick((t) => t + 1); };
+  const skillKeys = set ? Object.keys(set.anims).filter(isSkillKey) : [];
   const poseCount = set ? Object.keys(set.poses).length : 0;
   const animCount = set ? Object.keys(set.anims).length : 0;
   const mark = (m: SpriteMotion) => { if (!set || !isAnimKey(m)) return ""; if (set.anims[m]) return " ◆"; if (m !== "idle" && set.poses[m]) return " ●"; return ""; };
@@ -201,13 +208,18 @@ function MotionPreview({ set }: { set: PreviewSet | null }) {
       <div className="relative flex h-72 items-end justify-center overflow-hidden border border-border" style={bg ? { backgroundImage: `url(${BACKGROUNDS.backstreet})`, backgroundSize: "cover", backgroundPosition: "center" } : { backgroundImage: "repeating-conic-gradient(#2a2222 0% 25%, #1a1414 0% 50%)", backgroundSize: "16px 16px" }}>
         {set ? (
           <div className="mb-4">
-            <SdSprite src={set.src} poses={usePoses ? set.poses : null} anims={useAnims ? set.anims : null} height={h} flip={flip} motion={motion} motionKey={tick} />
+            <SdSprite src={set.src} poses={usePoses ? set.poses : null} anims={useAnims ? set.anims : null} animKey={useAnims ? animKey : null} height={h} flip={flip} motion={motion} motionKey={tick} />
           </div>
         ) : <p className="mb-4 text-xs text-white/60">아직 결과가 없습니다</p>}
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
-        {SPRITE_MOTIONS.map((m) => <button key={m.id} type="button" onClick={() => play(m.id)} className={`rounded-md border px-2 py-1 text-xs ${motion === m.id ? "border-accent text-accent" : "border-border text-fg hover:bg-fg/5"}`}>{m.label}{mark(m.id)}</button>)}
+        {SPRITE_MOTIONS.map((m) => <button key={m.id} type="button" onClick={() => play(m.id)} className={`rounded-md border px-2 py-1 text-xs ${motion === m.id && !animKey ? "border-accent text-accent" : "border-border text-fg hover:bg-fg/5"}`}>{m.label}{mark(m.id)}</button>)}
       </div>
+      {skillKeys.length ? (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {skillKeys.map((k) => { const sk = skillInfo[k.slice(6)]; const m: SpriteMotion = sk?.kind === "defense" ? "ready" : "attack"; return <button key={k} type="button" onClick={() => play(m, k)} className={`rounded-md border px-2 py-1 text-xs ${animKey === k ? "border-accent text-accent" : "border-border text-fg hover:bg-fg/5"}`}>◆ {sk ? skillLabel(sk) : k}</button>; })}
+        </div>
+      ) : null}
       <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
         <label className="flex items-center gap-1"><input type="checkbox" checked={flip} onChange={(e) => setFlip(e.target.checked)} /> 적 방향(왼쪽 보기)</label>
         <label className="flex items-center gap-1"><input type="checkbox" checked={bg} onChange={(e) => setBg(e.target.checked)} /> 전투 배경</label>
@@ -220,7 +232,7 @@ function MotionPreview({ set }: { set: PreviewSet | null }) {
   );
 }
 
-function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, characters, configured, onPreview }: { campaignId: string; isGm: boolean; parents: SpriteJobRow[]; kidsOf: Record<string, SpriteJobRow[]>; orphans: SpriteJobRow[]; enemies: EnemyLite[]; characters: CharLite[]; configured: boolean; onPreview: (p: SpriteJobRow) => void }) {
+function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, characters, skillInfo, configured, onPreview }: { campaignId: string; isGm: boolean; parents: SpriteJobRow[]; kidsOf: Record<string, SpriteJobRow[]>; orphans: SpriteJobRow[]; enemies: EnemyLite[]; characters: CharLite[]; skillInfo: Record<string, SkillLite>; configured: boolean; onPreview: (p: SpriteJobRow) => void }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
@@ -241,9 +253,12 @@ function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, character
   const stillKids = (p: SpriteJobRow) => (kidsOf[p.id] ?? []).filter((k) => !isStrip(k));
   const stripKids = (p: SpriteJobRow) => (kidsOf[p.id] ?? []).filter(isStrip);
   const poseLabel = (id: string) => POSES.find((x) => x.id === id)?.label ?? id;
-  const stripLabel = (id: string) => STRIPS.find((x) => x.id === id)?.label ?? id;
+  const stripLabel = (id: string) => { if (isSkillKey(id)) { const sk = skillInfo[id.slice(6)]; return sk ? `스킬 ${skillLabel(sk)}` : "스킬 (삭제됨)"; } return STRIPS.find((x) => x.id === id)?.label ?? id; };
+  /** 부모가 연결된 적/캐릭터의 스킬 목록 (스킬 띠 후보) */
+  const targetSkills = (p: SpriteJobRow): SkillLite[] => p.enemy_id ? enemies.find((e) => e.id === p.enemy_id)?.skills ?? [] : p.character_id ? characters.find((c) => c.id === p.character_id)?.skills ?? [] : [];
+  const specOf = (key: string): StripSpec => { if (isSkillKey(key)) { const sk = skillInfo[key.slice(6)]; return sk ? skillStripSpec(sk) : { frames: 6, fps: 10, loop: false }; } return STRIP_SPECS[key as keyof typeof STRIP_SPECS] ?? { frames: 4, fps: 7, loop: false }; };
   const selPoses = (p: SpriteJobRow): SpritePose[] => poseSel[p.id] ?? POSES.map((x) => x.id).filter((id) => !stillKids(p).some((k) => k.pose === id && k.status === "done"));
-  const selStrips = (p: SpriteJobRow): SpriteAnimKey[] => stripSel[p.id] ?? STRIPS.map((x) => x.id).filter((id) => !stripKids(p).some((k) => k.pose === id && k.status === "done" && k.frame_urls?.length));
+  const selStrips = (p: SpriteJobRow): SpriteAnimKey[] => stripSel[p.id] ?? [...STRIPS.map((x) => x.id), ...targetSkills(p).map((sk) => `skill:${sk.id}` as SpriteAnimKey)].filter((id) => !stripKids(p).some((k) => k.pose === id && k.status === "done" && k.frame_urls?.length));
   const togglePose = (p: SpriteJobRow, id: SpritePose) => setPoseSel((m) => { const cur = selPoses(p); return { ...m, [p.id]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] }; });
   const toggleStrip = (p: SpriteJobRow, id: SpriteAnimKey) => setStripSel((m) => { const cur = selStrips(p); return { ...m, [p.id]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] }; });
 
@@ -281,10 +296,10 @@ function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, character
     setWorking(p.id); setErr(null);
     for (const key of sel) {
       try {
-        setProgress(`${stripLabel(key)} 띠 생성 중… (${STRIP_SPECS[key].frames}칸)`);
+        setProgress(`${stripLabel(key)} 띠 생성 중… (${specOf(key).frames}칸)`);
         const r = await generateStrip(campaignId, p.id, key);
         if (r.error || !r.resultUrl || !r.jobId) throw new Error(r.error ?? "생성 실패");
-        await sliceAndUpload(r.jobId, r.resultUrl, r.frames ?? STRIP_SPECS[key].frames, stripLabel(key));
+        await sliceAndUpload(r.jobId, r.resultUrl, r.frames ?? specOf(key).frames, stripLabel(key));
       } catch (e) { setErr(`${stripLabel(key)}: ${e instanceof Error ? e.message : "실패"}`); }
       router.refresh();
     }
@@ -293,7 +308,7 @@ function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, character
   const resliceStrip = async (k: SpriteJobRow) => {
     if (!k.result_url || working) return;
     setWorking(k.parent_job_id ?? k.id); setErr(null);
-    try { await sliceAndUpload(k.id, k.result_url, k.frames ?? STRIP_SPECS[isAnimKey(k.pose) ? k.pose : "idle"].frames, stripLabel(k.pose)); }
+    try { await sliceAndUpload(k.id, k.result_url, k.frames ?? specOf(k.pose).frames, stripLabel(k.pose)); }
     catch (e) { setErr(`${stripLabel(k.pose)}: ${e instanceof Error ? e.message : "실패"}`); }
     router.refresh(); setProgress(""); setWorking(null);
   };
@@ -348,13 +363,19 @@ function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, character
                     <span className="text-muted">추가:</span>
                     {STRIPS.map((s) => { const have = strips.some((k) => k.pose === s.id && k.status === "done" && k.frame_urls?.length); const on = selStrips(j).includes(s.id); return (
                       <label key={s.id} className={`flex items-center gap-1 ${have ? "text-muted" : ""}`} title={have ? "이미 있음 (다시 만들면 교체)" : undefined}>
-                        <input type="checkbox" checked={on} onChange={() => toggleStrip(j, s.id)} disabled={working !== null} /> {s.label} <span className="text-muted">{STRIP_SPECS[s.id].frames}칸</span>
+                        <input type="checkbox" checked={on} onChange={() => toggleStrip(j, s.id)} disabled={working !== null} /> {s.label} <span className="text-muted">{STRIP_SPECS[s.id as keyof typeof STRIP_SPECS].frames}칸</span>
+                      </label>
+                    ); })}
+                    {targetSkills(j).length ? <span className="ml-2 text-muted">스킬별:</span> : null}
+                    {targetSkills(j).map((sk) => { const key = `skill:${sk.id}` as SpriteAnimKey; const have = strips.some((k) => k.pose === key && k.status === "done" && k.frame_urls?.length); const on = selStrips(j).includes(key); return (
+                      <label key={key} className={`flex items-center gap-1 ${have ? "text-muted" : ""}`} title={have ? "이미 있음 (다시 만들면 교체)" : "이 스킬을 쓸 때 재생"}>
+                        <input type="checkbox" checked={on} onChange={() => toggleStrip(j, key)} disabled={working !== null} /> {skillLabel(sk)} <span className="text-muted">{skillStripSpec(sk).frames}칸</span>
                       </label>
                     ); })}
                     <Button variant="ghost" className="px-2 py-0.5 text-[11px]" disabled={!configured || working !== null || selStrips(j).length === 0} onClick={() => void runStrips(j)}>
                       {busyHere ? "작업 중…" : `띠 생성 (호출 ${selStrips(j).length}회)`}
                     </Button>
-                    <span className="text-muted">모션당 호출 1회로 N칸 띠를 받아 브라우저에서 잘라 프레임으로 재생합니다. 대기 띠는 숨쉬기 루프.</span>
+                    <span className="text-muted">모션당 호출 1회로 N칸 띠를 받아 브라우저에서 잘라 프레임으로 재생합니다. 대기 띠는 숨쉬기 루프. 스킬별 띠는 적·캐릭터에 적용한 뒤에 뜨며, 그 스킬을 쓸 때 공통 공격 띠보다 우선합니다 (방어 스킬은 방어·회피·반격 동작).</span>
                   </div>
                 </div>
                 {/* 포즈 이미지 */}

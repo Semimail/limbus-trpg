@@ -35,7 +35,8 @@ export interface Trait {
 export type SpritePose = "attack" | "hit" | "evade" | "down" | "win";
 export type SpritePoses = Partial<Record<SpritePose, string>>;
 /** 프레임 애니메이션 (SD 공방에서 띠를 잘라 만든 프레임 URL 목록). idle 은 루프, 나머지는 한 번 재생 */
-export type SpriteAnimKey = "idle" | SpritePose;
+/** "skill:<스킬 id>" 는 그 스킬을 쓸 때 재생하는 띠 (공격 1·2·3, 방어 스킬은 종류에 맞는 동작) */
+export type SpriteAnimKey = "idle" | SpritePose | `skill:${string}`;
 export interface SpriteAnim { frames: string[]; fps?: number }
 export type SpriteAnims = Partial<Record<SpriteAnimKey, SpriteAnim>>;
 

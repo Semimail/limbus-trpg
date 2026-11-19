@@ -35,9 +35,9 @@
 - 초기 설정 중 사용자가 Supabase 관리 토큰(sbp_…), 디스코드 Client Secret, DB 비밀번호를 채팅에 붙여 넣었음. **재발급/삭제를 권고했고, 아직 사용자 확인 없음.** 새 세션은 그 값을 쓰지 말고 필요 시 request_credential로 새로 받는다.
 - 플레이어는 전투 상태(combats)와 장면(scenes) UPDATE 권한이 있음(서버 액션에서 검증). 초대받은 사람만 전제.
 
-## 드라이브 에셋 gid (루트 1aqElN5E1Uy8yHHsB-RM-KVgA75PSAlxP)
-Battle Backgrounds 1nXRLjFglNgjithfvY1D_3AkSt_aDvhoa · Icons 1DkcKQWgYLf9Kzk3JdsLHKxr1iei7XmrV (Sins, Status Effects/General, Other[Coin_F/B], Resistances, Skill Frames) · UI 1qNV4ywqBeObQMU07sHiki8NBbTz7PJzF (Battle 79장) · Fonts 1X3rMhHCG5_mc6TRNUrCj5wP6qq2vnM1q.
-현재 사용 중: public/assets/limbus/{coins,sins,status,attack,bg}.
+## 에셋 출처
+드라이브(1aqElN5E1Uy8yHHsB-RM-KVgA75PSAlxP)는 2026-11-19 비활성화됨. 원본 아틀라스는 `assets-src/limbus/{ui,icons,bg}`(README 참고), 웹용 조각은 `apps/web/public/assets/limbus/{coins,sins,status,attack,bg,ui}`.
+참고 영상(FVTT 림버스 모듈 합 연출, 사용자 업로드 mp4)은 저장소에 없음. 필요하면 사용자에게 다시 요청.
 
 ## 영상 레퍼런스 반영 (2026-11-11)
 - 유튜브 "림버스 TRPG에 합 연출이 구현되었다고?!"(다이스 로그 도서관) 레이아웃을 미리보기 프레임으로 분석해 반영: 장면 무대(스탠딩+대사 상자), 합 연출 오버레이. 격자 지도는 서사용 토큰 보드로만 유지(위치 규칙 없음) — 사용자 확인 대기.

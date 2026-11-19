@@ -24,5 +24,5 @@
 ## 외부 자원
 - Supabase 프로젝트 ref `zbfznstcqejwtssfzttf` (서울, Pro, Micro). Discord OAuth 공급자 설정됨. 인증은 ES256 → `getClaims()` 로컬 검증.
 - pg_cron `limbus-keep-warm` 이 1분마다 `/api/health` 호출(Vercel 콜드 스타트 완화).
-- 원작 에셋 드라이브: https://drive.google.com/drive/folders/1aqElN5E1Uy8yHHsB-RM-KVgA75PSAlxP (폴더별 gid 목록은 STATUS 참고). 다운로드는 `uc?export=download&id=`.
+- 원작 에셋 드라이브는 **비활성화됨**(2026-11-19). 원본 아틀라스는 `assets-src/limbus/`(README 참고)에 보관. 새 조각은 거기서 잘라 `apps/web/public/assets/limbus/`에 넣는다. 거기 없는 자료(스탠딩, 다른 배경, 폰트)는 사용자에게 파일을 요청한다.
 - 참고 룰/시트: City of Black(구글 문서), "림버스 컴퍼니 프로젝트" 구글 시트(포스터형 캐릭터 시트의 모델).

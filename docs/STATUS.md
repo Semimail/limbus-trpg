@@ -106,3 +106,7 @@ Battle Backgrounds 1nXRLjFglNgjithfvY1D_3AkSt_aDvhoa · Icons 1DkcKQWgYLf9Kzk3Jd
 - `scripts/limbus-extract/extract.py`(UnityPy): 설치 폴더·Addressables 캐시의 번들에서 Texture2D/Sprite(PNG)·AudioClip(wav/ogg, 실패 시 .fsb)·TextAsset(Spine skel/atlas 등)·Font 를 컨테이너 경로대로 꺼내고 `index.json` 생성. `--list`로 목록만, `--match` 정규식 필터, `--types` 선택. 사용법은 같은 폴더 README.
 - 클라우드엔 클라이언트가 없어 UnityPy 공개 샘플 번들(스프라이트 아틀라스·오디오)로만 검증. 림버스 실제 번들은 사용자 PC에서 돌려 확인 필요(캐시 경로 `LocalLow/ProjectMoon/LimbusCompany` 는 추정).
 - 방침: 원본은 비공개. 소량 PNG만 `public/assets/limbus`, 음악·대량 배경은 Supabase Storage 비공개 버킷 예정(업로드 스크립트 미작성).
+
+## 클라이언트 에셋 추출 (2026-11-19)
+- `scripts/limbus-extract/`: `extract.py`(UnityPy, 브랜치 zealous-carson에서 병합) + `run-windows.ps1`(목록 → UI·아이콘/배경/음악 일괄 추출) + `summarize.py`(index.json 폴더별 요약). 게임 클라이언트·Addressables 캐시는 사용자 PC에만 있어 **클라우드에서는 돌릴 수 없음**(Remote Control 폴더 "new"가 클라우드 세션에 제공되지 않음). 클라우드에서는 UnityPy 1.25.4 기준 API 호출만 검증함.
+- 다음: 사용자가 PC에서 `run-windows.ps1` 실행 → `summary.txt` 보고 `$Filters` 정규식 조정 → 소량은 `public/assets/limbus/`, 음악·대량 배경은 Supabase Storage(비공개 버킷).

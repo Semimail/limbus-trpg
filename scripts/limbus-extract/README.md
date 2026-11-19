@@ -15,7 +15,16 @@ pip install -r requirements.txt
   - `LimbusCompany_Data\StreamingAssets\aa\...\*.bundle` (Addressables 로컬 번들)
 - 런타임 다운로드 캐시(대부분의 캐릭터·배경·UI·음악은 여기): `%USERPROFILE%\AppData\LocalLow\ProjectMoon\LimbusCompany\` 아래 (`com.unity.addressables` 폴더 또는 해시 이름 폴더의 `__data`). 폴더명이 다르면 `LocalLow` 안에서 `__data` 파일을 검색해 찾는다.
 
-## 3. 실행
+## 3. 한 번에 돌리기 (권장)
+PowerShell에서 아래 한 줄이면 가상환경 설치 → 전체 목록(`extracted\list\index.json` + `summary.txt`) → UI·아이콘(`ui\`) / 배경(`bg\`) / 음악(`music\`) 추출까지 이어서 한다.
+```
+cd scripts\limbus-extract
+powershell -ExecutionPolicy Bypass -File .\run-windows.ps1
+```
+- 경로가 다르면 `-Game "..." -Cache "..." -Out "D:\limbus-extracted"`. 목록만 보려면 `-ListOnly`, 목록은 두고 필터만 바꿔 다시 뽑으려면 `-SkipList`.
+- `summary.txt`(= `python summarize.py extracted\list\index.json`)에서 container 폴더별 개수를 보고, 안 맞으면 `run-windows.ps1`의 `$Filters` 정규식을 고친다. `python summarize.py ... --grep "(?i)bgm"` 으로 특정 항목만 나열할 수 있다.
+
+## 3-1. 직접 실행
 목록만 먼저 뽑아 뭐가 있는지 본다:
 ```
 python extract.py --game "C:\Program Files (x86)\Steam\steamapps\common\Limbus Company" --cache "%USERPROFILE%\AppData\LocalLow\ProjectMoon\LimbusCompany" --out D:\limbus-extracted --list

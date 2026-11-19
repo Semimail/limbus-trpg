@@ -1,4 +1,4 @@
-# 림버스 컴퍼니 에셋 추출 일괄 실행 (Windows PowerShell)
+﻿# 림버스 컴퍼니 에셋 추출 일괄 실행 (Windows PowerShell)
 # 1) 전체 목록(index.json) → 요약 출력  2) UI·아이콘 / 배경 / 음악을 골라 추출
 #
 #   cd scripts\limbus-extract
@@ -6,7 +6,7 @@
 #   powershell -ExecutionPolicy Bypass -File .\run-windows.ps1 -Game "D:\Steam\steamapps\common\Limbus Company" -Out "D:\limbus-extracted"
 #   powershell -ExecutionPolicy Bypass -File .\run-windows.ps1 -ListOnly      # 목록만
 #
-# 필터 정규식은 아래 $Filters 에서 고친다. 목록(index.json)의 container 경로를 보고 맞추면 된다.
+# 필터 정규식은 아래 Filters 목록에서 고친다. 목록(index.json)의 container 경로를 보고 맞추면 된다.
 param(
   [string]$Game = "C:\Program Files (x86)\Steam\steamapps\common\Limbus Company",
   [string]$Cache = "$env:USERPROFILE\AppData\LocalLow\ProjectMoon\LimbusCompany",
@@ -65,4 +65,4 @@ Write-Host ""
 Write-Host "완료. 결과: $Out"
 Write-Host "  list\index.json  전체 목록 / summary.txt 요약"
 Write-Host "  ui\sprite, ui\tex / bg\tex / music\audio  (.fsb 가 있으면 vgmstream-cli -o out.wav in.fsb)"
-Write-Host "필터가 안 맞으면 summary.txt 의 container 경로를 보고 run-windows.ps1 의 \$Filters 를 고쳐 -SkipList 로 다시 돌리세요."
+Write-Host "필터가 안 맞으면 summary.txt 의 container 경로를 보고 run-windows.ps1 의 `$Filters 를 고쳐 -SkipList 로 다시 돌리세요."

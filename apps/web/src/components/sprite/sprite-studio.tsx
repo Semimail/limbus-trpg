@@ -26,7 +26,7 @@ interface EnemyLite { id: string; name: string; spriteUrl: string | null; skills
 interface CharLite { id: string; name: string; mine: boolean; spriteUrl: string | null; skills: SkillLite[] }
 const DEFENSE_LABEL: Record<DefenseKind, string> = { guard: "방어", evade: "회피", counter: "반격" };
 const skillLabel = (sk: SkillLite) => `${sk.name || "(이름 없음)"} · ${sk.kind === "attack" ? DAMAGE_TYPE_LABEL[sk.damageType] : DEFENSE_LABEL[sk.defenseKind ?? "guard"]}`;
-interface QueueItem { key: string; file: File | null; preview: string | null; label: string; notes: string; target: string; status: "wait" | "upload" | "gen" | "done" | "fail"; result?: string; error?: string }
+interface QueueItem { key: string; file: File | null; preview: string | null; label: string; notes: string; target: string; status: "wait" | "upload" | "gen" | "done" | "fail"; result?: string; error?: string; /** 세트 생성 진행 문구 */ progress?: string }
 interface PreviewSet { src: string; poses: SpritePoses; anims: SpriteAnims }
 
 const STATUS_LABEL: Record<SpriteJobRow["status"], string> = { queued: "대기", running: "생성 중", done: "완료", failed: "실패" };
@@ -41,6 +41,26 @@ const isStrip = (j: SpriteJobRow) => j.kind === "strip";
 /** 완료된 자식 포즈 이미지 / 프레임 띠를 모은다 */
 const posesOf = (kids: SpriteJobRow[]): SpritePoses => { const o: SpritePoses = {}; for (const k of kids) if (!isStrip(k) && k.status === "done" && k.result_url && isPose(k.pose)) o[k.pose] = k.result_url; return o; };
 const animsOf = (kids: SpriteJobRow[]): SpriteAnims => { const o: SpriteAnims = {}; for (const k of kids) if (isStrip(k) && k.status === "done" && k.frame_urls?.length && isAnimKey(k.pose)) o[k.pose] = { frames: k.frame_urls, fps: fpsFor(k.pose, k.frame_urls.length) }; return o; };
+
+/** 띠 결과를 브라우저에서 잘라 사용자 폴더에 올리고 서버에 기록한다 (대기열 세트 생성과 로그가 함께 쓴다) */
+async function sliceAndUploadStrip(campaignId: string, jobId: string, resultUrl: string, frames: number, label: string, onProgress: (t: string) => void) {
+  onProgress(`${label}: 프레임 자르는 중…`);
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("로그인이 필요합니다");
+  const { blobs } = await sliceStrip(resultUrl, frames);
+  const urls: string[] = [];
+  for (let i = 0; i < blobs.length; i++) {
+    onProgress(`${label}: 프레임 ${i + 1}/${blobs.length} 올리는 중…`);
+    const path = `${user.id}/${jobId}-f${i}.png`;
+    const { error } = await supabase.storage.from("sprites").upload(path, blobs[i]!, { contentType: "image/png", upsert: true });
+    if (error) throw new Error(`프레임 업로드 실패: ${error.message}`);
+    urls.push(supabase.storage.from("sprites").getPublicUrl(path).data.publicUrl);
+  }
+  const r = await saveStripFrames(campaignId, jobId, urls);
+  if (r.error) throw new Error(r.error);
+}
+const skillSpecOf = (sk: SkillLite) => skillStripSpec(sk);
 
 function TargetSelect({ value, onChange, name, enemies, characters, className = field, disabled, none = "적용 안 함" }: { value?: string; onChange?: (v: string) => void; name?: string; enemies: EnemyLite[]; characters: CharLite[]; className?: string; disabled?: boolean; none?: string }) {
   return (
@@ -60,6 +80,12 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
   const [running, setRunning] = useState(false);
   const stopRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // 세트 생성: 대기 이미지 뒤에 이어서 만들 공통 띠와, 대상을 지정했을 때의 스킬별 띠
+  const [setStrips, setSetStrips] = useState<SpriteAnimKey[]>(["idle", "hit", "evade", "down"]);
+  const [setSkills, setSetSkills] = useState(true);
+  const toggleSetStrip = (k: SpriteAnimKey) => setSetStrips((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]));
+  const targetSkillsOf = (t: SpriteTarget): SkillLite[] => !t ? [] : t.kind === "enemy" ? enemies.find((e) => e.id === t.id)?.skills ?? [] : characters.find((c) => c.id === t.id)?.skills ?? [];
+  const callsFor = (q: QueueItem) => 1 + setStrips.length + (setSkills ? targetSkillsOf(decodeTarget(q.target)).length : 0);
   // 부모(대기 정지) 작업과 자식(포즈·띠) 작업으로 나눈다. 옛 행(pose 없음)은 대기로 본다
   const parents = useMemo(() => jobs.filter((j) => !j.parent_job_id && (j.pose ?? "idle") === "idle" && !isStrip(j)), [jobs]);
   const kidsOf = useMemo(() => { const m: Record<string, SpriteJobRow[]> = {}; for (const j of jobs) if (j.parent_job_id) (m[j.parent_job_id] ??= []).push(j); return m; }, [jobs]);
@@ -105,15 +131,37 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
         }
         patch(item.key, { status: "gen" });
         const r = await generateSprite(campaignId, { sourceUrl, label: item.label, notes: item.notes, target: decodeTarget(item.target) });
-        if (r.resultUrl) { patch(item.key, { status: "done", result: r.resultUrl, error: r.error }); setPreviewSrc(r.resultUrl); }
-        else throw new Error(r.error ?? "생성 실패");
+        if (!r.resultUrl || !r.jobId) throw new Error(r.error ?? "생성 실패");
+        patch(item.key, { result: r.resultUrl, error: r.error }); setPreviewSrc(r.resultUrl);
+        router.refresh();
+        // 세트: 공통 띠 → 스킬별 띠 (대상이 적용된 경우만). 하나가 실패해도 다음으로 넘어가고 오류는 모아 둔다
+        const target = decodeTarget(item.target);
+        const plan: { key: SpriteAnimKey; label: string; frames: number }[] = [
+          ...setStrips.map((k) => ({ key: k, label: STRIPS.find((x) => x.id === k)?.label ?? k, frames: STRIP_SPECS[k as keyof typeof STRIP_SPECS]?.frames ?? 4 })),
+          ...(setSkills && target && !r.error ? targetSkillsOf(target).map((sk) => ({ key: `skill:${sk.id}` as SpriteAnimKey, label: skillLabel(sk), frames: skillSpecOf(sk).frames })) : []),
+        ];
+        const errs: string[] = [];
+        for (let i = 0; i < plan.length; i++) {
+          if (stopRef.current) break;
+          const st = plan[i]!;
+          const prog = (t: string) => patch(item.key, { progress: `띠 ${i + 1}/${plan.length} · ${t}` });
+          try {
+            prog(`${st.label} 생성 중… (${st.frames}칸)`);
+            const g = await generateStrip(campaignId, r.jobId, st.key);
+            if (g.error || !g.resultUrl || !g.jobId) throw new Error(g.error ?? "생성 실패");
+            await sliceAndUploadStrip(campaignId, g.jobId, g.resultUrl, g.frames ?? st.frames, st.label, prog);
+          } catch (e) { errs.push(`${st.label}: ${e instanceof Error ? e.message : "실패"}`); }
+          router.refresh();
+        }
+        patch(item.key, { status: "done", progress: plan.length ? `띠 ${plan.length - errs.length}/${plan.length} 완료` : undefined, error: [r.error, ...errs].filter(Boolean).join(" / ") || undefined });
       } catch (e) {
-        patch(item.key, { status: "fail", error: e instanceof Error ? e.message : "실패" });
+        patch(item.key, { status: "fail", progress: undefined, error: e instanceof Error ? e.message : "실패" });
       }
       router.refresh();
     }
     setRunning(false);
   };
+  const totalCalls = queue.filter((q) => q.status === "wait" || q.status === "fail").reduce((n, q) => n + callsFor(q), 0);
   const waiting = queue.filter((q) => q.status === "wait" || q.status === "fail").length;
   const promptPreview = useMemo(() => buildSpritePrompt({ label: queue[0]?.label, notes, hasSource: !!queue[0]?.file }), [queue, notes]);
   const busy = (q: QueueItem) => q.status === "upload" || q.status === "gen";
@@ -136,6 +184,14 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
               <TargetSelect value={target} onChange={setTarget} enemies={enemies} characters={characters} none="적용 안 함 (나중에 로그에서 적용)" />
               <span className="mt-1 block text-[11px] text-muted">메모와 대상은 대기열에 추가할 때 각 항목에 복사됩니다.{isGm ? "" : " 내 캐릭터에만 적용할 수 있습니다."}</span></label>
           </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border border-border/70 bg-elev/40 p-2 text-[11px]">
+            <span className="font-semibold text-muted">세트로 함께 만들기:</span>
+            {STRIPS.map((st) => (
+              <label key={st.id} className="flex items-center gap-1"><input type="checkbox" checked={setStrips.includes(st.id)} onChange={() => toggleSetStrip(st.id)} disabled={running} /> {st.label} <span className="text-muted">{STRIP_SPECS[st.id as keyof typeof STRIP_SPECS].frames}칸</span></label>
+            ))}
+            <label className="flex items-center gap-1"><input type="checkbox" checked={setSkills} onChange={(e) => setSetSkills(e.target.checked)} disabled={running} /> 스킬별 띠 <span className="text-muted">(대상을 지정한 항목만, 스킬 수만큼)</span></label>
+            <span className="text-muted">대기 이미지가 끝나면 이어서 자동 생성됩니다. 항목당 호출 = 1 + 띠 수.</span>
+          </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <label className="inline-block cursor-pointer rounded-md border border-border px-3 py-1.5 text-sm hover:bg-fg/5">
               이미지 추가 (여러 장 가능)
@@ -144,9 +200,9 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
             <Button variant="ghost" onClick={addTextOnly}>글로만 만들기</Button>
             <span className="flex-1" />
             {running ? <Button variant="danger" onClick={() => { stopRef.current = true; }}>중지</Button> : null}
-            <Button onClick={run} disabled={running || waiting === 0 || !provider.configured}>{running ? "생성 중..." : `생성 시작 (${waiting})`}</Button>
+            <Button onClick={run} disabled={running || waiting === 0 || !provider.configured}>{running ? "생성 중..." : `생성 시작 (${waiting}항목 · 호출 ${totalCalls}회)`}</Button>
           </div>
-          {queue.length === 0 ? <p className="mt-3 text-sm text-muted">이미지를 올리거나 &lsquo;글로만 만들기&rsquo;를 눌러 대기열에 넣으세요. 한 항목당 호출 1회입니다.</p> : null}
+          {queue.length === 0 ? <p className="mt-3 text-sm text-muted">이미지를 올리거나 &lsquo;글로만 만들기&rsquo;를 눌러 대기열에 넣으세요. 세트 선택에 따라 항목당 호출 수가 정해집니다.</p> : null}
           <ul className="mt-3 space-y-2">
             {queue.map((q) => (
               <li key={q.key} className="grid gap-2 border border-border p-2 sm:grid-cols-[4rem_1fr_auto]">
@@ -160,11 +216,12 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
                     <TargetSelect value={q.target} onChange={(v) => patch(q.key, { target: v })} enemies={enemies} characters={characters} className={`${field} w-44 shrink-0`} disabled={busy(q)} />
                   </div>
                   <Input value={q.notes} onChange={(e) => patch(q.key, { notes: e.target.value })} placeholder="이 항목만의 메모" disabled={busy(q)} />
+                  {q.progress ? <p className="text-[11px] text-accent">{q.progress}</p> : null}
                   {q.error ? <p className="text-xs text-danger">{q.error}</p> : null}
                 </div>
                 <div className="flex flex-col items-end gap-1 text-xs">
                   <span className={q.status === "fail" ? "text-danger" : q.status === "done" ? "text-ok" : "text-muted"}>
-                    {q.status === "wait" ? "대기" : q.status === "upload" ? "업로드 중" : q.status === "gen" ? "생성 중…" : q.status === "done" ? "완료" : "실패"}
+                    {q.status === "wait" ? `대기 (호출 ${callsFor(q)})` : q.status === "upload" ? "업로드 중" : q.status === "gen" ? "생성 중…" : q.status === "done" ? "완료" : "실패"}
                   </span>
                   {q.result ? <button type="button" className="text-accent" onClick={() => setPreviewSrc(q.result!)}>미리보기</button> : null}
                   {!busy(q) ? <button type="button" className="text-muted hover:text-danger" onClick={() => setQueue((qq) => qq.filter((x) => x.key !== q.key))}>제거</button> : null}
@@ -274,23 +331,7 @@ function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, character
     setPoseSel((m) => ({ ...m, [p.id]: [] })); setProgress(""); setWorking(null);
   };
   /** 띠 결과를 브라우저에서 잘라 올리고 기록한다 */
-  const sliceAndUpload = async (jobId: string, resultUrl: string, frames: number, label: string) => {
-    setProgress(`${label}: 프레임 자르는 중…`);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("로그인이 필요합니다");
-    const { blobs } = await sliceStrip(resultUrl, frames);
-    const urls: string[] = [];
-    for (let i = 0; i < blobs.length; i++) {
-      setProgress(`${label}: 프레임 ${i + 1}/${blobs.length} 올리는 중…`);
-      const path = `${user.id}/${jobId}-f${i}.png`;
-      const { error } = await supabase.storage.from("sprites").upload(path, blobs[i]!, { contentType: "image/png", upsert: true });
-      if (error) throw new Error(`프레임 업로드 실패: ${error.message}`);
-      urls.push(supabase.storage.from("sprites").getPublicUrl(path).data.publicUrl);
-    }
-    const r = await saveStripFrames(campaignId, jobId, urls);
-    if (r.error) throw new Error(r.error);
-  };
+  const sliceAndUpload = (jobId: string, resultUrl: string, frames: number, label: string) => sliceAndUploadStrip(campaignId, jobId, resultUrl, frames, label, setProgress);
   const runStrips = async (p: SpriteJobRow) => {
     const sel = selStrips(p); if (!sel.length || working) return;
     setWorking(p.id); setErr(null);

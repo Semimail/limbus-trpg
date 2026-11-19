@@ -119,5 +119,10 @@
 - 환경 변수(Vercel에 넣어야 동작): `OPENAI_API_KEY`, 선택 `SPRITE_PROVIDER`(openai|mock)·`SPRITE_IMAGE_MODEL`(기본 gpt-image-1)·`SPRITE_IMAGE_QUALITY`(low|medium|high)·`SPRITE_IMAGE_SIZE`(기본 1024x1536)·`SPRITE_COST_PER_IMAGE_USD`(로그용 추정 단가). 비용 단가는 코드에 박지 않는다. **키는 아직 없음** → 실제 생성 품질 미확인.
 - 원작 추출 이미지는 API에 참고 이미지로 보내지 않는다(스타일은 글로만).
 - 미결: 실제 키로 품질 확인, 결과 PNG 여백 트리밍·축소(이미지 라이브러리 없음), 캐릭터(PC) 시트에도 같은 공방 연결.
-- 로컬 환경 메모: 사용자 PC 작업 폴더(D:
-ew\limbus-trpg-…)는 D: 가 exFAT라 pnpm 링크가 안 되므로 C: 에 미러를 떠서 `pnpm install` 후 typecheck·lint·build 를 돌렸다(Node 20.14 로는 Tailwind 빌드가 실패, Node 24 필요). git 은 2026-11-20 `git init` 으로 origin 에 연결함.
+- 로컬 환경 메모: 2026-11-20 "환경 일치화" 항목 참고.
+
+## 환경 일치화: 사용자 Windows PC (2026-11-20)
+- 클라우드 샌드박스 → 사용자 PC로 옮김. 작업 폴더 `D:
+ew\limbus-trpg-…`는 exFAT(링크 불가)라 `scripts/win-sync.ps1`이 `C:\dev\limbus-trpg`로 미러를 뜨고 fnm Node 24(v24.22.3)로 install·typecheck·lint·build·test 를 돌린다. 모두 통과 확인(테스트 68개, 빌드는 rulebook `fs.readFileSync` 경고 1건은 기존과 같음). 자세한 절차는 CLAUDE.md "로컬 개발·테스트".
+- git 은 D:에서 origin main 에 직접 푸시. `apps/web/.env.local`은 아직 없어 개발 서버·Playwright 는 미확인(Supabase URL/anon key 필요).
+- Windows용 `scripts/db-push.ps1` 추가(토큰을 화면에 안 보이게 입력). 마이그레이션 0010은 여전히 미적용.

@@ -35,6 +35,9 @@ python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types s
 python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types audio --match "(?i)bgm|music"
 python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types tex --match "(?i)background|bg_"
 ```
+- **음악·효과음은 Unity AudioClip이 아니라 FMOD `.bank`**(`LimbusCompany_Data\StreamingAssets\...\*.bank`)에 들어 있다. `run-windows.ps1`이 `.bank` 목록을 `extracted\music\bank\banks.txt`에 쓰고, [vgmstream](https://vgmstream.org) Windows CLI(`vgmstream-cli.exe`)가 PATH나 이 폴더에 있으면 뱅크마다 폴더를 만들어 전 트랙을 wav로 푼다. 수동: `vgmstream-cli -S 0 -o "out\?n.wav" Master.bank`.
+- Addressables 번들은 컨테이너 경로가 비어 있는 경우가 많다. 그때는 `<번들 파일명>/<에셋 이름>.png`로 떨어지고, `summarize.py`는 출처 번들별·이름 앞 단어별로 센다. 필터는 이름에도 적용되니 `--match "(?i)icon"` 같은 식으로 쓴다.
+- 필터 없이 전부 꺼내려면 `run-windows.ps1 -All -SkipList` (이미지·텍스트·폰트 전부 + .bank).
 - 오디오가 `.fsb`로 떨어지면 [vgmstream](https://vgmstream.org) CLI로 변환: `vgmstream-cli -o out.wav in.fsb`.
 - Unity 버전 추정 실패 오류가 나면 `--unity-version 2022.3.xxf1`(설치 폴더 exe 속성에서 확인).
 - 캐릭터 스탠딩은 Spine(TextAsset `.skel`/`.atlas` + Texture2D)으로 들어 있을 수 있다. 정지 이미지로 쓰려면 아틀라스 PNG를 잘라 쓰고, 애니메이션 재생은 spine-ts 런타임(별도 라이선스 조건)이 필요하므로 일단 정지 이미지 권장.

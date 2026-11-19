@@ -38,17 +38,41 @@ def main() -> int:
         return 0
 
     folders: Counter[tuple[str, str]] = Counter()
+    sources: Counter[tuple[str, str]] = Counter()
+    prefixes: Counter[tuple[str, str]] = Counter()
     noname = 0
     for e in items:
         c = (e.get("container") or "").replace("\\", "/")
         if not c:
             noname += 1
+            sources[(e.get("source") or "?", e["type"])] += 1
+            name = e.get("name") or ""
+            m = re.match(r"[A-Za-z]+", name)
+            prefixes[((m.group(0).lower() if m else "?"), e["type"])] += 1
             continue
         parts = [p for p in c.split("/") if p][: args.depth]
         folders[("/".join(parts), e["type"])] += 1
-    print(f"\n컨테이너 상위 {args.depth}단계 폴더별 (컨테이너 없는 항목 {noname}개는 제외)")
-    for (folder, t), n in folders.most_common(args.top):
-        print(f"  {n:>6}  {t:<10} {folder}")
+    if folders:
+        print(f"\n컨테이너 상위 {args.depth}단계 폴더별 (컨테이너 없는 항목 {noname}개는 제외)")
+        for (folder, t), n in folders.most_common(args.top):
+            print(f"  {n:>6}  {t:<10} {folder}")
+    if noname:
+        print(f"\n컨테이너 없는 항목 {noname}개 → 출처 번들 파일별")
+        for (src, t), n in sources.most_common(args.top):
+            print(f"  {n:>6}  {t:<10} {src}")
+        print(f"\n컨테이너 없는 항목 → 이름 앞 단어별")
+        for (pre, t), n in prefixes.most_common(args.top):
+            print(f"  {n:>6}  {t:<10} {pre}")
+    stats = args.index.with_name("stats.json")
+    if stats.exists():
+        st = json.loads(stats.read_text("utf-8"))
+        print("\n입력 루트")
+        for r in st.get("roots", []):
+            print(f"  {'OK ' if r['exists'] else '없음'} {r['path']}  ({r['files']}개 파일)")
+        banks = st.get("banks", [])
+        print(f"\nFMOD .bank 파일 {len(banks)}개 (음악·효과음은 여기에 있음)")
+        for b in banks[: args.top]:
+            print(f"  {b['bytes']/1e6:>8.1f} MB  {b['path']}")
     return 0
 
 

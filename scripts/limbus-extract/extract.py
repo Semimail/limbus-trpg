@@ -67,8 +67,12 @@ def iter_input_files(roots: list[Path]) -> list[Path]:
     return out
 
 
-def safe_rel(container: str | None, name: str, fallback_id: int) -> str:
-    base = container or name or f"obj_{fallback_id}"
+def safe_rel(container: str | None, name: str, fallback_id: int, source: str = "") -> str:
+    if container:
+        base = container
+    else:
+        # Addressables 번들은 컨테이너 경로가 없는 경우가 많다 → 번들 파일명 폴더 아래에 이름으로
+        base = f"{Path(source).stem}/{name or f'obj_{fallback_id}'}" if source else (name or f"obj_{fallback_id}")
     base = base.replace("\\", "/")
     base = re.sub(r"^assets/", "", base, flags=re.I)
     base = re.sub(r"[<>:\"|?*\x00-\x1f]", "_", base)
@@ -102,13 +106,14 @@ def export_obj(obj, out: Path, want: set[str], matcher, index: list[dict], list_
     key = container or name
     if matcher and not matcher.search(key or ""):
         return
-    rel = safe_rel(container, name, obj.path_id)
+    source = str(getattr(obj.assets_file, "name", "") or "")
+    rel = safe_rel(container, name, obj.path_id, source)
     entry = {
         "type": tname,
         "name": name,
         "container": container,
         "path_id": obj.path_id,
-        "source": str(getattr(obj.assets_file, "name", "") or ""),
+        "source": source,
     }
     if list_only:
         index.append(entry)
@@ -203,6 +208,16 @@ def main() -> int:
         ap.error("--game / --cache / --file 중 하나는 필요합니다")
     want = {t.strip() for t in args.types.split(",") if t.strip()}
     matcher = re.compile(args.match) if args.match else None
+    stats: dict = {"roots": [], "banks": []}
+    for r in roots:
+        n = len(iter_input_files([r])) if r.exists() else None
+        stats["roots"].append({"path": str(r), "exists": r.exists(), "files": n})
+        print(f"입력 루트 {r}: {'없음!' if not r.exists() else f'{n}개 파일'}", file=sys.stderr)
+        if r.is_dir():
+            for b in r.rglob("*.bank"):
+                stats["banks"].append({"path": str(b), "bytes": b.stat().st_size})
+    if stats["banks"]:
+        print(f"FMOD .bank 파일 {len(stats['banks'])}개 발견 → 음악은 vgmstream-cli 로 .bank 에서 꺼낸다 (README 참고)", file=sys.stderr)
     files = iter_input_files(roots)
     print(f"입력 파일 {len(files)}개", file=sys.stderr)
     args.out.mkdir(parents=True, exist_ok=True)
@@ -224,6 +239,7 @@ def main() -> int:
             print(f"[{i}/{len(files)}] {f.name}: {got}개", file=sys.stderr)
 
     (args.out / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), "utf-8")
+    (args.out / "stats.json").write_text(json.dumps(stats, ensure_ascii=False, indent=1), "utf-8")
     errs = sum(1 for e in index if "error" in e)
     print(f"완료: {len(index)}개 항목 (오류 {errs}) → {args.out}/index.json", file=sys.stderr)
     return 0

@@ -5,6 +5,7 @@
 #   powershell -ExecutionPolicy Bypass -File .\run-windows.ps1
 #   powershell -ExecutionPolicy Bypass -File .\run-windows.ps1 -Game "D:\Steam\steamapps\common\Limbus Company" -Out "D:\limbus-extracted"
 #   powershell -ExecutionPolicy Bypass -File .\run-windows.ps1 -ListOnly      # 목록만
+#   powershell -ExecutionPolicy Bypass -File .\run-windows.ps1 -All -SkipList # 필터 없이 전부(이미지·텍스트·폰트) + FMOD .bank 음악
 #
 # 필터 정규식은 아래 Filters 목록에서 고친다. 목록(index.json)의 container 경로를 보고 맞추면 된다.
 param(
@@ -13,7 +14,8 @@ param(
   [string]$Out = "$PSScriptRoot\extracted",
   [string]$UnityVersion = "",
   [switch]$ListOnly,
-  [switch]$SkipList
+  [switch]$SkipList,
+  [switch]$All
 )
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
@@ -47,6 +49,40 @@ if (-not $SkipList) {
 }
 if ($ListOnly) { Write-Host "목록만 뽑았습니다. $Out\summary.txt 를 보고 필터를 정하세요."; exit 0 }
 
+# FMOD .bank → wav (림버스 음악·효과음은 Unity AudioClip 이 아니라 FMOD 뱅크에 들어 있다)
+function Extract-Banks {
+  $bankDir = Join-Path $Out "music\bank"
+  $banks = @(Get-ChildItem -Path $Game -Recurse -Filter *.bank -ErrorAction SilentlyContinue)
+  if ($Cache) { $banks += @(Get-ChildItem -Path $Cache -Recurse -Filter *.bank -ErrorAction SilentlyContinue) }
+  if ($banks.Count -eq 0) { Write-Host "FMOD .bank 파일이 없습니다."; return }
+  New-Item -ItemType Directory -Force -Path $bankDir | Out-Null
+  $banks | ForEach-Object { "$($_.Length)`t$($_.FullName)" } | Set-Content (Join-Path $bankDir "banks.txt")
+  Write-Host "FMOD .bank $($banks.Count)개 → 목록 $bankDir\banks.txt"
+  $vgm = Get-Command vgmstream-cli -ErrorAction SilentlyContinue
+  if (-not $vgm) { $vgm = Get-Command (Join-Path $PSScriptRoot "vgmstream-cli.exe") -ErrorAction SilentlyContinue }
+  if (-not $vgm) {
+    Write-Warning "vgmstream-cli 가 없어 .bank 를 wav 로 못 풀었습니다. https://vgmstream.org 에서 Windows CLI 를 받아 PATH 나 이 폴더에 두고 다시 돌리세요."
+    return
+  }
+  foreach ($b in $banks) {
+    $d = Join-Path $bankDir $b.BaseName
+    New-Item -ItemType Directory -Force -Path $d | Out-Null
+    Write-Host "  $($b.Name) → $d"
+    & $vgm.Source -S 0 -o (Join-Path $d "?n.wav") $b.FullName | Out-Null
+  }
+}
+
+if ($All) {
+  $dir = Join-Path $Out "all"
+  Write-Host "== 전부 추출 (types=sprite,tex,text,font, 필터 없음) → $dir"
+  & $py extract.py @common --out $dir --types sprite,tex,text,font
+  Write-Host "== FMOD .bank 음악"
+  Extract-Banks
+  Write-Host ""
+  Write-Host "완료. $dir\sprite, $dir\tex, $dir\text, $dir\font / $Out\music\bank"
+  exit 0
+}
+
 # 2) 골라 추출. 이름|타입|정규식
 $Filters = @(
   @{ name = "ui";    types = "sprite,tex"; match = "(?i)\bui\b|/ui/|icon|hud|button|frame|slot|gauge|popup|panel|badge|coin|sin_|status|buff|keyword|cursor" },
@@ -60,6 +96,8 @@ foreach ($f in $Filters) {
   & $py extract.py @common --out $dir --types $f.types --match $f.match
   $step++
 }
+Write-Host "== FMOD .bank 음악"
+Extract-Banks
 
 Write-Host ""
 Write-Host "완료. 결과: $Out"

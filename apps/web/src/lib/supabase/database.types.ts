@@ -510,6 +510,9 @@ export type Database = {
           finished_at: string | null
           id: string
           label: string
+          frame_urls: string[] | null
+          frames: number | null
+          kind: string
           model: string
           parent_job_id: string | null
           pose: string
@@ -532,6 +535,9 @@ export type Database = {
           finished_at?: string | null
           id?: string
           label?: string
+          frame_urls?: string[] | null
+          frames?: number | null
+          kind?: string
           model: string
           parent_job_id?: string | null
           pose?: string
@@ -554,6 +560,9 @@ export type Database = {
           finished_at?: string | null
           id?: string
           label?: string
+          frame_urls?: string[] | null
+          frames?: number | null
+          kind?: string
           model?: string
           parent_job_id?: string | null
           pose?: string

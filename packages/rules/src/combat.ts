@@ -11,12 +11,13 @@ import { tickStagger } from "./stagger";
 import { fireEffects, type FxLog, type FxContext } from "./effects";
 import { flipCoin, adjustSanity } from "./coin";
 import { dist, reachable, stepToward, inBounds, type Pos } from "./grid";
-import type { SpritePoses } from "./character";
+import type { SpritePoses, SpriteAnims } from "./character";
 
 export interface Unit extends Combatant {
   portraitUrl: string | null;
   spriteUrl?: string | null;
   spritePoses?: SpritePoses | null;
+  spriteAnims?: SpriteAnims | null;
   source: { kind: "character"; id: string; ownerId: string } | { kind: "enemy"; id: string };
   deck: string[];
   discard: string[];
@@ -157,7 +158,7 @@ export interface UnitInput {
   id: string; name: string; side: "ally" | "enemy"; maxHp: number; hp: number;
   sanity: number; sanityLocked?: boolean; speed: Unit["speed"]; skills: Skill[];
   statuses?: Statuses; resist?: Combatant["resist"]; portraitUrl: string | null; source: Unit["source"];
-  passives?: Effect[]; light?: number; erosion?: number; spriteUrl?: string | null; spritePoses?: SpritePoses | null;
+  passives?: Effect[]; light?: number; erosion?: number; spriteUrl?: string | null; spritePoses?: SpritePoses | null; spriteAnims?: SpriteAnims | null;
 }
 
 export function startCombat(inputs: UnitInput[], seed: number, rules: RuleConfig, handSize = 3): CombatState {

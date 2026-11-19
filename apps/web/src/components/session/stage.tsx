@@ -4,10 +4,10 @@ import type { ChatMessage } from "./chat";
 import { KeywordText } from "@/components/keyword/keyword";
 import { BACKGROUNDS } from "@/components/icons";
 import { SdSprite } from "@/components/sprite/sd-sprite";
-import type { SpritePoses } from "@limbus/rules";
+import type { SpritePoses, SpriteAnims } from "@limbus/rules";
 
 /** 무대 배우. id는 "c:<characterId>"(PC) 또는 "e:<enemyId>"(NPC) */
-export interface StageActor { id: string; name: string; spriteUrl: string | null; spritePoses?: SpritePoses | null; portraitUrl: string | null; kind: "pc" | "npc" }
+export interface StageActor { id: string; name: string; spriteUrl: string | null; spritePoses?: SpritePoses | null; spriteAnims?: SpriteAnims | null; portraitUrl: string | null; kind: "pc" | "npc" }
 export interface TypingLine { key: string; name: string; line: string }
 
 interface Props {
@@ -43,7 +43,7 @@ export function Stage({ background, actors, messages, gmNames, cast, split, typi
     return (
       <div key={a.id} className="relative flex h-full max-w-[26%] flex-1 items-end justify-center transition-all duration-300" style={{ filter: active || !speakerId ? "none" : "brightness(.5) saturate(.6)", transform: active ? "scale(1.04)" : "scale(1)" }}>
         {a.spriteUrl ? (
-          <SdSprite src={a.spriteUrl} poses={a.spritePoses} alt={a.name} height="100%" flip={a.kind === "npc" && !!split} motion={active && bumpKey !== undefined ? "ready" : "idle"} motionKey={bumpKey} phase={a.kind === "npc" ? 1 : 0} className="h-full" />
+          <SdSprite src={a.spriteUrl} poses={a.spritePoses} anims={a.spriteAnims} alt={a.name} height="100%" flip={a.kind === "npc" && !!split} motion={active && bumpKey !== undefined ? "ready" : "idle"} motionKey={bumpKey} phase={a.kind === "npc" ? 1 : 0} className="h-full" />
         ) : (
           <div className="flex h-[70%] w-full flex-col items-center justify-end">
             <div className="aspect-square w-[46%] max-w-[9rem] overflow-hidden rounded-full border-2 bg-black/60" style={{ borderColor: a.kind === "npc" ? "#b3161c" : "rgba(217,179,91,.8)" }}>

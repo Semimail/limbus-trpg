@@ -12,6 +12,8 @@ import { getDevFetch } from "@/lib/dev-fetch";
 export interface SpriteRequest {
   prompt: string;
   source?: { bytes: Uint8Array; mime: string } | null;
+  /** 요청 크기 (기본 SPRITE_IMAGE_SIZE). 프레임 띠는 strip.ts 규격으로 넘긴다 */
+  size?: string;
 }
 export interface SpriteResult {
   png: Uint8Array;
@@ -56,13 +58,13 @@ function openaiProvider(): SpriteProvider {
       if (req.source) {
         const form = new FormData();
         form.set("model", model); form.set("prompt", req.prompt); form.set("n", "1");
-        form.set("size", size); form.set("quality", quality); form.set("background", "transparent"); form.set("output_format", "png");
+        form.set("size", req.size ?? size); form.set("quality", quality); form.set("background", "transparent"); form.set("output_format", "png");
         form.set("image", new Blob([req.source.bytes as BlobPart], { type: req.source.mime }), "source.png");
         res = await f("https://api.openai.com/v1/images/edits", { method: "POST", headers, body: form });
       } else {
         res = await f("https://api.openai.com/v1/images/generations", {
           method: "POST", headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ model, prompt: req.prompt, n: 1, size, quality, background: "transparent", output_format: "png" }),
+          body: JSON.stringify({ model, prompt: req.prompt, n: 1, size: req.size ?? size, quality, background: "transparent", output_format: "png" }),
         });
       }
       const text = await res.text();

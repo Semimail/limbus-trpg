@@ -212,6 +212,8 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
 @keyframes sd-idle { 0%, 100% { transform: translateY(0) rotate(0) scale(1, 1); } 25% { transform: translateY(-.6%) rotate(.5deg) scale(1.004, .996); } 50% { transform: translateY(-1.8%) rotate(0) scale(1.016, .984); } 75% { transform: translateY(-.6%) rotate(-.5deg) scale(1.004, .996); } }
 .sd-m { display: block; position: relative; transform-origin: 50% 100%; will-change: transform, filter; }
 .sd-stack { transform-origin: 50% 100%; }
+.sd-base { display: block; }
+.sd-strip { display: block; }
 /* 포즈 이미지 교차 페이드: 대기 이미지 위에 같은 높이로 겹친다 */
 .sd-pose { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); opacity: 0; pointer-events: none; }
 .sd-pose-in { animation: sd-pose-in var(--sd-dur, .6s) ease both; }

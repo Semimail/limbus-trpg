@@ -56,8 +56,8 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
     }
   }
   const actors: StageActor[] = [
-    ...(chars ?? []).map((c) => ({ id: `c:${c.id}`, name: c.name, portraitUrl: c.portrait_url, spriteUrl: ((c.data as unknown as Partial<CharacterData>)?.spriteUrl ?? null), spritePoses: ((c.data as unknown as Partial<CharacterData>)?.spritePoses ?? null), kind: "pc" as const })),
-    ...(foes ?? []).map((f) => ({ id: `e:${f.id}`, name: f.name, portraitUrl: f.portrait_url, spriteUrl: ((f.data as unknown as Partial<EnemyData>)?.spriteUrl ?? null), spritePoses: ((f.data as unknown as Partial<EnemyData>)?.spritePoses ?? null), kind: "npc" as const })),
+    ...(chars ?? []).map((c) => ({ id: `c:${c.id}`, name: c.name, portraitUrl: c.portrait_url, spriteUrl: ((c.data as unknown as Partial<CharacterData>)?.spriteUrl ?? null), spritePoses: ((c.data as unknown as Partial<CharacterData>)?.spritePoses ?? null), spriteAnims: ((c.data as unknown as Partial<CharacterData>)?.spriteAnims ?? null), kind: "pc" as const })),
+    ...(foes ?? []).map((f) => ({ id: `e:${f.id}`, name: f.name, portraitUrl: f.portrait_url, spriteUrl: ((f.data as unknown as Partial<EnemyData>)?.spriteUrl ?? null), spritePoses: ((f.data as unknown as Partial<EnemyData>)?.spritePoses ?? null), spriteAnims: ((f.data as unknown as Partial<EnemyData>)?.spriteAnims ?? null), kind: "npc" as const })),
   ];
   const boardData: BoardData = (() => { const b = (current?.board ?? {}) as Partial<BoardData>; return { background: b.background ?? null, tokens: b.tokens ?? [], stage: b.stage }; })();
   const ownerName = (uid: string) => memberList.find((m) => m.user_id === uid)?.username ?? "";

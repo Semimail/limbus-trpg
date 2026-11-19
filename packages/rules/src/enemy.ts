@@ -1,5 +1,5 @@
 import type { DamageType, Effect, Resistance, Sin } from "./types";
-import type { SkillDraft, SpritePoses } from "./character";
+import type { SkillDraft, SpritePoses, SpriteAnims } from "./character";
 import type { Grade } from "./progression";
 
 /** 적 도감 항목 데이터 (enemies.data) */
@@ -21,6 +21,8 @@ export interface EnemyData {
   spriteUrl?: string | null;
   /** 포즈별 추가 이미지 (SD 공방에서 생성) */
   spritePoses?: SpritePoses | null;
+  /** 모션별 프레임 애니메이션 (SD 공방 프레임 띠) */
+  spriteAnims?: SpriteAnims | null;
 }
 
 export function newEnemyData(): EnemyData {

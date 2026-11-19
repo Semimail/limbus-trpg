@@ -2,7 +2,7 @@
  * SD 스프라이트 프롬프트. 스타일 문장은 여기 한 곳에서만 관리한다.
  * 원작 이미지를 참고 이미지로 보내지 않고, 스타일은 글로만 지정한다.
  */
-import type { SpritePose } from "@limbus/rules";
+import type { SpritePose, SpriteAnimKey } from "@limbus/rules";
 
 export const SPRITE_STYLE = [
   "Full-body chibi (super-deformed) battle sprite of a single character, about 2.5 heads tall with a large head and small body.",
@@ -41,15 +41,43 @@ export const POSES: { id: SpritePose; label: string; desc: string }[] = [
   { id: "win", label: "승리", desc: "Pose: triumphant — standing tall with weapon raised or fist up, chest out, confident grin or calm satisfied expression." },
 ];
 
+const SAME_CHARACTER = "Redraw the exact same character from the reference image. Keep identical face, hairstyle, hair and eye color, clothing, accessories, weapon, proportions, line weight and color palette. Same scale as the reference. Do not add or remove items.";
+
 /** 대기 결과를 참고 이미지로 넣고 같은 인물의 다른 포즈를 그리게 한다 */
 export function buildPosePrompt(pose: SpritePose, label?: string): string {
   const p = POSES.find((x) => x.id === pose);
   if (!p) throw new Error(`알 수 없는 포즈: ${pose}`);
   return [
-    "Redraw the exact same character from the reference image in a different pose. Keep identical face, hairstyle, hair and eye color, clothing, accessories, weapon, proportions, line weight and color palette. Same scale as the reference. Do not add or remove items.",
+    SAME_CHARACTER.replace("Redraw the exact same character from the reference image.", "Redraw the exact same character from the reference image in a different pose."),
     label?.trim() ? `Character name: ${label.trim()}.` : "",
     p.desc,
     "The character still faces to the right of the image in three-quarter view.",
     SPRITE_STYLE,
+  ].filter(Boolean).join(" ");
+}
+
+/** 프레임 띠 모션 목록과 프레임별 설명 (칸 수는 strip.ts 의 STRIP_SPECS 와 맞춘다) */
+export const STRIPS: { id: SpriteAnimKey; label: string; frames: string[] }[] = [
+  { id: "idle", label: "대기(루프)", frames: ["relaxed stance, chest at rest", "chest slightly rising, shoulders lift a little", "fullest breath, head tilts up a touch", "exhaling back toward the first frame so the loop is seamless"] },
+  { id: "attack", label: "공격", frames: ["anticipation: weight shifts back, weapon drawn back", "coiled, about to strike", "lunge begins, body leaning forward", "full swing, weapon slashing forward to the right with motion lines", "follow-through, weapon past the target", "recovering toward the idle stance"] },
+  { id: "hit", label: "피격", frames: ["impact: flinch begins, head snaps back", "pushed back, off balance, eyes shut", "staggering, arms flung", "regaining footing"] },
+  { id: "evade", label: "회피", frames: ["alert, knees bending", "leaning back and away to the left, foot lifted", "fully dodged, body stretched back", "returning to stance"] },
+  { id: "down", label: "전투불능", frames: ["struck hard, reeling", "knees buckling", "falling forward", "landing on one knee, hand on the ground", "collapsed on one knee, head hanging, weapon dropped (final pose held)"] },
+  { id: "win", label: "승리", frames: ["lifting the weapon or fist", "raised high, chest out", "small hop or flourish", "settling into a confident stance"] },
+];
+
+/** 한 번의 호출로 N칸 띠를 그리게 한다. 칸은 같은 너비·같은 크기의 인물·같은 발 위치 */
+export function buildStripPrompt(key: SpriteAnimKey, frames: number, label?: string): string {
+  const s = STRIPS.find((x) => x.id === key);
+  if (!s) throw new Error(`알 수 없는 모션: ${key}`);
+  const list = s.frames.slice(0, frames).map((d, i) => `panel ${i + 1}: ${d}`).join("; ");
+  return [
+    `A sprite sheet animation strip: exactly ${frames} panels of equal width arranged in a single horizontal row, left to right, with no gaps, borders, numbers or labels.`,
+    `Every panel shows the same character at the same scale, feet on the same baseline, centered horizontally in its panel, facing to the right in three-quarter view.`,
+    SAME_CHARACTER,
+    label?.trim() ? `Character name: ${label.trim()}.` : "",
+    `The panels are consecutive animation frames of: ${s.label.replace("(루프)", "")}. ${list}.`,
+    key === "idle" ? "The motion is subtle breathing; the last panel should flow back into the first." : "Make each frame clearly different so the motion reads when played in sequence.",
+    SPRITE_STYLE.replace("Full-body chibi (super-deformed) battle sprite of a single character,", "Full-body chibi (super-deformed) battle sprite of a single character in every panel,"),
   ].filter(Boolean).join(" ");
 }

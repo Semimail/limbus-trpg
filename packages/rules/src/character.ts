@@ -34,6 +34,10 @@ export interface Trait {
 /** 스탠딩 외 포즈 이미지 종류 (코드 모션 이름과 같다) */
 export type SpritePose = "attack" | "hit" | "evade" | "down" | "win";
 export type SpritePoses = Partial<Record<SpritePose, string>>;
+/** 프레임 애니메이션 (SD 공방에서 띠를 잘라 만든 프레임 URL 목록). idle 은 루프, 나머지는 한 번 재생 */
+export type SpriteAnimKey = "idle" | SpritePose;
+export interface SpriteAnim { frames: string[]; fps?: number }
+export type SpriteAnims = Partial<Record<SpriteAnimKey, SpriteAnim>>;
 
 export interface CharacterData {
   version: 1;
@@ -47,6 +51,8 @@ export interface CharacterData {
   spriteUrl?: string | null;
   /** 포즈별 추가 이미지 (SD 공방에서 생성). 없으면 코드 모션만 */
   spritePoses?: SpritePoses | null;
+  /** 모션별 프레임 애니메이션 (SD 공방 프레임 띠). 있으면 포즈 이미지보다 우선 */
+  spriteAnims?: SpriteAnims | null;
   level: number;
   sync: 1 | 2 | 3 | 4;
   stats: Record<Sin, number>;

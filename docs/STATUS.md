@@ -101,3 +101,6 @@ Battle Backgrounds 1nXRLjFglNgjithfvY1D_3AkSt_aDvhoa · Icons 1DkcKQWgYLf9Kzk3Jd
 - **합 컷인**(기본 켜짐, 메뉴 "합 컷인 연출 끄기"로 카드 방식 전환, localStorage `limbus.cutin`): 두 유닛이 등장하는 단계(합·공격 코인·합 승리)에서 나머지를 어둡게 하고 두 유닛(스탠딩 또는 원형 초상)을 좌우 27%/73% 지점으로 크게 당겨 세움. 아래에 이름 플레이트, 스킬 칩·스킬명·제목, 코인(순서대로 뒤집히는 애니메이션), 큰 위력/피해 숫자(팝), 우세/코인 파괴/HP 변화. 가운데 VS. 한 유닛만 나오는 단계(상태이상·전투불능)는 유닛 옆 카드 유지. 구현: `CutIn` in `battle-screen.tsx`, 카드 데이터에 `skill` 필드 추가(`playback.ts`).
 - **라운드 시작 플래시**: 연출이 끝난 뒤 가운데에 림버스 네온 "TURN n"(`turn-text.png`) 1.6초.
 - **HUD**: 모든 패널(`.b-pane`)을 림버스 패널(`panel-plain.png`, 9조각 border-image)로, 버튼(`.b-tabx`, `.b-btn`)은 림버스 사각 플레이트(`btn-wide.png`) 배경으로 통일. 서랍 머리는 금색 플레이트, 탭은 금색 채움. 세션 화면·GM 콘솔도 같은 클래스를 써서 함께 바뀜.
+
+## 에셋 드라이브 비활성화 (2026-11-19)
+- 원작 에셋 드라이브가 닫혔다. 세션 중 받아 둔 원본 아틀라스(UI/Battle 19장, Icons 40장, 배경 원본 3장, 약 20MB)를 `assets-src/limbus/`에 보관(README 참고). 새 조각이 필요하면 여기서 자른다. 드라이브 gid 목록은 더 이상 쓸 수 없다.

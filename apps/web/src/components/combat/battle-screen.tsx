@@ -10,6 +10,7 @@ import { formatRound, unitNames } from "@/lib/combat-log";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon, StatusBadge, StatusIcon, BACKGROUNDS } from "@/components/icons";
 import { Keyword, KeywordText } from "@/components/keyword/keyword";
 import { buildPlaySteps, type PlayStep } from "./playback";
+import { SdSprite } from "@/components/sprite/sd-sprite";
 
 /*
  * 전투 화면 v4 — 림버스 컴퍼니 UI 조각(드라이브 UI/Battle 아틀라스) + 참고 영상(FVTT 림버스 모듈) 레이아웃
@@ -274,7 +275,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   return (
     <div className="battle fixed inset-0 z-40 select-none overflow-hidden">
       <Arena state={state} names={names} isGm={isGm} selId={selId} onSelect={setSelId} mine={mine} drag={drag} background={background}
-        startDrag={startDrag} draggedRef={draggedRef} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} oddsMode={oddsMode} play={playStep} onPlayTap={play ? playNext : undefined} cutin={cutin} />
+        startDrag={startDrag} draggedRef={draggedRef} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} oddsMode={oddsMode} play={playStep} playKey={play?.i ?? -1} onPlayTap={play ? playNext : undefined} cutin={cutin} />
 
       {/* 좌상단 HUD */}
       <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-1">
@@ -495,11 +496,11 @@ function Tracker({ state, names, selId, onSelect, className }: { state: CombatSt
 // 바닥 좌표 (u: 가로 0~1, v: 깊이 0=뒤 1=앞). 아군은 왼쪽 앞에서 뒤로 지그재그, 적은 좌우 반전
 const FORMATION: [number, number][] = [[0.17, 0.92], [0.31, 0.68], [0.43, 0.96], [0.10, 0.60], [0.47, 0.72], [0.25, 0.46], [0.37, 0.42], [0.06, 0.80], [0.20, 0.30], [0.44, 0.52]];
 
-function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, draggedRef, loaded, activeDie, onEnemyTap, odds, oddsMode, play, onPlayTap, background, cutin }: {
+function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, draggedRef, loaded, activeDie, onEnemyTap, odds, oddsMode, play, playKey, onPlayTap, background, cutin }: {
   state: CombatState; names: Record<string, string>; isGm: boolean; selId: string | null; onSelect: (id: string | null) => void; mine: (u: Unit) => boolean;
   drag: { payload: DragPayload; over: DropId | null } | null; startDrag: (p: DragPayload) => (e: RPointerEvent) => void; draggedRef: React.MutableRefObject<boolean>;
   loaded: Record<string, string>; activeDie: string | null; onEnemyTap: (t: DropId) => boolean; odds: Record<string, ReturnType<typeof estimateClash>>;
-  oddsMode: "odds" | "power" | "off"; play: PlayStep | null; onPlayTap?: () => void; background: string | null; cutin: boolean;
+  oddsMode: "odds" | "power" | "off"; play: PlayStep | null; /** 연출 단계 번호 (바뀔 때마다 모션 재생) */ playKey: number; onPlayTap?: () => void; background: string | null; cutin: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 1200, h: 700 });
@@ -545,6 +546,8 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
   const cardPos = (u: Unit, i: number) => { const c = center(u); const w = 176; const half = bodyH(u) * 0.45; const minL = wide ? padL : 8; let left = u.side === "ally" ? c.x - half - w : c.x + half; if (left < minL) left = c.x + half; if (left + w > size.w - 8) left = Math.max(minL, c.x - half - w); const top = Math.max(54, headY(u) - 100 - i * 4); return { left, top, width: w }; };
   const powerRange = (s: Skill) => { const lo = s.basePower + Math.min(0, s.coinPower) * s.coinCount, hi = s.basePower + Math.max(0, s.coinPower) * s.coinCount; return lo === hi ? `${hi}` : `${Math.max(0, lo)}-${hi}`; };
   const ordered = [...state.units].sort((a, b) => foot(a).y - foot(b).y); // 뒤 → 앞
+  // 현재 연출 단계에서 이 유닛의 코드 모션 (공격·피격·회피·전투불능…)
+  const motionOf = (u: Unit) => play?.cards.find((c) => c.unitId === u.id)?.motion ?? "idle";
 
   return (
     <div ref={ref} className="b-canvas absolute inset-0 overflow-hidden" onClick={(e) => { if (onPlayTap) { onPlayTap(); return; } if (e.target === e.currentTarget) onSelect(null); }}>
@@ -577,8 +580,9 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
               onClick={() => { if (draggedRef.current) return; if (u.side === "enemy" && !u.incapacitated && onEnemyTap({ kind: "unit", unitId: u.id })) { onSelect(u.id); return; } onSelect(isSel ? null : u.id); }} title={names[u.id]}
               className="absolute bottom-0 left-0 flex -translate-x-1/2 items-end justify-center" style={{ width: u.spriteUrl ? sh * 0.6 : d, height: u.spriteUrl ? sh : d }}>
               {u.spriteUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={u.spriteUrl} alt="" draggable={false} className={`pointer-events-none absolute bottom-0 left-1/2 w-auto max-w-none object-contain drop-shadow-[0_8px_12px_rgba(0,0,0,.9)] ${over ? "brightness-125" : ""}`} style={{ height: sh, transform: `translateX(-50%)${u.side === "enemy" ? " scaleX(-1)" : ""}` }} />
+                <span className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2">
+                  <SdSprite src={u.spriteUrl} height={sh} flip={u.side === "enemy"} motion={motionOf(u)} motionKey={playKey} className={over ? "brightness-125" : ""} />
+                </span>
               ) : (
                 <span className={`relative block overflow-hidden rounded-full ${over ? "ring-2 ring-red-400" : ""}`} style={{ width: d, height: d, border: `3px solid ${u.side === "ally" ? "rgba(217,179,91,.95)" : "rgba(224,75,82,.95)"}`, background: "rgba(10,6,6,.9)", boxShadow: "0 6px 14px rgba(0,0,0,.8)" }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -617,7 +621,7 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
             </button>
           ); }); })}
       {/* 연출: 컷인(두 유닛) 또는 유닛 옆 카드 */}
-      {play && cutin && play.cards.length === 2 ? <CutIn step={play} state={state} names={names} w={size.w} bottom={floorBot + 8} /> : null}
+      {play && cutin && play.cards.length === 2 ? <CutIn step={play} playKey={playKey} state={state} names={names} w={size.w} bottom={floorBot + 8} /> : null}
       {play && !(cutin && play.cards.length === 2) ? play.cards.map((cd, i) => { const u = state.units.find((x) => x.id === cd.unitId); if (!u) return null; const p = cardPos(u, i); const ally = u.side === "ally";
         return (
           <div key={`${cd.unitId}-${i}`} className="b-play-card pointer-events-none absolute z-20" data-tone={cd.tone} style={{ left: p.left, top: p.top, width: p.width, borderColor: ally ? "#c9a24a" : "#b3161c" }}>
@@ -632,7 +636,7 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
 }
 
 /* ---------- 합 컷인: 두 유닛을 가운데로 당겨 크게, 가운데에 스킬·위력·코인 ---------- */
-function CutIn({ step, state, names, w, bottom }: { step: PlayStep; state: CombatState; names: Record<string, string>; w: number; bottom: number }) {
+function CutIn({ step, playKey, state, names, w, bottom }: { step: PlayStep; playKey: number; state: CombatState; names: Record<string, string>; w: number; bottom: number }) {
   const [c0, c1] = step.cards as [PlayStep["cards"][number], PlayStep["cards"][number]];
   const u0 = state.units.find((u) => u.id === c0.unitId), u1 = state.units.find((u) => u.id === c1.unitId);
   if (!u0 || !u1) return null;
@@ -649,8 +653,7 @@ function CutIn({ step, state, names, w, bottom }: { step: PlayStep; state: Comba
       <div key={p.u.id} className={`absolute bottom-0 flex flex-col items-center ${pos === "l" ? "b-cut-fig-l" : "b-cut-fig-r"}`} style={{ left: pos === "l" ? (wide ? "27%" : "22%") : (wide ? "73%" : "78%"), transform: "translateX(-50%)", width: 0 }}>
         <div className="flex flex-col items-center" style={{ filter: glow, transition: "filter .25s" }}>
           {p.u.spriteUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={p.u.spriteUrl} alt="" draggable={false} className="w-auto max-w-none object-contain" style={{ height: figH, transform: p.u.side === "enemy" ? "scaleX(-1)" : undefined }} />
+            <SdSprite src={p.u.spriteUrl} height={figH} flip={p.u.side === "enemy"} motion={p.c.motion ?? "idle"} motionKey={playKey} shadow={false} />
           ) : (
             <span className="block overflow-hidden rounded-full" style={{ width: figH * 0.42, height: figH * 0.42, border: `4px solid ${p.u.side === "ally" ? "#d9b35b" : "#e04b52"}`, background: "rgba(10,6,6,.92)" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}

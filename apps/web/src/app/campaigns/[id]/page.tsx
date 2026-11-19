@@ -111,6 +111,7 @@ export default async function OfficePage({ params }: { params: Promise<{ id: str
             <Panel title="적 도감">
               <p className="text-sm text-muted">{isGm ? `등록 ${enemyCount ?? 0}` : `마주친 적 ${enemyCount ?? 0}`}</p>
               <Link href={`/campaigns/${id}/enemies`} className="mt-1 inline-block text-sm text-accent">{isGm ? "도감 관리 →" : "도감 보기 →"}</Link>
+              {isGm ? <Link href={`/campaigns/${id}/sprites`} className="ml-3 mt-1 inline-block text-sm text-accent">SD 스프라이트 공방 →</Link> : null}
             </Panel>
           </div>
         </div>

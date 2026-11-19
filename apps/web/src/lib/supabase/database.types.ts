@@ -497,6 +497,88 @@ export type Database = {
           },
         ]
       }
+      sprite_jobs: {
+        Row: {
+          campaign_id: string
+          cost_usd: number | null
+          created_at: string
+          created_by: string
+          duration_ms: number | null
+          enemy_id: string | null
+          error: string | null
+          finished_at: string | null
+          id: string
+          label: string
+          model: string
+          prompt: string
+          provider: string
+          result_url: string | null
+          source_url: string | null
+          status: Database["public"]["Enums"]["sprite_job_status"]
+          usage: Json | null
+        }
+        Insert: {
+          campaign_id: string
+          cost_usd?: number | null
+          created_at?: string
+          created_by: string
+          duration_ms?: number | null
+          enemy_id?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          label?: string
+          model: string
+          prompt: string
+          provider: string
+          result_url?: string | null
+          source_url?: string | null
+          status?: Database["public"]["Enums"]["sprite_job_status"]
+          usage?: Json | null
+        }
+        Update: {
+          campaign_id?: string
+          cost_usd?: number | null
+          created_at?: string
+          created_by?: string
+          duration_ms?: number | null
+          enemy_id?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          label?: string
+          model?: string
+          prompt?: string
+          provider?: string
+          result_url?: string | null
+          source_url?: string | null
+          status?: Database["public"]["Enums"]["sprite_job_status"]
+          usage?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sprite_jobs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sprite_jobs_enemy_id_fkey"
+            columns: ["enemy_id"]
+            isOneToOne: false
+            referencedRelation: "enemies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sprite_jobs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sessions: {
         Row: {
           campaign_id: string
@@ -571,6 +653,7 @@ export type Database = {
       message_kind: "ic" | "ooc" | "gm" | "system" | "whisper"
       scene_kind: "drama" | "explore" | "combat"
       session_status: "open" | "closed"
+      sprite_job_status: "queued" | "running" | "done" | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -702,6 +785,7 @@ export const Constants = {
       message_kind: ["ic", "ooc", "gm", "system", "whisper"],
       scene_kind: ["drama", "explore", "combat"],
       session_status: ["open", "closed"],
+      sprite_job_status: ["queued", "running", "done", "failed"],
     },
   },
 } as const

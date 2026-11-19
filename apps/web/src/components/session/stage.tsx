@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { ChatMessage } from "./chat";
 import { KeywordText } from "@/components/keyword/keyword";
 import { BACKGROUNDS } from "@/components/icons";
+import { SdSprite } from "@/components/sprite/sd-sprite";
 
 /** 무대 배우. id는 "c:<characterId>"(PC) 또는 "e:<enemyId>"(NPC) */
 export interface StageActor { id: string; name: string; spriteUrl: string | null; portraitUrl: string | null; kind: "pc" | "npc" }
@@ -34,13 +35,14 @@ export function Stage({ background, actors, messages, gmNames, cast, split, typi
   const left = split ? onStage.filter((a) => a.kind === "pc") : onStage;
   const right = split ? onStage.filter((a) => a.kind === "npc") : [];
 
+  // 말할 때마다 살짝 움직이도록 (최근 대사 번호를 키로)
+  const bumpKey = current ? `${current.id}` : undefined;
   const standing = (a: StageActor) => {
     const active = a.id === speakerId;
     return (
       <div key={a.id} className="relative flex h-full max-w-[26%] flex-1 items-end justify-center transition-all duration-300" style={{ filter: active || !speakerId ? "none" : "brightness(.5) saturate(.6)", transform: active ? "scale(1.04)" : "scale(1)" }}>
         {a.spriteUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={a.spriteUrl} alt={a.name} className="max-h-full w-auto object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,.7)]" draggable={false} style={a.kind === "npc" && split ? { transform: "scaleX(-1)" } : undefined} />
+          <SdSprite src={a.spriteUrl} alt={a.name} height="100%" flip={a.kind === "npc" && !!split} motion={active && bumpKey !== undefined ? "ready" : "idle"} motionKey={bumpKey} className="h-full" />
         ) : (
           <div className="flex h-[70%] w-full flex-col items-center justify-end">
             <div className="aspect-square w-[46%] max-w-[9rem] overflow-hidden rounded-full border-2 bg-black/60" style={{ borderColor: a.kind === "npc" ? "#b3161c" : "rgba(217,179,91,.8)" }}>

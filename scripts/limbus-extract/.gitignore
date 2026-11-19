@@ -1,0 +1,5 @@
+.venv/
+extracted/
+__pycache__/
+vgmstream-cli.exe
+run-windows.ps

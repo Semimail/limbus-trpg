@@ -1,6 +1,6 @@
 # 진행 상황과 결정 (인수인계)
 
-마지막 갱신: 2026-11-11. 사이트: https://limbus-trpg.vercel.app · 저장소: github.com/Semimail/limbus-trpg
+마지막 갱신: 2026-11-20. 사이트: https://limbus-trpg.vercel.app · 저장소: github.com/Semimail/limbus-trpg
 
 ## 구현 완료
 - 로그인(디스코드), 사무소 허브(세션·의뢰 게시판·내 캐릭터·파티원·기록 보관소·적 도감·GM 패널·캠페인 삭제·룰 설정 링크), 초대 코드, 임시 GM.
@@ -104,3 +104,20 @@
 
 ## 에셋 드라이브 비활성화 (2026-11-19)
 - 원작 에셋 드라이브가 닫혔다. 세션 중 받아 둔 원본 아틀라스(UI/Battle 19장, Icons 40장, 배경 원본 3장, 약 20MB)를 `assets-src/limbus/`에 보관(README 참고). 새 조각이 필요하면 여기서 자른다. 드라이브 gid 목록은 더 이상 쓸 수 없다.
+
+## 클라이언트 에셋 추출 (2026-11-19, 사용자 요청 "클라이언트를 뜯고 싶어")
+- `scripts/limbus-extract/`: `extract.py`(UnityPy) + `run-windows.ps1`(목록 → UI·아이콘/배경/음악 일괄 추출) + `summarize.py`(index.json 폴더별 요약). 설치 폴더·Addressables 캐시의 번들에서 Texture2D/Sprite(PNG)·AudioClip·TextAsset(Spine skel/atlas)·Font 를 컨테이너 경로대로 꺼낸다. 사용법은 같은 폴더 README. 결과(`extracted/`)와 `vgmstream-cli.exe` 는 저장소에 넣지 않는다(.gitignore).
+- 사용자 PC에서 실행해 `extracted/all` 에 Sprite 7,212장·Texture2D 1,748장(resources/sharedassets 기준)이 나왔다. 캐릭터 SD는 Spine 골격(`*_SDAtlas` 텍스처 + skel)이라 프레임 이미지로는 못 쓴다.
+- 방침: 원본은 비공개. 소량 PNG만 `public/assets/limbus`, 음악·대량 배경은 Supabase Storage 비공개 버킷 예정(업로드 스크립트 미작성).
+
+## SD 스프라이트 공방 (2026-11-20, 사용자 결정 "정지 1장+코드 모션")
+- 목표: NPC를 대량으로 만들기 위해 이미지(또는 글)를 올리면 림버스풍 SD 스프라이트를 만든다. **AI는 대기 포즈 정지 PNG 1장만 그리고, 대기·준비·공격·회피·피격·전투불능·승리 모션은 전부 CSS 코드로 낸다** (프레임 생성 안 함 — 장마다 얼굴이 달라지고 비용이 커서).
+- 페이지 `/campaigns/[id]/sprites` (GM 전용, 사무소 "적 도감" 패널·적 편집 폼에서 링크). 이미지 여러 장 또는 "글로만" 항목을 대기열에 넣고 한 장씩 순서대로 생성. 항목마다 이름·메모·적용할 적 지정. 오른쪽 미리보기에서 모션 버튼으로 확인.
+- 서버: `lib/sprite/provider.ts`(openai: Images API edits/generations, background=transparent / mock: 키 없이 시험), `lib/sprite/prompt.ts`(스타일 문장 한 곳). 서버 액션 `campaigns/[id]/sprites/actions.ts`: 원본 받기 → 생성 → Storage `sprites/<uid>/<jobId>.png` → `sprite_jobs` 기록 → 적 `data.spriteUrl` 적용. 페이지 `maxDuration = 120`.
+- 로그: 테이블 `sprite_jobs`(마이그레이션 0010: 상태·공급자·모델·프롬프트·원본·결과·오류·usage·cost_usd·소요 시간, GM만). 페이지 아래 로그에서 적용/새 적 등록/PNG 저장/삭제. **마이그레이션 0010 은 아직 적용 안 됨.**
+- 모션 컴포넌트 `components/sprite/sd-sprite.tsx` + `globals.css` `.sd-*`. 전투 보드 유닛·합 컷인은 연출 단계(`PlayCard.motion`, playback.ts)에 맞춰 자동 재생, 장면 무대 스탠딩은 숨쉬기 + 말할 때 "준비" 모션. 기존 스탠딩 일러스트에도 같은 모션이 적용된다.
+- 환경 변수(Vercel에 넣어야 동작): `OPENAI_API_KEY`, 선택 `SPRITE_PROVIDER`(openai|mock)·`SPRITE_IMAGE_MODEL`(기본 gpt-image-1)·`SPRITE_IMAGE_QUALITY`(low|medium|high)·`SPRITE_IMAGE_SIZE`(기본 1024x1536)·`SPRITE_COST_PER_IMAGE_USD`(로그용 추정 단가). 비용 단가는 코드에 박지 않는다. **키는 아직 없음** → 실제 생성 품질 미확인.
+- 원작 추출 이미지는 API에 참고 이미지로 보내지 않는다(스타일은 글로만).
+- 미결: 실제 키로 품질 확인, 결과 PNG 여백 트리밍·축소(이미지 라이브러리 없음), 캐릭터(PC) 시트에도 같은 공방 연결.
+- 로컬 환경 메모: 사용자 PC 작업 폴더(D:
+ew\limbus-trpg-…)는 D: 가 exFAT라 pnpm 링크가 안 되므로 C: 에 미러를 떠서 `pnpm install` 후 typecheck·lint·build 를 돌렸다(Node 20.14 로는 Tailwind 빌드가 실패, Node 24 필요). git 은 2026-11-20 `git init` 으로 origin 에 연결함.

@@ -204,3 +204,23 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
 .battle .b-cut-skill[data-tone="gold"] { box-shadow: 0 0 22px rgba(255,213,74,.55), 0 8px 24px rgba(0,0,0,.7); border-color: #ffd54a; }
 .battle .b-cut-skill[data-tone="red"] { box-shadow: 0 0 22px rgba(255,59,59,.5), 0 8px 24px rgba(0,0,0,.7); border-color: #ff3b3b; }
 .battle .b-cut-skill[data-tone="dim"] { opacity: .7; filter: grayscale(.4); }
+
+/* SD 스프라이트 코드 모션 (components/sprite/sd-sprite.tsx). 앞 = +x, 적은 .sd-flip 으로 뒤집는다 */
+.sd-root { display: inline-block; position: relative; transform-origin: 50% 100%; }
+.sd-flip { transform: scaleX(-1); }
+.sd-idle { display: block; transform-origin: 50% 100%; animation: sd-idle 2.8s ease-in-out infinite; }
+@keyframes sd-idle { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(-1.5%) scale(1.012, 0.988); } }
+.sd-m { display: block; transform-origin: 50% 100%; will-change: transform, filter; }
+.sd-m-ready { animation: sd-ready .45s ease-out both; }
+@keyframes sd-ready { 0% { transform: none; } 40% { transform: translateX(-5%) scale(.97, 1.03); } 100% { transform: translateX(3%); } }
+.sd-m-attack { animation: sd-attack .6s cubic-bezier(.2, .85, .25, 1) both; }
+@keyframes sd-attack { 0% { transform: none; } 22% { transform: translateX(-8%) rotate(-4deg) scale(.97, 1.03); } 50% { transform: translateX(34%) rotate(7deg) scale(1.06, .96); filter: brightness(1.15); } 70% { transform: translateX(26%) rotate(3deg); } 100% { transform: none; } }
+.sd-m-evade { animation: sd-evade .5s cubic-bezier(.3, .7, .3, 1) both; }
+@keyframes sd-evade { 0% { transform: none; opacity: 1; } 30% { transform: translateX(-28%) skewX(10deg) scale(.96, 1.04); opacity: .45; filter: blur(1px); } 60% { transform: translateX(-20%) skewX(2deg); opacity: .85; filter: none; } 100% { transform: none; opacity: 1; } }
+.sd-m-hit { animation: sd-hit .55s ease-out both; }
+@keyframes sd-hit { 0% { transform: translateX(10%) scale(1.04, .96); filter: brightness(6) contrast(.6) saturate(0); } 18% { transform: translateX(-9%) rotate(-5deg); filter: brightness(1.6); } 36% { transform: translateX(6%); filter: none; } 54% { transform: translateX(-3%); } 72% { transform: translateX(2%); } 100% { transform: none; } }
+.sd-m-down { animation: sd-down .9s cubic-bezier(.3, .6, .4, 1) forwards; }
+@keyframes sd-down { 0% { transform: none; filter: brightness(5) saturate(0); } 20% { transform: translateX(-10%) rotate(-12deg); filter: none; } 100% { transform: translateX(-30%) translateY(6%) rotate(-78deg); filter: grayscale(1) brightness(.55); opacity: .75; } }
+.sd-m-win { animation: sd-win .9s ease-in-out both; }
+@keyframes sd-win { 0% { transform: none; } 20% { transform: translateY(-14%) scale(.96, 1.06); } 40% { transform: translateY(0) scale(1.04, .96); } 60% { transform: translateY(-10%) scale(.98, 1.03); } 80% { transform: translateY(0) scale(1.02, .98); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sd-idle, .sd-m { animation: none !important; } }

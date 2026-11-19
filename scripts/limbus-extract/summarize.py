@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""extract.py --list 로 만든 index.json 을 읽어 어떤 에셋이 있는지 요약한다.
+
+    python summarize.py <out>/index.json            # 타입별 수 + 컨테이너 상위 폴더별 수
+    python summarize.py <out>/index.json --depth 3  # 폴더 깊이 조절
+    python summarize.py <out>/index.json --grep "(?i)bgm"   # 정규식으로 항목 나열
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from collections import Counter
+from pathlib import Path
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("index", type=Path)
+    ap.add_argument("--depth", type=int, default=2, help="컨테이너 경로를 몇 단계까지 묶을지 (기본 2)")
+    ap.add_argument("--top", type=int, default=60, help="폴더 표를 몇 줄까지 보여줄지")
+    ap.add_argument("--grep", help="정규식에 맞는 항목을 전부 나열")
+    args = ap.parse_args()
+
+    items = json.loads(args.index.read_text("utf-8"))
+    print(f"총 {len(items)}개")
+    by_type = Counter(e["type"] for e in items)
+    for t, n in by_type.most_common():
+        print(f"  {t:<10} {n}")
+
+    if args.grep:
+        rx = re.compile(args.grep)
+        print(f"\n--grep {args.grep!r}")
+        for e in items:
+            key = e.get("container") or e.get("name") or ""
+            if rx.search(key):
+                print(f"  [{e['type']}] {key}  ({e.get('source','')})")
+        return 0
+
+    folders: Counter[tuple[str, str]] = Counter()
+    sources: Counter[tuple[str, str]] = Counter()
+    prefixes: Counter[tuple[str, str]] = Counter()
+    noname = 0
+    for e in items:
+        c = (e.get("container") or "").replace("\\", "/")
+        if not c:
+            noname += 1
+            sources[(e.get("source") or "?", e["type"])] += 1
+            name = e.get("name") or ""
+            m = re.match(r"[A-Za-z]+", name)
+            prefixes[((m.group(0).lower() if m else "?"), e["type"])] += 1
+            continue
+        parts = [p for p in c.split("/") if p][: args.depth]
+        folders[("/".join(parts), e["type"])] += 1
+    if folders:
+        print(f"\n컨테이너 상위 {args.depth}단계 폴더별 (컨테이너 없는 항목 {noname}개는 제외)")
+        for (folder, t), n in folders.most_common(args.top):
+            print(f"  {n:>6}  {t:<10} {folder}")
+    if noname:
+        print(f"\n컨테이너 없는 항목 {noname}개 → 출처 번들 파일별")
+        for (src, t), n in sources.most_common(args.top):
+            print(f"  {n:>6}  {t:<10} {src}")
+        print(f"\n컨테이너 없는 항목 → 이름 앞 단어별")
+        for (pre, t), n in prefixes.most_common(args.top):
+            print(f"  {n:>6}  {t:<10} {pre}")
+    stats = args.index.with_name("stats.json")
+    if stats.exists():
+        st = json.loads(stats.read_text("utf-8"))
+        print("\n입력 루트")
+        for r in st.get("roots", []):
+            print(f"  {'OK ' if r['exists'] else '없음'} {r['path']}  ({r['files']}개 파일)")
+        files = st.get("files", [])
+        if files:
+            by = Counter(f.get("status", "?") for f in files)
+            print(f"\n입력 파일 {len(files)}개 처리 결과: " + ", ".join(f"{k} {v}" for k, v in by.most_common()))
+            zero = [f for f in files if f.get("status") == "ok" and not f.get("objects")]
+            if zero:
+                print(f"  읽혔지만 오브젝트 0개: {len(zero)}개")
+            errs = Counter((f.get("status"), (f.get("error") or "")[:120]) for f in files if f.get("error"))
+            for (stt, msg), n in errs.most_common(8):
+                print(f"  {n:>5}× {stt}: {msg}")
+            magics = Counter(repr(f.get("magic", ""))[:12] for f in files)
+            print("  파일 머리글(magic)별: " + ", ".join(f"{m} {n}" for m, n in magics.most_common(6)))
+            print("  오브젝트가 많은 파일:")
+            for f in sorted(files, key=lambda f: -(f.get("objects") or 0))[:12]:
+                print(f"    {f.get('objects') or 0:>6} obj / {f.get('picked') or 0:>5} 선택  {Path(f['path']).parent.name}/{Path(f['path']).name}  {f.get('types')}")
+        banks = st.get("banks", [])
+        print(f"\nFMOD .bank 파일 {len(banks)}개 (음악·효과음은 여기에 있음)")
+        for b in banks[: args.top]:
+            print(f"  {b['bytes']/1e6:>8.1f} MB  {b['path']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GRADES, SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, RESISTANCE_MULT, type EnemyData, type Resistance, type SkillDraft, type DamageType } from "@limbus/rules";
 import { saveEnemy } from "@/app/campaigns/[id]/enemies/actions";
@@ -36,7 +37,8 @@ export function EnemyForm({ campaignId, id, initialName, initialPortrait, initia
         <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
           <div className="space-y-3">
             <PortraitUpload value={portrait} onChange={setPortrait} />
-            <PortraitUpload value={d.spriteUrl ?? null} onChange={(u) => setD({ ...d, spriteUrl: u })} label="스탠딩" size="h-40 w-28" hint="합 연출에 나옵니다 (선택)" />
+            <PortraitUpload value={d.spriteUrl ?? null} onChange={(u) => setD({ ...d, spriteUrl: u })} label="스탠딩" size="h-40 w-28" hint="합 연출·무대에 나옵니다 (선택)" />
+            <Link href={`/campaigns/${campaignId}/sprites${id ? `?enemy=${id}` : ""}`} className="inline-block text-xs text-accent">AI로 SD 스프라이트 만들기 →</Link>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <label className="col-span-2 block sm:col-span-4"><span className="block text-xs text-muted">이름</span><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="적 이름" /></label>

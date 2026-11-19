@@ -116,7 +116,7 @@
 - 서버: `lib/sprite/provider.ts`(openai: Images API edits/generations, background=transparent / mock: 키 없이 시험), `lib/sprite/prompt.ts`(스타일 문장 한 곳). 서버 액션 `campaigns/[id]/sprites/actions.ts`: 원본 받기 → 생성 → Storage `sprites/<uid>/<jobId>.png` → `sprite_jobs` 기록 → 적 `data.spriteUrl` 적용. 페이지 `maxDuration = 120`.
 - 로그: 테이블 `sprite_jobs`(마이그레이션 0010: 상태·공급자·모델·프롬프트·원본·결과·오류·usage·cost_usd·소요 시간, GM만). 페이지 아래 로그에서 적용/새 적 등록/PNG 저장/삭제. 마이그레이션 0010 은 2026-11-20 사용자가 `scripts/db-push.ps1`(Windows용, 토큰은 보안 입력)로 적용함.
 - 모션 컴포넌트 `components/sprite/sd-sprite.tsx` + `globals.css` `.sd-*`. 전투 보드 유닛·합 컷인은 연출 단계(`PlayCard.motion`, playback.ts)에 맞춰 자동 재생, 장면 무대 스탠딩은 숨쉬기 + 말할 때 "준비" 모션. 기존 스탠딩 일러스트에도 같은 모션이 적용된다.
-- 환경 변수(Vercel에 넣어야 동작): `OPENAI_API_KEY`, 선택 `SPRITE_PROVIDER`(openai|mock)·`SPRITE_IMAGE_MODEL`(기본 gpt-image-1)·`SPRITE_IMAGE_QUALITY`(low|medium|high)·`SPRITE_IMAGE_SIZE`(기본 1024x1536)·`SPRITE_COST_PER_IMAGE_USD`(로그용 추정 단가). 비용 단가는 코드에 박지 않는다. **키는 아직 없음** → 실제 생성 품질 미확인.
+- 환경 변수(Vercel에 넣어야 동작): `OPENAI_API_KEY`, 선택 `SPRITE_PROVIDER`(openai|mock)·`SPRITE_IMAGE_MODEL`(기본 gpt-image-2.5-flare — gpt-image-1 은 2026-10-23 종료되어 첫 시범 생성이 400 으로 실패했음. 투명 배경은 2.5 sunburst/flare 지원, 2.6 은 미확인)·`SPRITE_IMAGE_QUALITY`(low|medium|high)·`SPRITE_IMAGE_SIZE`(기본 1024x1536)·`SPRITE_COST_PER_IMAGE_USD`(로그용 추정 단가). 비용 단가는 코드에 박지 않는다. **키는 아직 없음** → 실제 생성 품질 미확인.
 - 원작 추출 이미지는 API에 참고 이미지로 보내지 않는다(스타일은 글로만).
 - **플레이어도 사용(2026-11-20, 사용자 "플레이어들도 이용할 수 있게, 내가 만든 건 공개 안 함")**: 마이그레이션 0011 — `sprite_jobs.character_id` 추가, RLS를 본인 작업(읽기·수정·삭제) + 멤버 insert + GM 캠페인 전체로 바꿈. GM 이 만든 것은 플레이어에게 안 보인다. 페이지는 멤버 전원 입장: 플레이어는 내 캐릭터에만 적용, GM 은 적 도감·모든 캐릭터. 사무소 "내 캐릭터" 패널과 캐릭터 위자드(캠페인 소속일 때)에 링크. **0011 적용 필요.**
 - 미결: 실제 키로 품질 확인, 결과 PNG 여백 트리밍·축소(이미지 라이브러리 없음).

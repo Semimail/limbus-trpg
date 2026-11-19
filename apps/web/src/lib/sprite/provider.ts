@@ -3,7 +3,7 @@
  *  - openai: Images API (gpt-image 계열). 참고 이미지가 있으면 /images/edits, 없으면 /images/generations.
  *            background=transparent 로 알파 PNG를 바로 받는다.
  *  - mock:   키 없이 파이프라인을 시험할 때. 참고 이미지를 그대로 돌려주거나 1픽셀 투명 PNG.
- * 환경 변수: SPRITE_PROVIDER(openai|mock, 기본 openai), OPENAI_API_KEY, SPRITE_IMAGE_MODEL(기본 gpt-image-1),
+ * 환경 변수: SPRITE_PROVIDER(openai|mock, 기본 openai), OPENAI_API_KEY, SPRITE_IMAGE_MODEL(기본 gpt-image-2.5-flare; gpt-image-1 은 2026-10-23 종료됨. 투명 배경은 2.5 sunburst/flare 가 지원),
  *            SPRITE_IMAGE_QUALITY(low|medium|high, 기본 medium), SPRITE_IMAGE_SIZE(기본 1024x1536),
  *            SPRITE_COST_PER_IMAGE_USD(로그용 추정 단가, 선택)
  */
@@ -43,7 +43,7 @@ function mockProvider(): SpriteProvider {
 
 function openaiProvider(): SpriteProvider {
   const key = process.env.OPENAI_API_KEY;
-  const model = process.env.SPRITE_IMAGE_MODEL || "gpt-image-1";
+  const model = process.env.SPRITE_IMAGE_MODEL || "gpt-image-2.5-flare";
   const quality = process.env.SPRITE_IMAGE_QUALITY || "medium";
   const size = process.env.SPRITE_IMAGE_SIZE || "1024x1536";
   return {

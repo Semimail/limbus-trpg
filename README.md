@@ -27,5 +27,5 @@ Vercel에 저장소를 연결하고 Root Directory를 `apps/web`으로 지정한
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase (공개 값) |
 | `OPENAI_API_KEY` | SD 스프라이트 공방(`/campaigns/[id]/sprites`) 이미지 생성 |
 | `SPRITE_PROVIDER` | `openai`(기본) 또는 `mock`(키 없이 파이프라인 시험) |
-| `SPRITE_IMAGE_MODEL`, `SPRITE_IMAGE_QUALITY`, `SPRITE_IMAGE_SIZE` | 기본 `gpt-image-1`, `medium`, `1024x1536` |
+| `SPRITE_IMAGE_MODEL`, `SPRITE_IMAGE_QUALITY`, `SPRITE_IMAGE_SIZE` | 기본 `gpt-image-2.5-flare`(투명 배경 지원; 더 정교하게는 `gpt-image-2.5-sunburst`), `medium`, `1024x1536` |
 | `SPRITE_COST_PER_IMAGE_USD` | 생성 로그에 적을 추정 단가 (선택) |

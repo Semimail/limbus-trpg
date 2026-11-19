@@ -26,7 +26,7 @@ export default async function SpritesPage({ params, searchParams }: { params: Pr
   ]);
   const providerName = (process.env.SPRITE_PROVIDER || "openai").toLowerCase();
   const configured = providerName === "mock" || !!process.env.OPENAI_API_KEY;
-  const model = providerName === "mock" ? "mock" : process.env.SPRITE_IMAGE_MODEL || "gpt-image-1";
+  const model = providerName === "mock" ? "mock" : process.env.SPRITE_IMAGE_MODEL || "gpt-image-2.5-flare";
   const initialTarget = enemy && isGm ? { kind: "enemy" as const, id: enemy } : character ? { kind: "character" as const, id: character } : null;
   return (
     <div>

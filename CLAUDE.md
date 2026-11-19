@@ -6,7 +6,7 @@
 ## 구조
 - `packages/rules` 룰 엔진 (순수 TS). 코인/합/흐트러짐/상태이상/효과 실행기/한국어 효과 파서/전투 오케스트레이터/성장 공식/키워드 사전. `pnpm --filter @limbus/rules test` (vitest).
 - `apps/web` Next.js 16 (App Router, Turbopack, Tailwind 4) + Supabase(SSR 클라이언트, Realtime, Storage). 배포: Vercel, 루트 디렉터리 `apps/web`, 리전 icn1.
-- `supabase/migrations/*.sql` 스키마. 적용은 `scripts/db-push.sh` (Supabase 관리 API, 토큰 필요).
+- `supabase/migrations/*.sql` 스키마. 적용은 `scripts/db-push.sh`(리눅스) 또는 `scripts/db-push.ps1`(Windows, 토큰을 화면에 안 보이게 입력) — Supabase 관리 API, 토큰 필요. 0010은 아직 미적용.
 - `docs/rulebook.md` 룰북(사이트 `/rulebook`가 그대로 렌더). `apps/web/public/rulebook.md`는 빌드 시 복사본(gitignore).
 
 ## 규칙

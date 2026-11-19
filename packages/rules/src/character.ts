@@ -31,6 +31,10 @@ export interface Trait {
   effects?: Effect[];    // 구조화된 효과 (GM 승인 후)
 }
 
+/** 스탠딩 외 포즈 이미지 종류 (코드 모션 이름과 같다) */
+export type SpritePose = "attack" | "hit" | "evade" | "down" | "win";
+export type SpritePoses = Partial<Record<SpritePose, string>>;
+
 export interface CharacterData {
   version: 1;
   /** 시트 상단의 대사 한 줄 */
@@ -41,6 +45,8 @@ export interface CharacterData {
   aspects?: string[];
   /** 스탠딩 일러스트 (상반신 또는 전신, 배경 투명 권장). 장면 무대와 합 연출에 쓴다 */
   spriteUrl?: string | null;
+  /** 포즈별 추가 이미지 (SD 공방에서 생성). 없으면 코드 모션만 */
+  spritePoses?: SpritePoses | null;
   level: number;
   sync: 1 | 2 | 3 | 4;
   stats: Record<Sin, number>;

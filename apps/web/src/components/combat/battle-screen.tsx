@@ -548,9 +548,12 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
   const ordered = [...state.units].sort((a, b) => foot(a).y - foot(b).y); // 뒤 → 앞
   // 현재 연출 단계에서 이 유닛의 코드 모션 (공격·피격·회피·전투불능…)
   const motionOf = (u: Unit) => play?.cards.find((c) => c.unitId === u.id)?.motion ?? "idle";
+  // 피격·전투불능 단계에서 화면 흔들림
+  const shake = !!play?.cards.some((c) => c.motion === "hit" || c.motion === "down");
 
   return (
     <div ref={ref} className="b-canvas absolute inset-0 overflow-hidden" onClick={(e) => { if (onPlayTap) { onPlayTap(); return; } if (e.target === e.currentTarget) onSelect(null); }}>
+     <div key={shake ? `shake-${playKey}` : "still"} className={`absolute inset-0 ${shake ? "b-shake" : ""}`}>
       <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${background ?? BACKGROUNDS.underground})`, filter: "brightness(.78) saturate(.9)" }} />
       <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.05) 28%, rgba(0,0,0,0) 55%, rgba(0,0,0,.75) 100%)" }} />
       {/* 바닥 조명: 진형 아래 타원 빛 */}
@@ -581,7 +584,7 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
               className="absolute bottom-0 left-0 flex -translate-x-1/2 items-end justify-center" style={{ width: u.spriteUrl ? sh * 0.6 : d, height: u.spriteUrl ? sh : d }}>
               {u.spriteUrl ? (
                 <span className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2">
-                  <SdSprite src={u.spriteUrl} height={sh} flip={u.side === "enemy"} motion={motionOf(u)} motionKey={playKey} className={over ? "brightness-125" : ""} />
+                  <SdSprite src={u.spriteUrl} poses={u.spritePoses} height={sh} flip={u.side === "enemy"} motion={motionOf(u)} motionKey={playKey} phase={(state.units.indexOf(u) % 5) * 0.4} className={over ? "brightness-125" : ""} />
                 </span>
               ) : (
                 <span className={`relative block overflow-hidden rounded-full ${over ? "ring-2 ring-red-400" : ""}`} style={{ width: d, height: d, border: `3px solid ${u.side === "ally" ? "rgba(217,179,91,.95)" : "rgba(224,75,82,.95)"}`, background: "rgba(10,6,6,.9)", boxShadow: "0 6px 14px rgba(0,0,0,.8)" }}>
@@ -631,6 +634,7 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
             {cd.sub ? <div className="px-2 pb-1 text-center text-[10px]" style={{ color: cd.tone === "dim" ? "#8a8078" : "#e9dcc2" }}>{cd.sub}</div> : <div className="pb-1" />}
           </div>
         ); }) : null}
+     </div>
     </div>
   );
 }
@@ -653,7 +657,7 @@ function CutIn({ step, playKey, state, names, w, bottom }: { step: PlayStep; pla
       <div key={p.u.id} className={`absolute bottom-0 flex flex-col items-center ${pos === "l" ? "b-cut-fig-l" : "b-cut-fig-r"}`} style={{ left: pos === "l" ? (wide ? "27%" : "22%") : (wide ? "73%" : "78%"), transform: "translateX(-50%)", width: 0 }}>
         <div className="flex flex-col items-center" style={{ filter: glow, transition: "filter .25s" }}>
           {p.u.spriteUrl ? (
-            <SdSprite src={p.u.spriteUrl} height={figH} flip={p.u.side === "enemy"} motion={p.c.motion ?? "idle"} motionKey={playKey} shadow={false} />
+            <SdSprite src={p.u.spriteUrl} poses={p.u.spritePoses} height={figH} flip={p.u.side === "enemy"} motion={p.c.motion ?? "idle"} motionKey={playKey} phase={pos === "l" ? 0 : 1} shadow={false} />
           ) : (
             <span className="block overflow-hidden rounded-full" style={{ width: figH * 0.42, height: figH * 0.42, border: `4px solid ${p.u.side === "ally" ? "#d9b35b" : "#e04b52"}`, background: "rgba(10,6,6,.92)" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}

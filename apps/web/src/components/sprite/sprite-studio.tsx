@@ -2,17 +2,20 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { SpritePose, SpritePoses } from "@limbus/rules";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input } from "@/components/ui";
 import { Panel } from "@/components/office/panel";
 import { BACKGROUNDS } from "@/components/icons";
 import { SdSprite, SPRITE_MOTIONS, type SpriteMotion } from "./sd-sprite";
-import { buildSpritePrompt } from "@/lib/sprite/prompt";
-import { generateSprite, applySprite, createEnemyFromSprite, deleteSpriteJob, type SpriteJobRow, type SpriteTarget } from "@/app/campaigns/[id]/sprites/actions";
+import { buildSpritePrompt, POSES } from "@/lib/sprite/prompt";
+import { generateSprite, generatePose, applySprite, createEnemyFromSprite, deleteSpriteJob, type SpriteJobRow, type SpriteTarget } from "@/app/campaigns/[id]/sprites/actions";
 
 /*
  * SD 스프라이트 공방 (캠페인 멤버 전원)
- *  - 이미지를 여러 장 올리거나 글만 적어 대기열에 넣고, 한 장씩 차례로 생성한다 (AI는 정지 1장, 모션은 코드).
+ *  - 이미지를 여러 장 올리거나 글만 적어 대기열에 넣고, 한 장씩 차례로 생성한다 (AI는 대기 1장, 모션은 코드).
+ *  - 완료된 대기 이미지에는 "포즈 추가"로 공격·피격·회피·전투불능·승리 이미지를 더 뽑을 수 있다 (포즈당 호출 1회).
+ *    전투에서는 코드 모션에 포즈 이미지가 교차 페이드로 겹쳐 나온다.
  *  - 결과는 내 캐릭터(플레이어) 또는 적 도감·모든 캐릭터(GM)의 스탠딩으로 적용한다.
  *  - 로그는 본인 것만 보인다. GM은 캠페인 전체를 보지만, GM이 만든 것은 플레이어에게 보이지 않는다.
  */
@@ -20,6 +23,7 @@ import { generateSprite, applySprite, createEnemyFromSprite, deleteSpriteJob, ty
 interface EnemyLite { id: string; name: string; spriteUrl: string | null }
 interface CharLite { id: string; name: string; mine: boolean; spriteUrl: string | null }
 interface QueueItem { key: string; file: File | null; preview: string | null; label: string; notes: string; target: string; status: "wait" | "upload" | "gen" | "done" | "fail"; result?: string; error?: string }
+interface PreviewSet { src: string; poses: SpritePoses }
 
 const STATUS_LABEL: Record<SpriteJobRow["status"], string> = { queued: "대기", running: "생성 중", done: "완료", failed: "실패" };
 const field = "w-full rounded-md border border-border bg-elev px-2 py-1 text-sm outline-none focus:border-accent";
@@ -27,6 +31,9 @@ const field = "w-full rounded-md border border-border bg-elev px-2 py-1 text-sm 
 /** select 값 ↔ 대상. "" = 적용 안 함, "e:<id>" 적, "c:<id>" 캐릭터 */
 const encodeTarget = (t: SpriteTarget): string => (t ? `${t.kind === "enemy" ? "e" : "c"}:${t.id}` : "");
 const decodeTarget = (v: string): SpriteTarget => { const [k, id] = v.split(":"); return id ? { kind: k === "e" ? "enemy" : "character", id } : null; };
+const isPose = (p: string): p is SpritePose => POSES.some((x) => x.id === p);
+/** 완료된 자식 포즈들을 모은다 */
+const posesOf = (kids: SpriteJobRow[]): SpritePoses => { const o: SpritePoses = {}; for (const k of kids) if (k.status === "done" && k.result_url && isPose(k.pose)) o[k.pose] = k.result_url; return o; };
 
 function TargetSelect({ value, onChange, name, enemies, characters, className = field, disabled, none = "적용 안 함" }: { value?: string; onChange?: (v: string) => void; name?: string; enemies: EnemyLite[]; characters: CharLite[]; className?: string; disabled?: boolean; none?: string }) {
   return (
@@ -45,8 +52,14 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
   const [target, setTarget] = useState<string>(encodeTarget(initialTarget));
   const [running, setRunning] = useState(false);
   const stopRef = useRef(false);
-  const [preview, setPreview] = useState<string | null>(() => jobs.find((j) => j.result_url)?.result_url ?? null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // 부모(대기) 작업과 자식(포즈) 작업으로 나눈다. 옛 행(pose 없음)은 대기로 본다
+  const parents = useMemo(() => jobs.filter((j) => !j.parent_job_id && (j.pose ?? "idle") === "idle"), [jobs]);
+  const kidsOf = useMemo(() => { const m: Record<string, SpriteJobRow[]> = {}; for (const j of jobs) if (j.parent_job_id) (m[j.parent_job_id] ??= []).push(j); return m; }, [jobs]);
+  const orphans = useMemo(() => jobs.filter((j) => j.parent_job_id && !jobs.some((p) => p.id === j.parent_job_id)), [jobs]);
+  // 미리보기는 대기 이미지 URL 만 기억하고, 포즈는 그 URL 의 부모 작업에서 매번 끌어온다 (포즈가 새로 완료되면 자동 반영)
+  const [previewSrc, setPreviewSrc] = useState<string | null>(() => parents.find((j) => j.result_url)?.result_url ?? null);
+  const preview = useMemo<PreviewSet | null>(() => { if (!previewSrc) return null; const p = parents.find((j) => j.result_url === previewSrc); return { src: previewSrc, poses: p ? posesOf(kidsOf[p.id] ?? []) : {} }; }, [previewSrc, parents, kidsOf]);
 
   // 미리보기 URL 정리
   useEffect(() => () => { queue.forEach((q) => { if (q.preview?.startsWith("blob:")) URL.revokeObjectURL(q.preview); }); }, [queue]);
@@ -83,7 +96,7 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
         }
         patch(item.key, { status: "gen" });
         const r = await generateSprite(campaignId, { sourceUrl, label: item.label, notes: item.notes, target: decodeTarget(item.target) });
-        if (r.resultUrl) { patch(item.key, { status: "done", result: r.resultUrl, error: r.error }); setPreview(r.resultUrl); }
+        if (r.resultUrl) { patch(item.key, { status: "done", result: r.resultUrl, error: r.error }); setPreviewSrc(r.resultUrl); }
         else throw new Error(r.error ?? "생성 실패");
       } catch (e) {
         patch(item.key, { status: "fail", error: e instanceof Error ? e.message : "실패" });
@@ -106,7 +119,7 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         {/* 왼쪽: 대기열 */}
         <Panel title="만들기" stamp={`${provider.name} · ${provider.model}`}
-          right={<span className="text-xs text-muted">AI는 대기 포즈 한 장만 그리고, 움직임은 코드로 냅니다</span>}>
+          right={<span className="text-xs text-muted">AI는 대기 포즈 한 장을 그리고, 움직임은 코드로 냅니다. 포즈는 아래 로그에서 추가</span>}>
           <div className="grid gap-2 sm:grid-cols-[1fr_1fr]">
             <label className="block"><span className="block text-xs text-muted">공통 메모 (무기·복장·특징, 선택)</span>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={field} placeholder="예: 녹슨 식칼을 든 뒷골목 청소부, 낡은 작업복, 방독면" /></label>
@@ -144,7 +157,7 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
                   <span className={q.status === "fail" ? "text-danger" : q.status === "done" ? "text-ok" : "text-muted"}>
                     {q.status === "wait" ? "대기" : q.status === "upload" ? "업로드 중" : q.status === "gen" ? "생성 중…" : q.status === "done" ? "완료" : "실패"}
                   </span>
-                  {q.result ? <button type="button" className="text-accent" onClick={() => setPreview(q.result!)}>미리보기</button> : null}
+                  {q.result ? <button type="button" className="text-accent" onClick={() => setPreviewSrc(q.result!)}>미리보기</button> : null}
                   {!busy(q) ? <button type="button" className="text-muted hover:text-danger" onClick={() => setQueue((qq) => qq.filter((x) => x.key !== q.key))}>제거</button> : null}
                 </div>
               </li>
@@ -153,112 +166,169 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
           <details className="mt-3">
             <summary className="cursor-pointer text-xs text-muted">보낼 프롬프트 보기</summary>
             <p className="mt-1 whitespace-pre-wrap border border-border bg-elev p-2 text-xs text-muted">{promptPreview}</p>
-            {isGm ? <p className="mt-1 text-[11px] text-muted">스타일 문장은 <code>apps/web/src/lib/sprite/prompt.ts</code> 에서 바꿉니다. 원작 이미지는 참고로 보내지 않습니다.</p> : null}
+            {isGm ? <p className="mt-1 text-[11px] text-muted">스타일·포즈 문장은 <code>apps/web/src/lib/sprite/prompt.ts</code> 에서 바꿉니다. 원작 이미지는 참고로 보내지 않습니다.</p> : null}
           </details>
         </Panel>
 
-        {/* 오른쪽: 미리보기 + 코드 모션 */}
-        <MotionPreview src={preview} />
+        {/* 오른쪽: 미리보기 + 코드 모션 (+ 포즈) */}
+        <MotionPreview set={preview} />
       </div>
 
-      <JobLog campaignId={campaignId} isGm={isGm} jobs={jobs} enemies={enemies} characters={characters} onPreview={setPreview} />
+      <JobLog campaignId={campaignId} isGm={isGm} parents={parents} kidsOf={kidsOf} orphans={orphans} enemies={enemies} characters={characters} configured={provider.configured}
+        onPreview={(p) => setPreviewSrc(p.result_url!)} />
     </div>
   );
 }
 
-function MotionPreview({ src }: { src: string | null }) {
+function MotionPreview({ set }: { set: PreviewSet | null }) {
   const [motion, setMotion] = useState<SpriteMotion>("idle");
   const [tick, setTick] = useState(0);
   const [flip, setFlip] = useState(false);
   const [bg, setBg] = useState(true);
+  const [usePoses, setUsePoses] = useState(true);
   const [h, setH] = useState(220);
   const play = (m: SpriteMotion) => { setMotion(m); setTick((t) => t + 1); };
+  const poseCount = set ? Object.keys(set.poses).length : 0;
   return (
-    <Panel title="미리보기 · 코드 모션">
+    <Panel title="미리보기 · 코드 모션" stamp={poseCount ? `포즈 ${poseCount}` : undefined}>
       <div className="relative flex h-72 items-end justify-center overflow-hidden border border-border" style={bg ? { backgroundImage: `url(${BACKGROUNDS.backstreet})`, backgroundSize: "cover", backgroundPosition: "center" } : { backgroundImage: "repeating-conic-gradient(#2a2222 0% 25%, #1a1414 0% 50%)", backgroundSize: "16px 16px" }}>
-        {src ? (
+        {set ? (
           <div className="mb-4">
-            <SdSprite src={src} height={h} flip={flip} motion={motion} motionKey={tick} />
+            <SdSprite src={set.src} poses={usePoses ? set.poses : null} height={h} flip={flip} motion={motion} motionKey={tick} />
           </div>
         ) : <p className="mb-4 text-xs text-white/60">아직 결과가 없습니다</p>}
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
-        {SPRITE_MOTIONS.map((m) => <button key={m.id} type="button" onClick={() => play(m.id)} className={`rounded-md border px-2 py-1 text-xs ${motion === m.id ? "border-accent text-accent" : "border-border text-fg hover:bg-fg/5"}`}>{m.label}</button>)}
+        {SPRITE_MOTIONS.map((m) => { const has = isPose(m.id) && !!set?.poses[m.id]; return <button key={m.id} type="button" onClick={() => play(m.id)} className={`rounded-md border px-2 py-1 text-xs ${motion === m.id ? "border-accent text-accent" : "border-border text-fg hover:bg-fg/5"}`} title={has ? "포즈 이미지 있음" : undefined}>{m.label}{has ? " ●" : ""}</button>; })}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
         <label className="flex items-center gap-1"><input type="checkbox" checked={flip} onChange={(e) => setFlip(e.target.checked)} /> 적 방향(왼쪽 보기)</label>
         <label className="flex items-center gap-1"><input type="checkbox" checked={bg} onChange={(e) => setBg(e.target.checked)} /> 전투 배경</label>
+        {poseCount ? <label className="flex items-center gap-1"><input type="checkbox" checked={usePoses} onChange={(e) => setUsePoses(e.target.checked)} /> 포즈 이미지 사용</label> : null}
         <label className="flex items-center gap-1">크기 <input type="range" min={100} max={260} value={h} onChange={(e) => setH(Number(e.target.value))} /></label>
       </div>
-      <p className="mt-2 text-[11px] text-muted">전투 보드와 장면 무대에서는 합·공격·피격·회피·전투불능 결과에 맞춰 같은 모션이 자동으로 나옵니다.</p>
+      <p className="mt-2 text-[11px] text-muted">전투 보드와 장면 무대에서는 합·공격·피격·회피·전투불능 결과에 맞춰 같은 모션이 자동으로 나옵니다. ● 표시는 포즈 이미지가 있어 교차 페이드로 겹치는 모션입니다.</p>
     </Panel>
   );
 }
 
-function JobLog({ campaignId, isGm, jobs, enemies, characters, onPreview }: { campaignId: string; isGm: boolean; jobs: SpriteJobRow[]; enemies: EnemyLite[]; characters: CharLite[]; onPreview: (u: string) => void }) {
+function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, characters, configured, onPreview }: { campaignId: string; isGm: boolean; parents: SpriteJobRow[]; kidsOf: Record<string, SpriteJobRow[]>; orphans: SpriteJobRow[]; enemies: EnemyLite[]; characters: CharLite[]; configured: boolean; onPreview: (p: SpriteJobRow) => void }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [posing, setPosing] = useState<string | null>(null); // 포즈 생성 중인 부모 id
+  const [poseSel, setPoseSel] = useState<Record<string, SpritePose[]>>({});
+  const all = useMemo(() => [...parents, ...Object.values(kidsOf).flat(), ...orphans], [parents, kidsOf, orphans]);
   const linked = (j: SpriteJobRow): { href: string; name: string } | null => {
     if (j.enemy_id) return { href: `/campaigns/${campaignId}/enemies/${j.enemy_id}`, name: enemies.find((e) => e.id === j.enemy_id)?.name ?? "적" };
     if (j.character_id) return { href: `/characters/${j.character_id}`, name: characters.find((c) => c.id === j.character_id)?.name ?? "캐릭터" };
     return null;
   };
   const act = (fn: () => Promise<{ error?: string }>) => start(async () => { setErr(null); const r = await fn(); if (r.error) setErr(r.error); router.refresh(); });
-  const total = jobs.reduce((s, j) => s + (j.cost_usd ?? 0), 0);
-  const done = jobs.filter((j) => j.status === "done").length;
+  const total = all.reduce((s, j) => s + (j.cost_usd ?? 0), 0);
+  const done = all.filter((j) => j.status === "done").length;
+  const selOf = (p: SpriteJobRow): SpritePose[] => poseSel[p.id] ?? POSES.map((x) => x.id).filter((id) => !(kidsOf[p.id] ?? []).some((k) => k.pose === id && k.status === "done"));
+  const togglePose = (p: SpriteJobRow, id: SpritePose) => setPoseSel((m) => { const cur = selOf(p); return { ...m, [p.id]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] }; });
+  const runPoses = async (p: SpriteJobRow) => {
+    const sel = selOf(p); if (!sel.length || posing) return;
+    setPosing(p.id); setErr(null);
+    for (const pose of sel) {
+      const r = await generatePose(campaignId, p.id, pose);
+      if (r.error) setErr(`${POSES.find((x) => x.id === pose)?.label}: ${r.error}`);
+      router.refresh();
+    }
+    setPoseSel((m) => ({ ...m, [p.id]: [] }));
+    setPosing(null);
+  };
+  const meta = (j: SpriteJobRow) => `${new Date(j.created_at).toLocaleString("ko-KR")} · ${j.provider}/${j.model}${j.duration_ms ? ` · ${(j.duration_ms / 1000).toFixed(1)}초` : ""}${j.cost_usd !== null ? ` · $${Number(j.cost_usd).toFixed(3)}` : ""}`;
+  const thumb = (j: SpriteJobRow, size: string, click?: () => void) => (
+    <button type="button" className={`${size} overflow-hidden bg-fg/10`} onClick={click} title={click ? "미리보기" : undefined}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {j.result_url ? <img src={j.result_url} alt="" className="h-full w-full object-contain" /> : j.source_url ? <img src={j.source_url} alt="" className="h-full w-full object-cover opacity-50" /> : null}
+    </button>
+  );
+  const delBtn = (j: SpriteJobRow, label = "삭제", confirmMsg?: string) => (
+    <button type="button" className="text-muted hover:text-danger" disabled={pending} onClick={() => { if (!confirmMsg || confirm(confirmMsg)) act(() => deleteSpriteJob(campaignId, j.id)); }}>{label}</button>
+  );
+  const row = (j: SpriteJobRow, isParent: boolean) => {
+    const ln = linked(j); const kids = isParent ? kidsOf[j.id] ?? [] : [];
+    return (
+      <li key={j.id} className="py-2">
+        <div className="grid gap-2 sm:grid-cols-[3.5rem_1fr_auto]">
+          {thumb(j, "h-14 w-14", j.result_url && isParent ? () => onPreview(j) : undefined)}
+          <div className="min-w-0 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{j.label || "(이름 없음)"}</span>
+              {!isParent ? <span className="rounded-sm bg-fg/10 px-1 text-[10px]">{POSES.find((x) => x.id === j.pose)?.label ?? j.pose}</span> : null}
+              <span className={`text-xs ${j.status === "failed" ? "text-danger" : j.status === "done" ? "text-ok" : "text-muted"}`}>{STATUS_LABEL[j.status]}</span>
+              {ln ? <Link href={ln.href} className="text-xs text-accent">→ {ln.name}</Link> : null}
+            </div>
+            <div className="text-xs text-muted">{meta(j)}{j.source_url ? (isParent ? " · 참고 이미지" : "") : " · 글만"}</div>
+            {j.error ? <div className="text-xs text-danger">{j.error}</div> : null}
+            <button type="button" className="text-[11px] text-muted hover:text-fg" onClick={() => setOpen(open === j.id ? null : j.id)}>{open === j.id ? "프롬프트 접기" : "프롬프트·사용량"}</button>
+            {open === j.id ? <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap border border-border bg-elev p-2 text-[11px] text-muted">{j.prompt}{j.usage ? `\n\n사용량: ${JSON.stringify(j.usage)}` : ""}</pre> : null}
+            {/* 포즈: 완료된 대기 이미지에만 */}
+            {isParent && j.status === "done" && j.result_url ? (
+              <div className="mt-2 border border-border/70 bg-elev/40 p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-semibold text-muted">포즈 이미지</span>
+                  {kids.map((k) => (
+                    <span key={k.id} className="flex items-center gap-1 text-[11px]">
+                      {thumb(k, "h-9 w-9")}
+                      <span className={k.status === "failed" ? "text-danger" : k.status === "done" ? "" : "text-muted"}>{POSES.find((x) => x.id === k.pose)?.label ?? k.pose}{k.status !== "done" ? ` (${STATUS_LABEL[k.status]})` : ""}</span>
+                      {delBtn(k, "×")}
+                    </span>
+                  ))}
+                  {kids.length === 0 ? <span className="text-[11px] text-muted">없음 — 코드 모션만 씁니다</span> : null}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="text-muted">추가:</span>
+                  {POSES.map((p) => { const have = kids.some((k) => k.pose === p.id && k.status === "done"); const on = selOf(j).includes(p.id); return (
+                    <label key={p.id} className={`flex items-center gap-1 ${have ? "text-muted" : ""}`} title={have ? "이미 있음 (다시 만들면 교체)" : undefined}>
+                      <input type="checkbox" checked={on} onChange={() => togglePose(j, p.id)} disabled={posing !== null} /> {p.label}
+                    </label>
+                  ); })}
+                  <Button variant="ghost" className="px-2 py-0.5 text-[11px]" disabled={!configured || posing !== null || selOf(j).length === 0} onClick={() => void runPoses(j)}>
+                    {posing === j.id ? "포즈 생성 중…" : `포즈 생성 (호출 ${selOf(j).length}회)`}
+                  </Button>
+                  <span className="text-muted">대기 이미지를 참고로 같은 인물의 포즈를 그립니다. 적·캐릭터에 연결돼 있으면 바로 적용됩니다.</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          {j.status === "done" && j.result_url ? (
+            <div className="flex flex-col items-end gap-1 text-xs">
+              <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const t = decodeTarget(String(new FormData(e.currentTarget).get("target") || "")); if (t) act(() => applySprite(campaignId, j.id, t)); }}>
+                <TargetSelect name="target" enemies={enemies} characters={characters} className={`${field} w-40`} none="대상 선택" />
+                <Button type="submit" variant="ghost" className="px-2 py-1 text-xs" disabled={pending}>{isParent ? "적용 (포즈 포함)" : "이 포즈만 적용"}</Button>
+              </form>
+              {isGm && isParent ? (
+                <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); act(() => createEnemyFromSprite(campaignId, j.id, String(f.get("name") || j.label))); }}>
+                  <Input name="name" defaultValue={j.label} placeholder="새 적 이름" className="w-32 px-2 py-1 text-xs" />
+                  <Button type="submit" variant="ghost" className="px-2 py-1 text-xs" disabled={pending}>새 적 등록</Button>
+                </form>
+              ) : null}
+              <div className="flex gap-2">
+                <a href={j.result_url} download className="text-muted hover:text-fg">PNG 저장</a>
+                {delBtn(j, "삭제", isParent ? "이 기록과 결과 파일, 딸린 포즈까지 지울까요? (이미 적용된 스탠딩은 유지)" : "이 포즈 기록과 파일을 지울까요?")}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start justify-end text-xs">{delBtn(j)}</div>
+          )}
+        </div>
+      </li>
+    );
+  };
   return (
-    <Panel title={isGm ? "생성 로그 (캠페인 전체)" : "내 생성 로그"} stamp={`${jobs.length}건`} right={<span className="text-xs text-muted">완료 {done} · 실패 {jobs.filter((j) => j.status === "failed").length}{total ? ` · 추정 비용 $${total.toFixed(2)}` : ""}</span>}>
+    <Panel title={isGm ? "생성 로그 (캠페인 전체)" : "내 생성 로그"} stamp={`${all.length}건`} right={<span className="text-xs text-muted">완료 {done} · 실패 {all.filter((j) => j.status === "failed").length}{total ? ` · 추정 비용 $${total.toFixed(2)}` : ""}</span>}>
       {err ? <p className="mb-2 text-xs text-danger">{err}</p> : null}
-      {jobs.length === 0 ? <p className="text-sm text-muted">아직 기록이 없습니다.</p> : null}
+      {all.length === 0 ? <p className="text-sm text-muted">아직 기록이 없습니다.</p> : null}
       {isGm ? <p className="mb-2 text-[11px] text-muted">플레이어에게는 본인이 만든 것만 보입니다. GM이 만든 것은 플레이어에게 보이지 않습니다.</p> : null}
       <ul className="divide-y divide-border">
-        {jobs.map((j) => { const ln = linked(j); return (
-          <li key={j.id} className="py-2">
-            <div className="grid gap-2 sm:grid-cols-[3.5rem_1fr_auto]">
-              <button type="button" className="h-14 w-14 overflow-hidden bg-fg/10" onClick={() => j.result_url && onPreview(j.result_url)} title="미리보기">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {j.result_url ? <img src={j.result_url} alt="" className="h-full w-full object-contain" /> : j.source_url ? <img src={j.source_url} alt="" className="h-full w-full object-cover opacity-50" /> : null}
-              </button>
-              <div className="min-w-0 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{j.label || "(이름 없음)"}</span>
-                  <span className={`text-xs ${j.status === "failed" ? "text-danger" : j.status === "done" ? "text-ok" : "text-muted"}`}>{STATUS_LABEL[j.status]}</span>
-                  {ln ? <Link href={ln.href} className="text-xs text-accent">→ {ln.name}</Link> : null}
-                </div>
-                <div className="text-xs text-muted">
-                  {new Date(j.created_at).toLocaleString("ko-KR")} · {j.provider}/{j.model}{j.duration_ms ? ` · ${(j.duration_ms / 1000).toFixed(1)}초` : ""}{j.cost_usd !== null ? ` · $${Number(j.cost_usd).toFixed(3)}` : ""}{j.source_url ? " · 참고 이미지" : " · 글만"}
-                </div>
-                {j.error ? <div className="text-xs text-danger">{j.error}</div> : null}
-                <button type="button" className="text-[11px] text-muted hover:text-fg" onClick={() => setOpen(open === j.id ? null : j.id)}>{open === j.id ? "프롬프트 접기" : "프롬프트·사용량"}</button>
-                {open === j.id ? <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap border border-border bg-elev p-2 text-[11px] text-muted">{j.prompt}{j.usage ? `\n\n사용량: ${JSON.stringify(j.usage)}` : ""}</pre> : null}
-              </div>
-              {j.status === "done" && j.result_url ? (
-                <div className="flex flex-col items-end gap-1 text-xs">
-                  <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const t = decodeTarget(String(new FormData(e.currentTarget).get("target") || "")); if (t) act(() => applySprite(campaignId, j.id, t)); }}>
-                    <TargetSelect name="target" enemies={enemies} characters={characters} className={`${field} w-40`} none="대상 선택" />
-                    <Button type="submit" variant="ghost" className="px-2 py-1 text-xs" disabled={pending}>적용</Button>
-                  </form>
-                  {isGm ? (
-                    <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); act(() => createEnemyFromSprite(campaignId, j.id, String(f.get("name") || j.label))); }}>
-                      <Input name="name" defaultValue={j.label} placeholder="새 적 이름" className="w-32 px-2 py-1 text-xs" />
-                      <Button type="submit" variant="ghost" className="px-2 py-1 text-xs" disabled={pending}>새 적 등록</Button>
-                    </form>
-                  ) : null}
-                  <div className="flex gap-2">
-                    <a href={j.result_url} download className="text-muted hover:text-fg">PNG 저장</a>
-                    <button type="button" className="text-muted hover:text-danger" disabled={pending} onClick={() => { if (confirm("이 기록과 결과 파일을 지울까요? (이미 적용된 스탠딩은 유지)")) act(() => deleteSpriteJob(campaignId, j.id)); }}>삭제</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-end text-xs">
-                  <button type="button" className="text-muted hover:text-danger" disabled={pending} onClick={() => act(() => deleteSpriteJob(campaignId, j.id))}>삭제</button>
-                </div>
-              )}
-            </div>
-          </li>
-        ); })}
+        {parents.map((j) => row(j, true))}
+        {orphans.map((j) => row(j, false))}
       </ul>
     </Panel>
   );

@@ -511,6 +511,8 @@ export type Database = {
           id: string
           label: string
           model: string
+          parent_job_id: string | null
+          pose: string
           prompt: string
           provider: string
           result_url: string | null
@@ -531,6 +533,8 @@ export type Database = {
           id?: string
           label?: string
           model: string
+          parent_job_id?: string | null
+          pose?: string
           prompt: string
           provider: string
           result_url?: string | null
@@ -551,6 +555,8 @@ export type Database = {
           id?: string
           label?: string
           model?: string
+          parent_job_id?: string | null
+          pose?: string
           prompt?: string
           provider?: string
           result_url?: string | null
@@ -559,6 +565,13 @@ export type Database = {
           usage?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "sprite_jobs_parent_job_id_fkey"
+            columns: ["parent_job_id"]
+            isOneToOne: false
+            referencedRelation: "sprite_jobs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sprite_jobs_campaign_id_fkey"
             columns: ["campaign_id"]

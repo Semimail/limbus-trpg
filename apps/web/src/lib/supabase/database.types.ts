@@ -500,6 +500,7 @@ export type Database = {
       sprite_jobs: {
         Row: {
           campaign_id: string
+          character_id: string | null
           cost_usd: number | null
           created_at: string
           created_by: string
@@ -519,6 +520,7 @@ export type Database = {
         }
         Insert: {
           campaign_id: string
+          character_id?: string | null
           cost_usd?: number | null
           created_at?: string
           created_by: string
@@ -538,6 +540,7 @@ export type Database = {
         }
         Update: {
           campaign_id?: string
+          character_id?: string | null
           cost_usd?: number | null
           created_at?: string
           created_by?: string
@@ -561,6 +564,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sprite_jobs_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "characters"
             referencedColumns: ["id"]
           },
           {

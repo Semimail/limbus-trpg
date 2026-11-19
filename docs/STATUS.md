@@ -118,11 +118,12 @@
 - 모션 컴포넌트 `components/sprite/sd-sprite.tsx` + `globals.css` `.sd-*`. 전투 보드 유닛·합 컷인은 연출 단계(`PlayCard.motion`, playback.ts)에 맞춰 자동 재생, 장면 무대 스탠딩은 숨쉬기 + 말할 때 "준비" 모션. 기존 스탠딩 일러스트에도 같은 모션이 적용된다.
 - 환경 변수(Vercel에 넣어야 동작): `OPENAI_API_KEY`, 선택 `SPRITE_PROVIDER`(openai|mock)·`SPRITE_IMAGE_MODEL`(기본 gpt-image-1)·`SPRITE_IMAGE_QUALITY`(low|medium|high)·`SPRITE_IMAGE_SIZE`(기본 1024x1536)·`SPRITE_COST_PER_IMAGE_USD`(로그용 추정 단가). 비용 단가는 코드에 박지 않는다. **키는 아직 없음** → 실제 생성 품질 미확인.
 - 원작 추출 이미지는 API에 참고 이미지로 보내지 않는다(스타일은 글로만).
-- 미결: 실제 키로 품질 확인, 결과 PNG 여백 트리밍·축소(이미지 라이브러리 없음), 캐릭터(PC) 시트에도 같은 공방 연결.
+- **플레이어도 사용(2026-11-20, 사용자 "플레이어들도 이용할 수 있게, 내가 만든 건 공개 안 함")**: 마이그레이션 0011 — `sprite_jobs.character_id` 추가, RLS를 본인 작업(읽기·수정·삭제) + 멤버 insert + GM 캠페인 전체로 바꿈. GM 이 만든 것은 플레이어에게 안 보인다. 페이지는 멤버 전원 입장: 플레이어는 내 캐릭터에만 적용, GM 은 적 도감·모든 캐릭터. 사무소 "내 캐릭터" 패널과 캐릭터 위자드(캠페인 소속일 때)에 링크. **0011 적용 필요.**
+- 미결: 실제 키로 품질 확인, 결과 PNG 여백 트리밍·축소(이미지 라이브러리 없음).
 - 로컬 환경 메모: 2026-11-20 "환경 일치화" 항목 참고.
 
 ## 환경 일치화: 사용자 Windows PC (2026-11-20)
 - 클라우드 샌드박스 → 사용자 PC로 옮김. 작업 폴더 `D:
 ew\limbus-trpg-…`는 exFAT(링크 불가)라 `scripts/win-sync.ps1`이 `C:\dev\limbus-trpg`로 미러를 뜨고 fnm Node 24(v24.22.3)로 install·typecheck·lint·build·test 를 돌린다. 모두 통과 확인(테스트 68개, 빌드는 rulebook `fs.readFileSync` 경고 1건은 기존과 같음). 자세한 절차는 CLAUDE.md "로컬 개발·테스트".
 - git 은 D:에서 origin main 에 직접 푸시. `apps/web/.env.local`은 아직 없어 개발 서버·Playwright 는 미확인(Supabase URL/anon key 필요).
-- Windows용 `scripts/db-push.ps1` 추가(토큰을 화면에 안 보이게 입력). 마이그레이션 0010은 여전히 미적용.
+- Windows용 `scripts/db-push.ps1` 추가(토큰을 화면에 안 보이게 입력). 마이그레이션 0010은 2026-11-20 사용자가 적용함(sprites 버킷 생성 확인).

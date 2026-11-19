@@ -101,3 +101,8 @@ Battle Backgrounds 1nXRLjFglNgjithfvY1D_3AkSt_aDvhoa · Icons 1DkcKQWgYLf9Kzk3Jd
 - **합 컷인**(기본 켜짐, 메뉴 "합 컷인 연출 끄기"로 카드 방식 전환, localStorage `limbus.cutin`): 두 유닛이 등장하는 단계(합·공격 코인·합 승리)에서 나머지를 어둡게 하고 두 유닛(스탠딩 또는 원형 초상)을 좌우 27%/73% 지점으로 크게 당겨 세움. 아래에 이름 플레이트, 스킬 칩·스킬명·제목, 코인(순서대로 뒤집히는 애니메이션), 큰 위력/피해 숫자(팝), 우세/코인 파괴/HP 변화. 가운데 VS. 한 유닛만 나오는 단계(상태이상·전투불능)는 유닛 옆 카드 유지. 구현: `CutIn` in `battle-screen.tsx`, 카드 데이터에 `skill` 필드 추가(`playback.ts`).
 - **라운드 시작 플래시**: 연출이 끝난 뒤 가운데에 림버스 네온 "TURN n"(`turn-text.png`) 1.6초.
 - **HUD**: 모든 패널(`.b-pane`)을 림버스 패널(`panel-plain.png`, 9조각 border-image)로, 버튼(`.b-tabx`, `.b-btn`)은 림버스 사각 플레이트(`btn-wide.png`) 배경으로 통일. 서랍 머리는 금색 플레이트, 탭은 금색 채움. 세션 화면·GM 콘솔도 같은 클래스를 써서 함께 바뀜.
+
+## 클라이언트 에셋 추출 (2026-11-19, 사용자 요청 "클라이언트를 뜯고 싶어")
+- `scripts/limbus-extract/extract.py`(UnityPy): 설치 폴더·Addressables 캐시의 번들에서 Texture2D/Sprite(PNG)·AudioClip(wav/ogg, 실패 시 .fsb)·TextAsset(Spine skel/atlas 등)·Font 를 컨테이너 경로대로 꺼내고 `index.json` 생성. `--list`로 목록만, `--match` 정규식 필터, `--types` 선택. 사용법은 같은 폴더 README.
+- 클라우드엔 클라이언트가 없어 UnityPy 공개 샘플 번들(스프라이트 아틀라스·오디오)로만 검증. 림버스 실제 번들은 사용자 PC에서 돌려 확인 필요(캐시 경로 `LocalLow/ProjectMoon/LimbusCompany` 는 추정).
+- 방침: 원본은 비공개. 소량 PNG만 `public/assets/limbus`, 음악·대량 배경은 Supabase Storage 비공개 버킷 예정(업로드 스크립트 미작성).

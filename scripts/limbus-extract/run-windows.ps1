@@ -12,7 +12,7 @@ param(
   [string]$Game = "C:\Program Files (x86)\Steam\steamapps\common\Limbus Company",
   [string[]]$Cache = @(),   # 비우면 LocalLow 아래 후보를 자동으로 찾는다
   [string]$Out = "$PSScriptRoot\extracted",
-  [string]$UnityVersion = "",
+  [string]$UnityVersion = "",   # 비우면 LimbusCompany.exe 의 제품 버전(예: 6000.3.12f1)을 읽는다. 캐시 번들은 버전 머리말이 비어 있어 꼭 필요하다
   [switch]$ListOnly,
   [switch]$SkipList,
   [switch]$All
@@ -46,6 +46,16 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 }
 $py = ".\.venv\Scripts\python.exe"
 & $py -m pip install -q -r requirements.txt
+
+# Unity 버전: 다운로드 캐시(__data)의 번들은 머리말에 버전이 없어 UnityPy 가 "No valid Unity version" 으로 전부 실패한다 → exe 에서 읽어 넘긴다
+if (-not $UnityVersion) {
+  $exe = Join-Path $Game "LimbusCompany.exe"
+  if (Test-Path $exe) {
+    $pv = (Get-Item $exe).VersionInfo.ProductVersion   # "6000.3.12f1 (fca03ac9b0d5)"
+    if ($pv -match "^\s*(\d+\.\d+\.\d+[a-z]\d+)") { $UnityVersion = $Matches[1] }
+  }
+}
+if ($UnityVersion) { Write-Host "Unity 버전: $UnityVersion" } else { Write-Warning "Unity 버전을 못 읽었습니다. 캐시 번들이 전부 실패하면 -UnityVersion 6000.3.12f1 처럼 지정하세요." }
 
 $common = @("--game", $Game)
 foreach ($c in $Cache) { $common += @("--cache", $c) }
@@ -102,12 +112,14 @@ if ($All) {
 $Filters = @(
   @{ name = "ui";    types = "sprite,tex"; match = "(?i)\bui\b|/ui/|icon|hud|button|frame|slot|gauge|popup|panel|badge|coin|sin_|status|buff|keyword|cursor" },
   @{ name = "bg";    types = "tex";        match = "(?i)background|\bbg\b|/bg/|bg_|_bg|battle_?bg|stage|scenery|backdrop|sky" },
-  @{ name = "music"; types = "audio";      match = "(?i)bgm|music|\bost\b|theme|battle_?(theme|bgm)|title|lobby|ambien" }
+  @{ name = "music"; types = "audio";      match = "(?i)bgm|music|\bost\b|theme|battle_?(theme|bgm)|title|lobby|ambien" },
+  # 인격·E.G.O 그림 (다운로드 캐시에만 있음): Unit/CG 인격 일러스트(_normal/_gacksung), Unit/EgoCG E.G.O 일러스트, Unit/Profile·Info·Portrait 초상, PassiveBanner
+  @{ name = "unit";  types = "tex";        match = "Resources_moved/Sprite/Unit/" }
 )
 $step = 2
 foreach ($f in $Filters) {
   $dir = Join-Path $Out $f.name
-  Write-Host "== $step/4 $($f.name) 추출 (types=$($f.types), match=$($f.match)) → $dir"
+  Write-Host "== $step/5 $($f.name) 추출 (types=$($f.types), match=$($f.match)) → $dir"
   & $py extract.py @common --out $dir --types $f.types --match $f.match
   $step++
 }

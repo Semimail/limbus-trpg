@@ -7,3 +7,10 @@ dist
 *.log
 .DS_Store
 apps/web/public/rulebook.md
+
+# 영상·프레임 분석 자료 (대용량, 저장소에 넣지 않음)
+*.mp4
+*.mkv
+*.webm
+*.mov
+video-frames/

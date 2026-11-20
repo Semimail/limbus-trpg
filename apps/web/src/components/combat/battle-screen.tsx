@@ -969,7 +969,6 @@ function StaggerPips({ u, rules, compact }: { u: Unit; rules: RuleConfig; compac
       {!compact ? <span className="b-muted">흐트러짐</span> : null}
       {rules.staggerThresholds.map((t) => { const done = u.staggerTriggered.includes(t); const next = !done && hpPct > t;
         return <span key={t} className={`inline-flex items-center gap-0.5 rounded-sm border px-1 text-[10px] ${done ? "border-amber-400/70 text-amber-300" : next ? "border-white/25 text-white/80" : "border-white/15 text-white/40"} ${u.staggered && done && t === u.staggerTriggered[u.staggerTriggered.length - 1] ? "b-pulse" : ""}`}>{done ? "◆" : "◇"}{Math.round(t * 100)}%</span>; })}
-      {u.staggered ? <span className="rounded-sm bg-yellow-400 px-1 text-[9px] font-black text-black">흐트러짐</span> : null}
     </span>
   );
 }

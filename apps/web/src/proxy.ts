@@ -26,7 +26,7 @@ export async function proxy(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const user = data?.claims?.sub ? data.claims : null;
   const path = request.nextUrl.pathname;
-  const isPublic = path === "/" || path.startsWith("/api/health") || path.startsWith("/auth") || path.startsWith("/join") || path.startsWith("/replay") || path.startsWith("/terminal");
+  const isPublic = path === "/" || path.startsWith("/api/health") || path.startsWith("/auth") || path.startsWith("/join") || path.startsWith("/replay");
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
@@ -37,5 +37,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?|ttf)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

@@ -109,6 +109,7 @@
 - `scripts/limbus-extract/`: `extract.py`(UnityPy) + `run-windows.ps1`(목록 → UI·아이콘/배경/음악 일괄 추출) + `summarize.py`(index.json 폴더별 요약). 설치 폴더·Addressables 캐시의 번들에서 Texture2D/Sprite(PNG)·AudioClip·TextAsset(Spine skel/atlas)·Font 를 컨테이너 경로대로 꺼낸다. 사용법은 같은 폴더 README. 결과(`extracted/`)와 `vgmstream-cli.exe` 는 저장소에 넣지 않는다(.gitignore).
 - 사용자 PC에서 실행해 `extracted/all` 에 Sprite 7,212장·Texture2D 1,748장(resources/sharedassets 기준)이 나왔다. 캐릭터 SD는 Spine 골격(`*_SDAtlas` 텍스처 + skel)이라 프레임 이미지로는 못 쓴다.
 - 방침: 원본은 비공개. 소량 PNG만 `public/assets/limbus`, 음악·대량 배경은 Supabase Storage 비공개 버킷 예정(업로드 스크립트 미작성).
+- 2026-11-21: 인격·E.G.O 그림이 지난 추출에 없던 원인 = 다운로드 캐시(`LocalLow/Unity/ProjectMoon_LimbusCompany`, 16.7GB)를 안 읽었고, 캐시 번들은 Unity 버전 머리말이 없어 `--unity-version`(exe 제품 버전 6000.3.12f1) 없이는 전부 실패. `run-windows.ps1`이 exe에서 자동으로 읽도록 고치고 `unit` 필터 추가. 로컬 `scripts/limbus-extract/extracted/cache/unit/`에 2,595장(1.3GB: 인격 CG 1920×1080 379장, E.G.O CG 1024×1024 180장+, 초상·정보·배너) 추출됨(저장소 제외). 경로·id 체계는 그 폴더 README.
 
 ## SD 스프라이트 공방 (2026-11-20, 사용자 결정 "정지 1장+코드 모션")
 - 목표: NPC를 대량으로 만들기 위해 이미지(또는 글)를 올리면 림버스풍 SD 스프라이트를 만든다. **AI는 대기 포즈 정지 PNG 1장만 그리고, 대기·준비·공격·회피·피격·전투불능·승리 모션은 전부 CSS 코드로 낸다** (프레임 생성 안 함 — 장마다 얼굴이 달라지고 비용이 커서).

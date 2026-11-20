@@ -60,6 +60,9 @@ export function RulesForm({ campaignId, rules, progression }: { campaignId: stri
           {N("최대치 허용 개수", p.statMaxCount, (n) => setP({ ...p, statMaxCount: n }))}
           {N("생성 시 특기", p.traitsAtCreation, (n) => setP({ ...p, traitsAtCreation: n }))}
           {N("세션당 빛", p.lightPerSession, (n) => setP({ ...p, lightPerSession: n }))}
+          {N("세션당 경험치(기본값)", p.expPerSession ?? 2, (n) => setP({ ...p, expPerSession: n }))}
+          {N("레벨업 비용 배율(×등급)", p.expCostPerGrade ?? 1, (n) => setP({ ...p, expCostPerGrade: n }))}
+          {N("등급당 능력치 +", p.statPointsPerGrade ?? 1, (n) => setP({ ...p, statPointsPerGrade: n }))}
         </div>
       </Panel>
       <div className="flex items-center gap-3">

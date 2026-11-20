@@ -7,7 +7,7 @@ import { Button } from "@/components/ui";
 import { Panel } from "@/components/office/panel";
 
 export function GmPanel({ characterId, data, approved }: { characterId: string; data: CharacterData; approved: boolean }) {
-  const [f, setF] = useState({ level: data.level, hp: data.hp, maxHp: data.maxHp, sanity: data.sanity, light: data.light, erosion: data.erosion, sync: data.sync });
+  const [f, setF] = useState({ level: data.level, hp: data.hp, maxHp: data.maxHp, sanity: data.sanity, light: data.light, erosion: data.erosion, sync: data.sync, exp: data.exp ?? 0 });
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const num = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: Number(e.target.value) });
@@ -18,8 +18,8 @@ export function GmPanel({ characterId, data, approved }: { characterId: string; 
   const cls = "w-full rounded-md border border-border bg-elev px-2 py-1 text-sm tabular-nums";
   return (
     <Panel title="GM 조정" stamp="GM ONLY">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-        {([["level", "레벨"], ["maxHp", "최대 체력"], ["hp", "체력"], ["sanity", "정신력"], ["light", "빛"], ["erosion", "침식도"], ["sync", "동기화"]] as const).map(([k, l]) => (
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+        {([["level", "레벨"], ["exp", "경험치"], ["maxHp", "최대 체력"], ["hp", "체력"], ["sanity", "정신력"], ["light", "빛"], ["erosion", "침식도"], ["sync", "동기화"]] as const).map(([k, l]) => (
           <label key={k} className="block"><span className="block text-[11px] text-muted">{l}</span>
             <input type="number" value={f[k]} onChange={num(k)} className={cls} /></label>
         ))}

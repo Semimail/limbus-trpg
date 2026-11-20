@@ -1,4 +1,28 @@
-import { DEFAULT_PROGRESSION, coinCapAt, expectedPower, gradeOf, maxHpAt, newCharacterData, powerScaleAt, skillBudget, skillPresets, validateCharacter, validateStats } from "../src";
+import { DEFAULT_PROGRESSION, coinCapAt, expectedPower, gradeOf, maxHpAt, newCharacterData, powerScaleAt, skillBudget, skillPresets, validateCharacter, validateStats, levelUpCost, statPointsAt, traitSlotsAt, passiveSlotsAt, syncMinLevel, levelsToNextGrade } from "../src";
+
+describe("경험치·해금", () => {
+  it("레벨업 비용은 등급 번호", () => {
+    expect(levelUpCost(1)).toBe(1); expect(levelUpCost(7)).toBe(1); expect(levelUpCost(8)).toBe(2); expect(levelUpCost(49)).toBe(7);
+  });
+  it("등급마다 능력치 +1, 특기 칸 +1, 패시브는 도시괴담·도시의 재앙·동기화 4단계", () => {
+    expect(statPointsAt(1)).toBe(14); expect(statPointsAt(8)).toBe(15); expect(statPointsAt(43)).toBe(20);
+    expect(traitSlotsAt(1)).toBe(2); expect(traitSlotsAt(8)).toBe(3); expect(traitSlotsAt(49)).toBe(8);
+    expect(passiveSlotsAt(1, 1)).toBe(0); expect(passiveSlotsAt(8, 1)).toBe(1); expect(passiveSlotsAt(29, 1)).toBe(2); expect(passiveSlotsAt(29, 4)).toBe(3);
+    expect(syncMinLevel(1)).toBe(1); expect(syncMinLevel(4)).toBe(29);
+    expect(levelsToNextGrade(1)).toBe(7); expect(levelsToNextGrade(7)).toBe(1); expect(levelsToNextGrade(49)).toBeNull();
+  });
+  it("8레벨 시트는 능력치 15점·특기 3칸·패시브 1칸까지", () => {
+    const d = newCharacterData();
+    d.level = 8;
+    expect(validateStats(d.stats, DEFAULT_PROGRESSION, 8).some((i) => i.code === "sum")).toBe(true);
+    d.stats.wrath = 3;
+    expect(validateStats(d.stats, DEFAULT_PROGRESSION, 8)).toHaveLength(0);
+    d.passives = [{ id: "p1", name: "a", description: "x" }, { id: "p2", name: "b", description: "y" }];
+    expect(validateCharacter(d).some((i) => i.path === "passives")).toBe(true);
+    d.passives = [{ id: "p1", name: "a", description: "x" }];
+    expect(validateCharacter(d).some((i) => i.path === "passives")).toBe(false);
+  });
+});
 
 describe("성장 공식", () => {
   it("등급은 7레벨 단위", () => {

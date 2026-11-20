@@ -5,6 +5,7 @@ import {
   SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, DEFAULT_PROGRESSION, coinCapAt, skillBudget, skillPresets, expectedPower,
   validateCharacter, newEgoDraft, parseEffectText,
   type CharacterData, type DamageType, type DefenseKind, type Sin, type SkillDraft,
+  statPointsAt, statMaxCountAt, traitSlotsAt, passiveSlotsAt,
 } from "@limbus/rules";
 import { saveCharacter } from "@/app/characters/actions";
 import { Button, Input } from "@/components/ui";
@@ -40,11 +41,14 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
   const p = DEFAULT_PROGRESSION;
   const issues = useMemo(() => validateCharacter(d).filter((i) => i.level === "error"), [d]);
   const statSum = SINS.reduce((a, s) => a + d.stats[s], 0);
+  // 레벨에 따른 성장 칸 (등급마다 능력치·특기 +1, 패시브는 해금 등급·동기화 4단계)
+  const statPoints = statPointsAt(d.level, p), statMaxCount = statMaxCountAt(d.level, p), traitSlots = traitSlotsAt(d.level, p), passiveSlots = passiveSlotsAt(d.level, d.sync, p);
+  const passives = d.passives ?? [];
 
   const stepErrors = (i: number): string[] => {
     if (i === 0) return name.trim() ? [] : ["이름을 입력하세요"];
     if (i === 1) return issues.filter((x) => x.path === "stats").map((x) => x.message);
-    if (i === 2) return issues.filter((x) => x.path === "traits").map((x) => x.message);
+    if (i === 2) return issues.filter((x) => x.path === "traits" || x.path === "passives").map((x) => x.message);
     if (i === 3) return issues.filter((x) => x.path.startsWith("skills")).map((x) => x.message);
     if (i === 4) return issues.filter((x) => x.path.startsWith("ego")).map((x) => x.message);
     return [...(name.trim() ? [] : ["이름을 입력하세요"]), ...issues.map((x) => x.message)];
@@ -103,8 +107,8 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
         {step === 1 ? (
           <div className="space-y-4">
             <div className="flex flex-wrap items-end justify-between gap-2">
-              <div><h2 className="text-lg font-semibold">무엇에 끌립니까?</h2><p className="text-sm text-muted">죄악 7종에 {p.statPoints}포인트를 나눕니다. 각 {p.statMin}~{p.statMax}, {p.statMax}는 {p.statMaxCount}개까지. 비전투 판정에서 능력치만큼 코인을 던집니다.</p></div>
-              <div className={`text-sm tabular-nums ${statSum === p.statPoints ? "text-ok" : "text-danger"}`}>남은 포인트 {p.statPoints - statSum}</div>
+              <div><h2 className="text-lg font-semibold">무엇에 끌립니까?</h2><p className="text-sm text-muted">죄악 7종에 {statPoints}포인트를 나눕니다{d.level > 1 ? ` (Lv.${d.level}: 등급마다 +${p.statPointsPerGrade})` : ""}. 각 {p.statMin}~{p.statMax}, {p.statMax}는 {statMaxCount}개까지. 비전투 판정에서 능력치만큼 코인을 던집니다.</p></div>
+              <div className={`text-sm tabular-nums ${statSum === statPoints ? "text-ok" : "text-danger"}`}>남은 포인트 {statPoints - statSum}</div>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
               {SINS.map((s) => (
@@ -130,16 +134,34 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
         {step === 2 ? (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">무엇이 특별합니까?</h2>
-            <p className="text-sm text-muted">특기 {p.traitsAtCreation}개. 상황에 맞으면 판정에 코인 +1. 규칙 형태로 적으면 전투에서 자동으로 발동합니다.</p>
+            <p className="text-sm text-muted">특기 {p.traitsAtCreation}개{traitSlots > p.traitsAtCreation ? ` (Lv.${d.level}: 칸 ${traitSlots}개, 등급마다 +1)` : ""}. 상황에 맞으면 판정에 코인 +1. 규칙 형태로 적으면 전투에서 자동으로 발동합니다.</p>
             <div className="grid gap-3 sm:grid-cols-2">
               {d.traits.map((t, i) => (
                 <div key={t.id} className="space-y-2 border border-border p-3">
                   <Input value={t.name} onChange={(e) => setD({ ...d, traits: d.traits.map((x) => (x.id === t.id ? { ...x, name: e.target.value } : x)) })} placeholder={`특기 ${i + 1} 이름 (예: 흔들리지 않는 호흡)`} />
                   <textarea value={t.description} onChange={(e) => setD({ ...d, traits: d.traits.map((x) => (x.id === t.id ? { ...x, description: e.target.value } : x)) })} rows={2} className={field} placeholder="무엇을 하는 특기인지 한 문장" />
                   <EffectPreview text={t.description} mode="passive" />
+                  {i >= p.traitsAtCreation ? <button type="button" className="text-xs text-muted hover:text-danger" onClick={() => setD({ ...d, traits: d.traits.filter((x) => x.id !== t.id) })}>제거</button> : null}
                 </div>
               ))}
+              {d.traits.length < traitSlots ? <button type="button" className="border border-dashed border-border p-3 text-sm text-muted hover:border-fg/40" onClick={() => setD({ ...d, traits: [...d.traits, { id: `t${Date.now().toString(36)}`, name: "", description: "" }] })}>+ 특기 추가 ({d.traits.length}/{traitSlots})</button> : null}
             </div>
+            {passiveSlots > 0 ? (
+              <div className="space-y-2 border-t border-border pt-3">
+                <h3 className="text-sm font-semibold">패시브 <span className="text-xs font-normal text-muted">해금 {passiveSlots}개 · 등급·동기화로 열리는 상시 효과. 특기와 같은 문장 형태</span></h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {passives.map((t, i) => (
+                    <div key={t.id} className="space-y-2 border border-gold/60 p-3">
+                      <Input value={t.name} onChange={(e) => setD({ ...d, passives: passives.map((x) => (x.id === t.id ? { ...x, name: e.target.value } : x)) })} placeholder={`패시브 ${i + 1} 이름`} />
+                      <textarea value={t.description} onChange={(e) => setD({ ...d, passives: passives.map((x) => (x.id === t.id ? { ...x, description: e.target.value } : x)) })} rows={2} className={field} placeholder="예: 체력 50% 미만이면 매 라운드 시작 시 자신에게 호흡 2 부여" />
+                      <EffectPreview text={t.description} mode="passive" />
+                      <button type="button" className="text-xs text-muted hover:text-danger" onClick={() => setD({ ...d, passives: passives.filter((x) => x.id !== t.id) })}>제거</button>
+                    </div>
+                  ))}
+                  {passives.length < passiveSlots ? <button type="button" className="border border-dashed border-border p-3 text-sm text-muted hover:border-fg/40" onClick={() => setD({ ...d, passives: [...passives, { id: `p${Date.now().toString(36)}`, name: "", description: "" }] })}>+ 패시브 ({passives.length}/{passiveSlots})</button> : null}
+                </div>
+              </div>
+            ) : null}
             <div className="text-xs text-muted">예시를 눌러 넣기:
               <div className="mt-1 flex flex-wrap gap-1">
                 {TRAIT_EXAMPLES.map((ex) => <button key={ex} type="button" className="border border-border px-2 py-0.5 hover:border-fg/40" onClick={() => { const empty = d.traits.find((x) => !x.description.trim()) ?? d.traits[0]!; setD({ ...d, traits: d.traits.map((x) => (x.id === empty.id ? { ...x, description: ex.replace(/ \(.*\)$/, "") } : x)) }); }}>{ex}</button>)}

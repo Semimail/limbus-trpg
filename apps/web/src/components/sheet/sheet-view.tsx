@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import type { CharacterData, SkillDraft } from "@limbus/rules";
-import { SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, DEFAULT_PROGRESSION, DEFAULT_RULES, gradeOf, coinCapAt, describeEffect } from "@limbus/rules";
+import type { CharacterData, SkillDraft, ProgressionConfig } from "@limbus/rules";
+import { SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, DEFAULT_PROGRESSION, DEFAULT_RULES, gradeOf, coinCapAt, describeEffect, levelUpCost, traitSlotsAt, passiveSlotsAt } from "@limbus/rules";
+import { LevelUp } from "./level-up";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon } from "@/components/icons";
 import { Keyword, KeywordText } from "@/components/keyword/keyword";
 import { GmPanel } from "./gm-panel";
@@ -11,14 +12,18 @@ import { Button } from "@/components/ui";
 interface Props {
   id: string; name: string; portraitUrl: string | null; data: CharacterData; approved: boolean; locked: boolean;
   ownerName: string; campaignName: string | null; campaignId: string | null;
-  canEdit: boolean; isOwner: boolean; isGm: boolean; onDelete?: () => void;
+  canEdit: boolean; isOwner: boolean; isGm: boolean; onDelete?: () => void; progression?: ProgressionConfig;
 }
 
 const DEF_LABEL: Record<string, string> = { guard: "가드", evade: "회피", counter: "반격" };
 
-export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ownerName, campaignName, campaignId, canEdit, isOwner, isGm, onDelete }: Props) {
+export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ownerName, campaignName, campaignId, canEdit, isOwner, isGm, onDelete, progression }: Props) {
   const [gmOpen, setGmOpen] = useState(false);
-  const grade = gradeOf(d.level);
+  const p = progression ?? DEFAULT_PROGRESSION;
+  const grade = gradeOf(d.level, p);
+  const cost = levelUpCost(d.level, p);
+  const traitSlots = traitSlotsAt(d.level, p);
+  const passiveSlots = passiveSlotsAt(d.level, d.sync, p);
   const hpPct = Math.max(0, Math.min(100, (d.hp / d.maxHp) * 100));
   const aspects = (d.aspects ?? ["", "", ""]).slice(0, 3);
   const dice = d.sync >= 3 ? 2 : d.speed.dice;
@@ -31,6 +36,7 @@ export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ow
         </div>
         <div className="flex items-center gap-2">
           {isGm ? <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => setGmOpen(!gmOpen)}>{gmOpen ? "GM 조정 닫기" : "GM 조정"}</Button> : null}
+          {canEdit ? <LevelUp characterId={id} level={d.level} exp={d.exp ?? 0} cost={cost} maxLevel={p.maxLevel} /> : null}
           {canEdit ? <Link href={`/characters/${id}/edit`}><Button variant="ghost" className="px-3 py-1 text-xs">편집</Button></Link> : null}
           {isOwner && onDelete ? <Button variant="danger" className="px-2 py-1 text-xs" onClick={() => { if (confirm(`"${name}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)) onDelete(); }}>삭제</Button> : null}
         </div>
@@ -86,7 +92,8 @@ export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ow
               <Stat label="체력" value={`${d.hp} / ${d.maxHp}`} />
               <Stat label="정신력" kw="sanity" value={`${d.sanity > 0 ? "+" : ""}${d.sanity} / 45`} />
               <Stat label="속도" kw="speed" value={`${d.speed.min}~${d.speed.max} ×${dice}`} />
-              <Stat label="빛" kw="light" value={`${d.light} / ${DEFAULT_PROGRESSION.lightPerSession}`} />
+              <Stat label="빛" kw="light" value={`${d.light} / ${p.lightPerSession}`} />
+              <Stat label="경험치" value={`${d.exp ?? 0} / ${cost}`} />
               <Stat label="침식도" kw="erosion" value={`${d.erosion} / ${DEFAULT_RULES.erosionMax}`} />
               <Stat label="코인 상한" kw="coin" value={`${coinCapAt(d.level)}`} />
               <div className="s-cell col-span-2 flex items-center gap-2 px-3 py-2 text-xs">
@@ -121,8 +128,23 @@ export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ow
                 </div>
               </div>
             ))}
-            {Array.from({ length: Math.max(0, 4 - d.traits.length) }).map((_, i) => (
+            {Array.from({ length: Math.max(0, traitSlots - d.traits.length) }).map((_, i) => (
+              <div key={`t${i}`} className="s-box"><div className="s-label px-2 py-1">특기</div><div className="px-2 py-3 text-center text-[11px]" style={{ color: "var(--s-muted)" }}>빈 칸 — 편집에서 추가</div></div>
+            ))}
+            {Array.from({ length: Math.max(0, Math.min(1, 4 - Math.max(traitSlots, d.traits.length))) }).map((_, i) => (
               <div key={`e${i}`} className="s-box"><div className="s-label px-2 py-1">특기</div><div className="px-2 py-3 text-center text-[11px]" style={{ color: "var(--s-muted)" }}>등급 상승 시 해금</div></div>
+            ))}
+            {(d.passives ?? []).map((t) => (
+              <div key={t.id} className="s-box" style={{ borderColor: "var(--s-gold)" }}>
+                <div className="s-label px-2 py-1"><Keyword id="passive" className="border-0 text-inherit">패시브</Keyword> · {t.name || "(이름 없음)"}</div>
+                <div className="px-2 py-2 text-xs leading-relaxed">
+                  {t.description ? <KeywordText text={t.description} /> : <span style={{ color: "var(--s-muted)" }}>설명 없음</span>}
+                  {t.effects?.length ? <div className="mt-1 text-[10px]" style={{ color: "#7fc28a" }}>{t.effects.map((e, i) => <div key={i}>자동 · {describeEffect(e)}</div>)}</div> : null}
+                </div>
+              </div>
+            ))}
+            {Array.from({ length: Math.max(0, passiveSlots - (d.passives ?? []).length) }).map((_, i) => (
+              <div key={`p${i}`} className="s-box" style={{ borderColor: "var(--s-gold)" }}><div className="s-label px-2 py-1">패시브</div><div className="px-2 py-3 text-center text-[11px]" style={{ color: "var(--s-muted)" }}>해금됨 — 편집에서 적기</div></div>
             ))}
           </div>
         </div>

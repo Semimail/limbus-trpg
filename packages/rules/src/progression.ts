@@ -19,6 +19,12 @@ export interface ProgressionConfig {
   statMaxCount: number;      // 최대치(5)를 가질 수 있는 능력치 수: 1
   traitsAtCreation: number;  // 특기 2
   lightPerSession: number;   // 빛 3
+  /* ---- 성장: 경험치·해금 (2026-11-20) ---- */
+  expPerSession: number;       // GM 지급 기본값 2
+  expCostPerGrade: number;     // 레벨업 비용 = 현재 등급 번호(1~7) × 이 값 (기본 1)
+  statPointsPerGrade: number;  // 등급이 오를 때마다 능력치 총점 +1
+  passiveUnlockGrades: number[]; // 패시브 해금 등급 인덱스(0 뜬소문 … 6 불순물). 기본 [1, 4] = 도시괴담·도시의 재앙
+  syncMinLevels: number[];     // 동기화 1~4단계 최소 레벨. 기본 [1, 8, 15, 29]
 }
 
 export const DEFAULT_PROGRESSION: ProgressionConfig = {
@@ -27,14 +33,53 @@ export const DEFAULT_PROGRESSION: ProgressionConfig = {
   baseCoinCap: 2, coinCapPerLevels: 4, maxCoins: 14,
   statPoints: 14, statMin: 1, statMax: 5, statMaxCount: 1,
   traitsAtCreation: 2, lightPerSession: 3,
+  expPerSession: 2, expCostPerGrade: 1, statPointsPerGrade: 1, passiveUnlockGrades: [1, 4], syncMinLevels: [1, 8, 15, 29],
 };
 
 export const GRADES = ["뜬소문", "도시괴담", "도시전설", "도시의 악몽", "도시의 재앙", "별", "불순물"] as const;
 export type Grade = (typeof GRADES)[number];
 
+/** 등급 인덱스 0(뜬소문)~6(불순물) */
+export function gradeIndexOf(level: number, p = DEFAULT_PROGRESSION): number {
+  return Math.min(GRADES.length - 1, Math.floor((Math.max(1, level) - 1) / p.levelsPerGrade));
+}
+
 export function gradeOf(level: number, p = DEFAULT_PROGRESSION): Grade {
-  const i = Math.min(GRADES.length - 1, Math.floor((Math.max(1, level) - 1) / p.levelsPerGrade));
-  return GRADES[i]!;
+  return GRADES[gradeIndexOf(level, p)]!;
+}
+
+/* ---------- 경험치·해금 ---------- */
+
+/** level → level+1 에 드는 경험치. 등급이 높을수록 비싸다 (뜬소문 1, 도시괴담 2, … 불순물 7) */
+export function levelUpCost(level: number, p = DEFAULT_PROGRESSION): number {
+  return (gradeIndexOf(level, p) + 1) * p.expCostPerGrade;
+}
+/** 레벨에 따른 능력치 총점 (등급마다 +statPointsPerGrade) */
+export function statPointsAt(level: number, p = DEFAULT_PROGRESSION): number {
+  return p.statPoints + gradeIndexOf(level, p) * p.statPointsPerGrade;
+}
+/** 최대치(5)를 가질 수 있는 능력치 수: 두 등급마다 +1 */
+export function statMaxCountAt(level: number, p = DEFAULT_PROGRESSION): number {
+  return p.statMaxCount + Math.floor(gradeIndexOf(level, p) / 2);
+}
+/** 특기 칸 수: 생성 시 수 + 등급마다 1 */
+export function traitSlotsAt(level: number, p = DEFAULT_PROGRESSION): number {
+  return p.traitsAtCreation + gradeIndexOf(level, p);
+}
+/** 패시브 칸 수: 해금 등급에 도달할 때마다 1, 동기화 4단계에 고유 패시브 1 */
+export function passiveSlotsAt(level: number, sync: number, p = DEFAULT_PROGRESSION): number {
+  const g = gradeIndexOf(level, p);
+  return p.passiveUnlockGrades.filter((x) => g >= x).length + (sync >= 4 ? 1 : 0);
+}
+/** 동기화 단계의 최소 레벨 */
+export function syncMinLevel(sync: number, p = DEFAULT_PROGRESSION): number {
+  return p.syncMinLevels[Math.max(0, Math.min(p.syncMinLevels.length - 1, sync - 1))] ?? 1;
+}
+/** 다음 등급(해금)까지 남은 레벨. 최고 등급이면 null */
+export function levelsToNextGrade(level: number, p = DEFAULT_PROGRESSION): number | null {
+  const g = gradeIndexOf(level, p);
+  if (g >= GRADES.length - 1) return null;
+  return (g + 1) * p.levelsPerGrade + 1 - Math.max(1, level);
 }
 
 export function maxHpAt(level: number, p = DEFAULT_PROGRESSION): number {
@@ -71,13 +116,14 @@ export function skillBudget(tier: 1 | 2 | 3 | "defense", level: number, p = DEFA
 
 export interface StatIssue { code: "sum" | "range" | "maxCount"; message: string }
 
-export function validateStats(stats: Record<Sin, number>, p = DEFAULT_PROGRESSION): StatIssue[] {
+export function validateStats(stats: Record<Sin, number>, p = DEFAULT_PROGRESSION, level = 1): StatIssue[] {
   const issues: StatIssue[] = [];
   const values = Object.values(stats);
   const sum = values.reduce((a, b) => a + b, 0);
-  if (sum !== p.statPoints) issues.push({ code: "sum", message: `능력치 합계는 ${p.statPoints}이어야 합니다 (현재 ${sum})` });
+  const points = statPointsAt(level, p), maxCount = statMaxCountAt(level, p);
+  if (sum !== points) issues.push({ code: "sum", message: `능력치 합계는 ${points}이어야 합니다 (현재 ${sum})` });
   if (values.some((v) => v < p.statMin || v > p.statMax)) issues.push({ code: "range", message: `각 능력치는 ${p.statMin}~${p.statMax} 사이여야 합니다` });
-  if (values.filter((v) => v === p.statMax).length > p.statMaxCount) issues.push({ code: "maxCount", message: `${p.statMax}는 ${p.statMaxCount}개까지만 가능합니다` });
+  if (values.filter((v) => v === p.statMax).length > maxCount) issues.push({ code: "maxCount", message: `${p.statMax}는 ${maxCount}개까지만 가능합니다` });
   return issues;
 }
 

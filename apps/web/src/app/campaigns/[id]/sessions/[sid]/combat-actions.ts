@@ -44,7 +44,7 @@ export async function startCombatAction(campaignId: string, sessionId: string, s
     inputs.push({
       id: `c_${c.id}`, name: c.name, side: "ally", maxHp: d.maxHp, hp: d.hp, sanity: d.sanity, speed: { ...d.speed, dice },
       skills: [...d.skills.map(toSkill), ...(d.ego ?? []).map(toSkill)],
-      passives: fx(d.traits ?? []), light: d.light ?? 0, erosion: d.erosion ?? 0, spriteUrl: d.spriteUrl ?? null, spritePoses: d.spritePoses ?? null, spriteAnims: d.spriteAnims ?? null,
+      passives: fx([...(d.traits ?? []), ...(d.passives ?? [])]), light: d.light ?? 0, erosion: d.erosion ?? 0, spriteUrl: d.spriteUrl ?? null, spritePoses: d.spritePoses ?? null, spriteAnims: d.spriteAnims ?? null,
       portraitUrl: c.portrait_url, source: { kind: "character", id: c.id, ownerId: c.owner_id },
     });
   }

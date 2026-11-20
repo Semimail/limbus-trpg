@@ -5,6 +5,9 @@ import { Button, Input } from "@/components/ui";
 import { Panel } from "@/components/office/panel";
 import { CharacterCard, type CharacterSummary } from "@/components/office/character-card";
 import { DeleteCampaign } from "@/components/office/delete-campaign";
+import { ExpAward } from "@/components/office/exp-award";
+import { getCampaignRules } from "@/lib/rules";
+import type { CharacterData } from "@limbus/rules";
 import { approveCharacter, closeSession, createInvite, openSession, setMemberRole, updateNotice } from "../actions";
 
 const ROLE_LABEL = { gm: "GM", temp_gm: "임시 GM", player: "플레이어" } as const;
@@ -33,6 +36,7 @@ export default async function OfficePage({ params }: { params: Promise<{ id: str
   const mine = (characters ?? []).filter((c) => c.owner_id === user.id) as CharacterSummary[];
   const others = (characters ?? []).filter((c) => c.owner_id !== user.id);
   const pending = (characters ?? []).filter((c) => !c.approved);
+  const { progression } = isGm ? await getCampaignRules(id) : { progression: null };
 
   return (
     <div className="space-y-4">
@@ -128,6 +132,8 @@ export default async function OfficePage({ params }: { params: Promise<{ id: str
           {isGm ? (
             <Panel title="GM" stamp="GM ONLY">
               <div className="space-y-4 text-sm">
+                <ExpAward campaignId={id} defaultAmount={progression?.expPerSession ?? 2}
+                  characters={(characters ?? []).filter((c) => c.approved).map((c) => { const d = c.data as unknown as Partial<CharacterData>; return { id: c.id, name: c.name, level: d.level ?? 1, exp: d.exp ?? 0 }; })} />
                 <div>
                   <div className="mb-1 text-xs text-muted">승인 대기 캐릭터</div>
                   {pending.length === 0 ? <p className="text-muted">없음</p> : null}

@@ -1,6 +1,6 @@
 import type { DamageType, DefenseKind, Effect, Sin } from "./types";
 import { SINS } from "./types";
-import { DEFAULT_PROGRESSION, coinCapAt, expectedPower, maxHpAt, skillBudget, validateStats, type ProgressionConfig } from "./progression";
+import { DEFAULT_PROGRESSION, coinCapAt, expectedPower, maxHpAt, skillBudget, validateStats, traitSlotsAt, passiveSlotsAt, type ProgressionConfig } from "./progression";
 
 /** 캐릭터 시트의 JSON 데이터 (characters.data) */
 export interface SkillDraft {
@@ -58,6 +58,10 @@ export interface CharacterData {
   sync: 1 | 2 | 3 | 4;
   stats: Record<Sin, number>;
   traits: Trait[];
+  /** 패시브: 등급·동기화로 해금되는 상시 효과 (특기와 같은 문장 형태, passiveSlotsAt 만큼) */
+  passives?: Trait[];
+  /** 경험치. GM이 세션 뒤에 지급하고, 레벨업에 levelUpCost 만큼 쓴다 */
+  exp?: number;
   skills: SkillDraft[];      // 공격 3 + 방어 1
   ego: SkillDraft[];         // E.G.O (초기 0개)
   maxHp: number;
@@ -91,7 +95,7 @@ export function newCharacterData(p: ProgressionConfig = DEFAULT_PROGRESSION): Ch
       { id: "s3", name: "", kind: "attack", tier: 3, basePower: 5, coinPower: 3, coinCount: 2, damageType: "slash", sin: "sloth", effectText: "" },
       { id: "d1", name: "", kind: "defense", defenseKind: "guard", basePower: 5, coinPower: 2, coinCount: 1, damageType: "blunt", sin: "gluttony", effectText: "" },
     ],
-    ego: [],
+    ego: [], passives: [], exp: 0,
     maxHp: hp, hp, sanity: 0, light: p.lightPerSession, erosion: 0,
     speed: { min: 2, max: 5, dice: 1 },
     background: "", inventory: "", notes: "",
@@ -103,10 +107,14 @@ export interface SheetIssue { path: string; message: string; level: "error" | "w
 /** 시트 검증. error는 저장 불가, warn은 GM 승인 시 참고. */
 export function validateCharacter(d: CharacterData, p: ProgressionConfig = DEFAULT_PROGRESSION): SheetIssue[] {
   const out: SheetIssue[] = [];
-  for (const i of validateStats(d.stats, p)) out.push({ path: "stats", message: i.message, level: "error" });
+  for (const i of validateStats(d.stats, p, d.level)) out.push({ path: "stats", message: i.message, level: "error" });
 
   const filled = d.traits.filter((t) => t.name.trim() || t.description.trim());
   if (filled.length < p.traitsAtCreation) out.push({ path: "traits", message: `특기는 ${p.traitsAtCreation}개를 적어야 합니다`, level: "error" });
+  const traitSlots = traitSlotsAt(d.level, p);
+  if (d.traits.length > traitSlots) out.push({ path: "traits", message: `이 레벨의 특기 칸은 ${traitSlots}개입니다`, level: "error" });
+  const passiveSlots = passiveSlotsAt(d.level, d.sync, p);
+  if ((d.passives ?? []).length > passiveSlots) out.push({ path: "passives", message: passiveSlots ? `이 레벨의 패시브 칸은 ${passiveSlots}개입니다` : "아직 패시브가 해금되지 않았습니다", level: "error" });
 
   const attacks = d.skills.filter((s) => s.kind === "attack");
   const defenses = d.skills.filter((s) => s.kind === "defense");

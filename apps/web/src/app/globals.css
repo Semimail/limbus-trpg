@@ -204,3 +204,12 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
 .battle .b-cut-skill[data-tone="gold"] { box-shadow: 0 0 22px rgba(255,213,74,.55), 0 8px 24px rgba(0,0,0,.7); border-color: #ffd54a; }
 .battle .b-cut-skill[data-tone="red"] { box-shadow: 0 0 22px rgba(255,59,59,.5), 0 8px 24px rgba(0,0,0,.7); border-color: #ff3b3b; }
 .battle .b-cut-skill[data-tone="dim"] { opacity: .7; filter: grayscale(.4); }
+
+/* 검지 단말기: 둥근모꼴 픽셀 폰트 (public/fonts, 한글·영문·기호 서브셋) */
+@font-face {
+  font-family: "DungGeunMo";
+  src: url("/fonts/DungGeunMo.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}

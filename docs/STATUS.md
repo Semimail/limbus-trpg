@@ -101,3 +101,9 @@ Battle Backgrounds 1nXRLjFglNgjithfvY1D_3AkSt_aDvhoa · Icons 1DkcKQWgYLf9Kzk3Jd
 - **합 컷인**(기본 켜짐, 메뉴 "합 컷인 연출 끄기"로 카드 방식 전환, localStorage `limbus.cutin`): 두 유닛이 등장하는 단계(합·공격 코인·합 승리)에서 나머지를 어둡게 하고 두 유닛(스탠딩 또는 원형 초상)을 좌우 27%/73% 지점으로 크게 당겨 세움. 아래에 이름 플레이트, 스킬 칩·스킬명·제목, 코인(순서대로 뒤집히는 애니메이션), 큰 위력/피해 숫자(팝), 우세/코인 파괴/HP 변화. 가운데 VS. 한 유닛만 나오는 단계(상태이상·전투불능)는 유닛 옆 카드 유지. 구현: `CutIn` in `battle-screen.tsx`, 카드 데이터에 `skill` 필드 추가(`playback.ts`).
 - **라운드 시작 플래시**: 연출이 끝난 뒤 가운데에 림버스 네온 "TURN n"(`turn-text.png`) 1.6초.
 - **HUD**: 모든 패널(`.b-pane`)을 림버스 패널(`panel-plain.png`, 9조각 border-image)로, 버튼(`.b-tabx`, `.b-btn`)은 림버스 사각 플레이트(`btn-wide.png`) 배경으로 통일. 서랍 머리는 금색 플레이트, 탭은 금색 채움. 세션 화면·GM 콘솔도 같은 클래스를 써서 함께 바뀜.
+
+## 검지 단말기 지령 생성기 (2026-11-20, 사용자 요청 "단말기 삐빗 이펙트 → 무작위 문자 → clear. GIF", "내가 지령 만들 수 있게")
+- 참고 영상: 아이스모카 "♚검지 단말기♚ 무료 배포"(WkkMSqViW1M). 폰트는 사용자 캡처와 비교해 **둥근모꼴(DungGeunMo)** 로 확정(npm `@noonnu/dung-geun-mo` woff → fonttools 서브셋 woff2 112KB, `public/fonts/DungGeunMo.woff2`, `globals.css` @font-face).
+- 페이지 `/terminal`(로그인 불필요, `proxy.ts` 공개 경로 + 폰트 확장자 매처 제외): 문구(줄바꿈)·색·투명/검정·배율·커서·주사선·무작위 문자 집합·흔들림/유지 길이 → 캔버스 미리보기 + `gifenc`로 브라우저에서 GIF 인코딩·다운로드. 연출 규칙(`terminal/anim.ts`): 블록 커서 2회 삐빗 → **글자 수(커서 포함)만큼만** 무작위 영문·기호 → 줄 순서대로 왼쪽부터 고정 → 커서 깜빡 → 페이드. 글자는 16px 원본을 정수 배율로 확대해 픽셀 유지, 팔레트 0=투명.
+- 정적 GIF 샘플 `public/assets/limbus/ui/index-terminal.gif`(단말기 몸체 버전), `index-text.gif`(글자만). 헤더에 "단말기" 링크.
+- 로컬 개발 시 `apps/web/.env.local`에 NEXT_PUBLIC_SUPABASE_URL/PUBLISHABLE_KEY가 필요(배포 번들에서 공개 키를 가져와 넣었음, gitignore).

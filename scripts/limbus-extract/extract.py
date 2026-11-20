@@ -68,7 +68,11 @@ def iter_input_files(roots: list[Path]) -> list[Path]:
 
 
 def safe_rel(container: str | None, name: str, fallback_id: int, source: str = "") -> str:
-    if container:
+    if container and re.search(r"\.prefab$", container, re.I):
+        # 프리팹(Spine SD 등)은 한 컨테이너에 오브젝트가 여럿 → 프리팹 폴더 아래에 오브젝트 이름으로 (.atlas 가 가리키는 페이지 이름 유지)
+        stem = re.sub(r"\.prefab$", "", container, flags=re.I)
+        base = f"{stem}/{name or f'obj_{fallback_id}'}"
+    elif container:
         base = container
     else:
         # Addressables 번들은 컨테이너 경로가 없는 경우가 많다 → 번들 파일명 폴더 아래에 이름으로
@@ -166,6 +170,8 @@ def export_obj(obj, out: Path, want: set[str], matcher, index: list[dict], list_
             head = blob[:64].lstrip()
             if head.startswith((b"{", b"[")):
                 ext = ".json"
+            elif re.search(r"\.(skel|atlas|json)$", name or "", re.I):
+                ext = "." + re.search(r"\.(skel|atlas|json)$", name, re.I).group(1).lower()   # 프리팹 안 TextAsset 은 이름으로 (fairy_ism.atlas)
             elif re.search(r"\.(skel|atlas|json)", (container or name), re.I):
                 ext = "." + re.search(r"\.(skel|atlas|json)", (container or name), re.I).group(1).lower()
             elif b"\x00" not in blob[:512]:

@@ -48,6 +48,9 @@ python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types t
 - 오디오가 `.fsb`로 떨어지면 [vgmstream](https://vgmstream.org) CLI로 변환: `vgmstream-cli -o out.wav in.fsb`.
 - Unity 버전 추정 실패 오류("No valid Unity version found")가 나면 `--unity-version 6000.3.12f1`(설치 폴더 `LimbusCompany.exe` 속성의 제품 버전). 캐시 번들은 항상 필요하다.
 - 인격·E.G.O 만 다시 뽑기: `python extract.py --cache "%USERPROFILE%\AppData\LocalLow\Unity\ProjectMoon_LimbusCompany" --out extracted\cache\unit --types tex --match "Resources_moved/Sprite/Unit/" --unity-version 6000.3.12f1` (약 2,600장).
+- SD 스프라이트만 다시 뽑기(2026-11-21): `python extract.py --cache "%USERPROFILE%\AppData\LocalLow\Unity\ProjectMoon_LimbusCompany" --out extracted\cache\sd --types tex,text --match "Resources_moved/Prefab/SD/(Personality|EGO)/" --unity-version 6000.3.12f1`. 프리팹 262개(인격 171·E.G.O 91), 오브젝트 4,288개.
+  - 림버스 SD 는 **Spine 4.0** 이다. 출력은 프리팹 폴더 아래 오브젝트 이름 그대로(`extract.py` 가 `.prefab` 컨테이너는 `<프리팹>/<이름>` 으로 저장): `tex/…/Personality/10805_Ishmeal_FairyAppearance/fairy_ism.png`(Spine 페이지) + `sactx-N-…png`(Unity 스프라이트 아틀라스 페이지, 조각 묶음) + `dead.png` 등, `text/…/10805_…/fairy_ism.json`(스켈레톤 JSON, spine 4.0.64) + `fairy_ism.atlas`(페이지 이름 `fairy_ism.png` 참조). 한 장짜리 "정지 SD"는 없고 포즈·모션은 스켈레톤 애니메이션이라 **그대로는 못 쓴다** — 정지 1장은 Spine 런타임(spine-ts/spine-player 4.0)으로 json+atlas+png 를 렌더해 찍거나, 아틀라스에서 조각을 골라 쓴다. 스켈레톤 json 안의 `audio` 경로 같은 제작사 내부 경로는 신경 쓰지 않는다.
+  - 적·환상체·시즌 폴더(`Prefab/SD/Enemy` 1,881 · `Abnormality` 1,015 · `SEASON7/8/*`)는 필터에 넣지 않았다. 필요하면 `--match` 를 넓힌다.
 - 캐릭터 스탠딩은 Spine(TextAsset `.skel`/`.atlas` + Texture2D)으로 들어 있을 수 있다. 정지 이미지로 쓰려면 아틀라스 PNG를 잘라 쓰고, 애니메이션 재생은 spine-ts 런타임(별도 라이선스 조건)이 필요하므로 일단 정지 이미지 권장.
 
 ## 4. 프로젝트에 넣기

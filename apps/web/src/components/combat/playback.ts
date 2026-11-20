@@ -23,15 +23,15 @@ export function buildPlaySteps(events: RoundEvent[], units: UnitLite[]): PlaySte
   const steps: PlayStep[] = [];
   const arcKind = (a: UnitLite): "ally" | "enemy" => (a.side === "ally" ? "ally" : "enemy");
 
-  const coinSteps = (attacker: UnitLite, defender: UnitLite, skillName: string, coins: AttackCoin[], arc: PlayStep["arc"], skillId?: string) => {
+  const coinSteps = (attacker: UnitLite, defender: UnitLite, skillName: string, coins: AttackCoin[], arc: PlayStep["arc"], skillId?: string, verb = "공격") => {
     coins.forEach((c, k) => {
       const dmg = c.hit.final;
       const miss = !c.heads && dmg === 0;
       const extra = `${c.hit.crit ? " · 치명타!" : ""}${c.damage.staggerTriggeredAt !== undefined ? " · 흐트러짐!" : ""}${c.damage.incapacitated ? " · 전투불능" : ""}`;
       steps.push({
-        header: `${attacker.name} → ${defender.name} · ${skillName} · 코인 ${k + 1} ${c.heads ? "앞면" : "뒷면"} · 피해 ${dmg} · HP ${c.damage.hpAfter}${extra}`,
+        header: `${attacker.name} → ${defender.name} · ${skillName} · ${verb} 코인 ${k + 1} ${c.heads ? "앞면" : "뒷면"} · 피해 ${dmg} · HP ${c.damage.hpAfter}${extra}`,
         cards: [
-          { unitId: attacker.id, title: `${attacker.name} · 공격 · 코인 ${k + 1}`, coins: [c.heads], big: `위력 ${c.hit.rawPower}`, sub: c.hit.crit ? "치명타!" : undefined, tone: c.hit.crit ? "gold" : "white", skill: skillName, skillId, motion: "attack" },
+          { unitId: attacker.id, title: `${attacker.name} · ${verb} · 코인 ${k + 1}`, coins: [c.heads], big: `위력 ${c.hit.rawPower}`, sub: c.hit.crit ? "치명타!" : undefined, tone: c.hit.crit ? "gold" : "white", skill: skillName, skillId, motion: "attack" },
           { unitId: defender.id, title: defender.name, big: miss ? "빗나감" : dmg > 0 ? `-${dmg}` : "무효", sub: `HP ${c.damage.hpBefore} → ${c.damage.hpAfter}${extra}`, tone: dmg > 0 ? "red" : "dim", motion: c.damage.incapacitated ? "down" : dmg > 0 ? "hit" : miss ? "evade" : undefined },
         ],
         arc, hold: c.hit.crit || c.damage.incapacitated ? 1400 : 1000,
@@ -67,7 +67,8 @@ export function buildPlaySteps(events: RoundEvent[], units: UnitLite[]): PlaySte
       });
       const winner = e.result.winner === "a" ? a : t, loser = winner === a ? t : a;
       steps.push({ header: `${winner.name} 합 승리 · ${loser.name} 무방비`, cards: [{ unitId: winner.id, title: winner.name, big: "합 승리", tone: "gold", skill: sname(winner, winner === a ? e.actorSkill : e.targetSkill), motion: "win" }, { unitId: loser.id, title: loser.name, big: "합 패배", tone: "dim", skill: sname(loser, loser === a ? e.actorSkill : e.targetSkill), motion: "hit" }], arc, banner: { text: `${winner.name} 합 승리`, tone: winner.side === "ally" ? "gold" : "red" }, hold: 900 });
-      coinSteps(winner, loser, sname(winner, winner === a ? e.actorSkill : e.targetSkill), e.result.attacks, arc, sid(winner, winner === a ? e.actorSkill : e.targetSkill));
+      if (e.result.evadeBonus) steps.push({ header: `${winner.name} 회피 성공 · 정신력 +${e.result.evadeBonus}`, cards: [{ unitId: winner.id, title: `${winner.name} · 회피`, big: `정신력 +${e.result.evadeBonus}`, sub: "회피 고유 효과", tone: "white", motion: "evade" }], arc, hold: 700 });
+      coinSteps(winner, loser, sname(winner, winner === a ? e.actorSkill : e.targetSkill), e.result.attacks, arc, sid(winner, winner === a ? e.actorSkill : e.targetSkill), e.result.counter ? "반격" : "공격");
       tickSteps(e.result.ticks);
     } else if (e.type === "attack" || e.type === "opportunity") {
       const a = u(e.actor), t = u(e.target); if (!a || !t) continue;

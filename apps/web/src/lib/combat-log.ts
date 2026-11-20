@@ -31,7 +31,8 @@ export function formatRound(events: RoundEvent[], n: Record<string, string>): st
         const rounds = r.rounds.map((x) => `${x.a.totalPower}:${x.b.totalPower}`).join(" → ");
         const win = r.winner === "a" ? a : t;
         out.push(`합 ${a} [${e.actorSkill}] vs ${t} [${e.targetSkill}] ${rounds} → ${win} 승리`);
-        if (r.attacks.length) out.push(`  ${win} 공격: ${coinsText(r.attacks)} = 총 ${r.attacks.reduce((s, c) => s + c.hit.final, 0)} 피해`);
+        if (r.attacks.length) out.push(`  ${win} ${r.counter ? "반격" : "공격"}: ${coinsText(r.attacks)} = 총 ${r.attacks.reduce((s, c) => s + c.hit.final, 0)} 피해`);
+        if (r.evadeBonus) out.push(`  ${win} 회피 성공: 정신력 +${r.evadeBonus}`);
         const bleed = r.attacks.filter((c) => c.bleed).map((c) => `출혈 ${c.bleed!.amount}`);
         if (bleed.length) out.push(`  ${win} ${bleed.join(", ")} 피해`);
         out.push(...ticksText(r.ticks, n).map((x) => `  ${x}`));

@@ -26,6 +26,40 @@ describe("합", () => {
     expect(att.hp).toBe(att.maxHp);
   });
 
+  it("반격이 합에서 이기면 남은 코인으로 상대를 공격한다", () => {
+    const att = mkCombatant({ id: "a", sanity: -45, skills: [mkSkill({ basePower: 1, coinPower: 1, coinCount: 1 })] });
+    const counter = mkSkill({ id: "c", kind: "defense", defenseKind: "counter", basePower: 20, coinPower: 3, coinCount: 2, damageType: "pierce" });
+    const def = mkCombatant({ id: "d", side: "enemy", sanity: 45, skills: [counter] });
+    const r = resolveClash({ combatant: att, skill: att.skills[0]! }, { combatant: def, skill: counter }, 1, DEFAULT_RULES, createRng(5));
+    expect(r.winner).toBe("b");
+    expect(r.counter).toBe(true);
+    expect(r.attacks.length).toBeGreaterThan(0);
+    expect(att.hp).toBeLessThan(att.maxHp);
+    expect(def.hp).toBe(def.maxHp);
+  });
+
+  it("회피가 합에서 이기면 피해 없이 끝나고 정신력을 추가로 얻는다", () => {
+    const att = mkCombatant({ id: "a", sanity: -45, skills: [mkSkill({ basePower: 1, coinPower: 1, coinCount: 1 })] });
+    const evade = mkSkill({ id: "e", kind: "defense", defenseKind: "evade", basePower: 20, coinPower: 2, coinCount: 1 });
+    const def = mkCombatant({ id: "d", side: "enemy", sanity: 0, skills: [evade] });
+    const r = resolveClash({ combatant: att, skill: att.skills[0]! }, { combatant: def, skill: evade }, 1, DEFAULT_RULES, createRng(5));
+    expect(r.winner).toBe("b");
+    expect(r.attacks).toHaveLength(0);
+    expect(att.hp).toBe(att.maxHp);
+    expect(r.evadeBonus).toBe(DEFAULT_RULES.evadeWinSanity);
+    expect(def.sanity).toBe(DEFAULT_RULES.sanityOnClashWin + DEFAULT_RULES.evadeWinSanity);
+  });
+
+  it("반격이 합에서 지면 평소처럼 피해를 받는다", () => {
+    const att = mkCombatant({ id: "a", sanity: 45, skills: [mkSkill({ basePower: 30, coinPower: 5, coinCount: 2 })] });
+    const counter = mkSkill({ id: "c", kind: "defense", defenseKind: "counter", basePower: 1, coinPower: 1, coinCount: 1 });
+    const def = mkCombatant({ id: "d", side: "enemy", sanity: -45, skills: [counter] });
+    const r = resolveClash({ combatant: att, skill: att.skills[0]! }, { combatant: def, skill: counter }, 1, DEFAULT_RULES, createRng(7));
+    expect(r.winner).toBe("a");
+    expect(r.counter).toBeUndefined();
+    expect(def.hp).toBeLessThan(def.maxHp);
+  });
+
   it("일방 공격은 대상이 전투불능이 되면 멈춘다", () => {
     const a = mkCombatant({ id: "a", sanity: 45, skills: [mkSkill({ basePower: 100, coinPower: 50, coinCount: 5 })] });
     const b = mkCombatant({ id: "b", side: "enemy", maxHp: 50, sanity: -45, skills: [mkSkill({ basePower: 0, coinPower: 1, coinCount: 1 })] });

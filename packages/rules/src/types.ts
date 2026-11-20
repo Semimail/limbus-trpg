@@ -83,6 +83,8 @@ export interface RuleConfig {
   headsBase: number;         // 0.5
   sanityOnClashWin: number;  // +10
   sanityOnClashLose: number; // -10
+  /** 회피 스킬이 합에서 이기면 합 승리 정신력에 더해 추가로 얻는 정신력 (회피 고유 효과) */
+  evadeWinSanity: number;    // +5
   staggerThresholds: number[]; // [0.5, 0.3]
   staggerDamageMult: number;   // 2
   critMult: number;            // 1.5 고정 (플레이어 수정 불가)
@@ -115,6 +117,7 @@ export const DEFAULT_RULES: RuleConfig = {
   headsBase: 0.5,
   sanityOnClashWin: 10,
   sanityOnClashLose: -10,
+  evadeWinSanity: 5,
   staggerThresholds: [0.5, 0.3],
   staggerDamageMult: 2,
   critMult: 1.5,

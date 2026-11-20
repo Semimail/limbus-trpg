@@ -34,6 +34,7 @@ export function RulesForm({ campaignId, rules, progression }: { campaignId: stri
           {N("호흡 1당 치명타 확률", r.poiseCritPerPotency, (n) => setR({ ...r, poiseCritPerPotency: n }), 0.01)}
           {N("합 승리 정신력", r.sanityOnClashWin, (n) => setR({ ...r, sanityOnClashWin: n }))}
           {N("합 패배 정신력", r.sanityOnClashLose, (n) => setR({ ...r, sanityOnClashLose: n }))}
+          {N("회피 승리 추가 정신력", r.evadeWinSanity ?? 5, (n) => setR({ ...r, evadeWinSanity: n }))}
           {N("정신력 최소", r.sanityMin, (n) => setR({ ...r, sanityMin: n }))}
           {N("정신력 최대", r.sanityMax, (n) => setR({ ...r, sanityMax: n }))}
           {N("진동 1당 흐트러짐 배율 가산", r.tremorStaggerBonus, (n) => setR({ ...r, tremorStaggerBonus: n }), 0.05)}

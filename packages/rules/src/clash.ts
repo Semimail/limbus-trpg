@@ -43,6 +43,10 @@ export interface ClashResult {
   /** 공격 종료 후 상태이상 발동 */
   ticks: StatusTick[];
   sanity: { a: number; b: number };
+  /** 승자의 공격이 반격(방어 스킬 '반격')이었는지 */
+  counter?: boolean;
+  /** 회피가 이겨 추가로 얻은 정신력 (회피 고유 효과) */
+  evadeBonus?: number;
 }
 
 export interface Side {
@@ -56,7 +60,8 @@ export interface Side {
  *  - 패자는 코인 1개를 잃는다. 동률이면 둘 다 다시 던진다.
  *  - 한쪽 코인이 0이 되면 승자가 남은 코인으로 일방 공격한다.
  *  - 합 승리 시 정신력 상승, 패배 시 하락 (수치는 캠페인 설정).
- *  - 방어 스킬(가드)이 합에서 지면 피해를 받지 않고 끝난다(가드는 공격 코인이 없다).
+ *  - 방어 스킬이 합에서 이기면: 가드는 피해 없이 끝. 회피는 피해 없이 끝 + 정신력 추가(evadeWinSanity).
+ *    반격은 남은 코인으로 상대를 일방 공격한다(위력·피해 유형은 반격 스킬 수치).
  */
 export function resolveClash(a: Side, b: Side, round: number, rules: RuleConfig, rng: Rng, hooks?: Hooks): ClashResult {
   // skillUse: 위력 보정 효과를 위해 스킬 사본을 쓴다
@@ -91,13 +96,22 @@ export function resolveClash(a: Side, b: Side, round: number, rules: RuleConfig,
 
   const attacks: AttackCoin[] = [];
   const ticks: StatusTick[] = [];
-  if (win.skill.kind === "attack") {
+  const counter = win.skill.kind === "defense" && win.skill.defenseKind === "counter";
+  if (win.skill.kind === "attack" || counter) {
+    // 반격: 방어 스킬이지만 합에서 이기면 남은 코인으로 되친다
     attacks.push(...oneSidedAttack(win.combatant, lose.combatant, win.skill, left, round, rules, rng, hooks, true));
     ticks.push(...afterAttack(win.combatant, lose.combatant, attacks, round, rules));
   }
-  // 승자가 방어 스킬(가드/회피)이면 피해 없이 종료. 반격은 후속 구현.
+  let evadeBonus: number | undefined;
+  if (win.skill.kind === "defense" && win.skill.defenseKind === "evade" && rules.evadeWinSanity && !win.combatant.sanityLocked) {
+    // 회피 고유 효과: 피해 없이 끝내고 정신력을 추가로 얻는다
+    const before = win.combatant.sanity;
+    win.combatant.sanity = adjustSanity(win.combatant.sanity, rules.evadeWinSanity, rules);
+    evadeBonus = win.combatant.sanity - before;
+  }
+  // 가드가 이기면 피해 없이 종료
 
-  return { rounds, winner, attacks, ticks, sanity: { a: a.combatant.sanity, b: b.combatant.sanity } };
+  return { rounds, winner, attacks, ticks, sanity: { a: a.combatant.sanity, b: b.combatant.sanity }, ...(counter ? { counter: true } : {}), ...(evadeBonus !== undefined ? { evadeBonus } : {}) };
 }
 
 /**

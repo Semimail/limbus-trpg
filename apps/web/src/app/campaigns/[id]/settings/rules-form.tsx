@@ -1,6 +1,6 @@
 "use client";
 import { useState, useTransition } from "react";
-import { DEFAULT_RULES, DEFAULT_PROGRESSION, type RuleConfig, type ProgressionConfig } from "@limbus/rules";
+import { DEFAULT_RULES, DEFAULT_PROGRESSION, DEFAULT_AFFILIATIONS, formatAffiliations, parseAffiliations, parseEffectText, type RuleConfig, type ProgressionConfig } from "@limbus/rules";
 import { saveRules } from "./actions";
 import { Button } from "@/components/ui";
 import { Panel } from "@/components/office/panel";
@@ -9,6 +9,9 @@ export function RulesForm({ campaignId, rules, progression }: { campaignId: stri
   const [r, setR] = useState<RuleConfig>(rules);
   const [p, setP] = useState<ProgressionConfig>(progression);
   const [thr, setThr] = useState(rules.staggerThresholds.map((t) => Math.round(t * 100)).join(", "));
+  const [aff, setAff] = useState(formatAffiliations(rules.affiliations ?? DEFAULT_AFFILIATIONS));
+  const affList = parseAffiliations(aff);
+  const affManual = affList.filter((a) => a.passive && parseEffectText(a.passive, "passive").effects.length === 0).map((a) => a.name);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const cls = "w-full rounded-md border border-border bg-elev px-2 py-1 text-sm tabular-nums";
@@ -17,7 +20,7 @@ export function RulesForm({ campaignId, rules, progression }: { campaignId: stri
   );
   const submit = () => start(async () => {
     const thresholds = thr.split(",").map((x) => Number(x.trim()) / 100).filter((x) => x > 0 && x < 1).sort((a, b) => b - a);
-    const res = await saveRules(campaignId, { ...r, staggerThresholds: thresholds }, p);
+    const res = await saveRules(campaignId, { ...r, staggerThresholds: thresholds, affiliations: affList.length ? affList : DEFAULT_AFFILIATIONS }, p);
     setMsg(res.error ?? "저장됨");
   });
   return (
@@ -43,6 +46,14 @@ export function RulesForm({ campaignId, rules, progression }: { campaignId: stri
           {N("침식 판정 정신력 기준", r.egoCorrosionSanityBelow, (n) => setR({ ...r, egoCorrosionSanityBelow: n }))}
           {N("침식도 상한", r.erosionMax, (n) => setR({ ...r, erosionMax: n }))}
           {N("손패 교체 빛 비용", r.lightRedrawCost, (n) => setR({ ...r, lightRedrawCost: n }))}
+        </div>
+      </Panel>
+      <Panel title="배경 규칙 · 소속 패시브">
+        <p className="mb-2 text-xs text-muted">한 줄에 하나, <code>이름 | 패시브 문장 | 설명(선택)</code>. 패시브 문장은 특기와 같은 효과 문장 형태(룰북 9장)로 적으면 전투에서 자동 발동합니다. 캐릭터는 소속 이름으로 연결되므로 이름을 바꾸면 기존 캐릭터는 다시 골라야 합니다. 출신(둥지·뒷골목·외곽·그 밖)은 판정 코인 +1 전용이라 설정이 없습니다.</p>
+        <textarea value={aff} onChange={(e) => setAff(e.target.value)} rows={Math.max(6, affList.length + 1)} className={cls + " font-mono text-xs"} spellCheck={false} />
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+          <span>{affList.length}개{affManual.length ? ` · 자동 해석 안 됨(수동 GM): ${affManual.join(", ")}` : ""}</span>
+          <Button variant="ghost" className="px-2 py-0.5 text-[11px]" onClick={() => setAff(formatAffiliations(DEFAULT_AFFILIATIONS))}>기본값으로</Button>
         </div>
       </Panel>
       <Panel title="성장 규칙">

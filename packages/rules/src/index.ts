@@ -18,3 +18,4 @@ export * from "./parse";
 export * from "./glossary";
 export * from "./grid";
 export * from "./estimate";
+export * from "./background";

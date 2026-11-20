@@ -5,7 +5,7 @@ import {
   SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, DEFAULT_PROGRESSION, coinCapAt, skillBudget, skillPresets, expectedPower,
   validateCharacter, newEgoDraft, parseEffectText,
   type CharacterData, type DamageType, type DefenseKind, type Sin, type SkillDraft,
-  statPointsAt, statMaxCountAt, traitSlotsAt, passiveSlotsAt,
+  statPointsAt, statMaxCountAt, traitSlotsAt, passiveSlotsAt, ORIGINS, DEFAULT_AFFILIATIONS, originOf, affiliationOf, type AffiliationDef,
 } from "@limbus/rules";
 import { saveCharacter } from "@/app/characters/actions";
 import { Button, Input } from "@/components/ui";
@@ -16,7 +16,7 @@ import { SkillEditor, Num } from "./skill-editor";
 import { SkillCard } from "./skill-card";
 import { EffectPreview } from "./effect-preview";
 
-interface Props { id?: string; campaignId: string | null; initialName: string; initialPortrait: string | null; initial: CharacterData }
+interface Props { id?: string; campaignId: string | null; initialName: string; initialPortrait: string | null; initial: CharacterData; affiliations?: AffiliationDef[] }
 
 const STEPS = ["기본", "능력치", "특기", "스킬", "E.G.O", "확인"] as const;
 const DEF_LABEL: Record<DefenseKind, string> = { guard: "가드", evade: "회피", counter: "반격" };
@@ -30,7 +30,7 @@ const TRAIT_EXAMPLES = [
 ];
 const SKILL_FX_EXAMPLES = ["앞면 적중 시 대상에게 출혈 2 부여", "적중 시 대상에게 파열 2 부여", "충전 5 이상이면 충전 5 소모하고 기본 위력 +4", "합 승리 시 자신에게 호흡 2 부여"];
 
-export function CharacterWizard({ id, campaignId, initialName, initialPortrait, initial }: Props) {
+export function CharacterWizard({ id, campaignId, initialName, initialPortrait, initial, affiliations = DEFAULT_AFFILIATIONS }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [name, setName] = useState(initialName);
@@ -44,6 +44,7 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
   // 레벨에 따른 성장 칸 (등급마다 능력치·특기 +1, 패시브는 해금 등급·동기화 4단계)
   const statPoints = statPointsAt(d.level, p), statMaxCount = statMaxCountAt(d.level, p), traitSlots = traitSlotsAt(d.level, p), passiveSlots = passiveSlotsAt(d.level, d.sync, p);
   const passives = d.passives ?? [];
+  const origin = originOf(d.origin), affiliation = affiliationOf(d.affiliation, affiliations);
 
   const stepErrors = (i: number): string[] => {
     if (i === 0) return name.trim() ? [] : ["이름을 입력하세요"];
@@ -96,9 +97,26 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
                     {[0, 1, 2].map((i) => <Input key={i} value={(d.aspects ?? ["", "", ""])[i] ?? ""} onChange={(e) => { const a = [...(d.aspects ?? ["", "", ""])]; a[i] = e.target.value; setD({ ...d, aspects: a }); }} placeholder={["예: 숨겨둔 반골기질", "예: 기약 없는 재단", "예: 묻어둔 다정함"][i]} />)}
                   </div>
                 </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block"><span className="text-xs text-muted"><Keyword id="origin">출신</Keyword> · 맞는 상황이면 판정 코인 +1</span>
+                    <select value={d.origin ?? ""} onChange={(e) => setD({ ...d, origin: e.target.value || undefined })} className={field}>
+                      <option value="">(정하지 않음)</option>
+                      {ORIGINS.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
+                    </select>
+                    {origin ? <p className="mt-1 text-[11px] text-muted">{origin.desc} <span className="text-fg">+1: {origin.situations}</span></p> : null}
+                  </label>
+                  <label className="block"><span className="text-xs text-muted"><Keyword id="affiliation">소속</Keyword> · 소속 패시브를 받습니다</span>
+                    <select value={d.affiliation ?? ""} onChange={(e) => setD({ ...d, affiliation: e.target.value || undefined })} className={field}>
+                      <option value="">(정하지 않음)</option>
+                      {affiliations.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+                      {d.affiliation && !affiliation ? <option value={d.affiliation}>{d.affiliation} (목록에 없음)</option> : null}
+                    </select>
+                    {affiliation ? <p className="mt-1 text-[11px] text-muted">{affiliation.desc} <span className="text-fg">패시브: {affiliation.passive || "(없음)"}</span></p> : null}
+                  </label>
+                </div>
                 <label className="block"><span className="text-xs text-muted">배경 (선택) · 시트 맨 아래 서사 칸</span>
                   <textarea value={d.background} onChange={(e) => setD({ ...d, background: e.target.value })} rows={4} className={field}
-                    placeholder="출신(둥지·뒷골목·외곽), 소속이 있다면 어디, 해결사가 된 계기, 지키고 싶은 것. 길지 않아도 됩니다." /></label>
+                    placeholder="어디서 어떻게 자랐는지, 해결사가 된 계기, 지키고 싶은 것. 길지 않아도 됩니다." /></label>
               </div>
             </div>
           </div>
@@ -202,6 +220,7 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
               <div>
                 <div className="text-2xl font-bold">{name || "(이름 없음)"}</div>
                 <div className="mt-1 flex flex-wrap gap-2 text-sm">{SINS.map((s) => <span key={s} className="inline-flex items-center gap-1"><SinIcon sin={s} size={16} />{d.stats[s]}</span>)}</div>
+                <div className="mt-1 text-xs text-muted">{[d.origin ? `출신 ${d.origin}` : null, d.affiliation ? `소속 ${d.affiliation}` : null].filter(Boolean).join(" · ") || "출신·소속 미정"}</div>
                 <div className="mt-2 text-sm">{d.traits.map((t) => t.name).filter(Boolean).join(" · ") || <span className="text-muted">특기 없음</span>}</div>
               </div>
             </div>

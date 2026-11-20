@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import type { CharacterData } from "@limbus/rules";
-import { newCharacterData, DEFAULT_PROGRESSION } from "@limbus/rules";
+import { newCharacterData, DEFAULT_PROGRESSION, DEFAULT_RULES } from "@limbus/rules";
 import { getCampaignRules } from "@/lib/rules";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { SheetView } from "@/components/sheet/sheet-view";
@@ -24,11 +24,11 @@ export default async function CharacterPage({ params }: { params: Promise<{ id: 
   const prof = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
   const camp = Array.isArray(c.campaigns) ? c.campaigns[0] : c.campaigns;
   const onDelete = deleteCharacter.bind(null, id);
-  const { progression } = c.campaign_id ? await getCampaignRules(c.campaign_id) : { progression: DEFAULT_PROGRESSION };
+  const { progression, rules } = c.campaign_id ? await getCampaignRules(c.campaign_id) : { progression: DEFAULT_PROGRESSION, rules: DEFAULT_RULES };
 
   return (
     <SheetView id={id} name={c.name} portraitUrl={c.portrait_url} data={data} approved={c.approved} locked={c.locked}
       ownerName={prof?.username ?? ""} campaignName={camp?.name ?? null} campaignId={c.campaign_id}
-      canEdit={canEdit} isOwner={isOwner} isGm={isGm} onDelete={onDelete} progression={progression} />
+      canEdit={canEdit} isOwner={isOwner} isGm={isGm} onDelete={onDelete} progression={progression} affiliations={rules.affiliations} />
   );
 }

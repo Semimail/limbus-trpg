@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import type { CharacterData, SkillDraft, ProgressionConfig } from "@limbus/rules";
-import { SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, DEFAULT_PROGRESSION, DEFAULT_RULES, gradeOf, coinCapAt, describeEffect, levelUpCost, traitSlotsAt, passiveSlotsAt } from "@limbus/rules";
+import type { CharacterData, SkillDraft, ProgressionConfig, AffiliationDef } from "@limbus/rules";
+import { SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, DEFAULT_PROGRESSION, DEFAULT_RULES, gradeOf, coinCapAt, describeEffect, levelUpCost, traitSlotsAt, passiveSlotsAt, originOf, affiliationTrait } from "@limbus/rules";
 import { LevelUp } from "./level-up";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon } from "@/components/icons";
 import { Keyword, KeywordText } from "@/components/keyword/keyword";
@@ -12,12 +12,12 @@ import { Button } from "@/components/ui";
 interface Props {
   id: string; name: string; portraitUrl: string | null; data: CharacterData; approved: boolean; locked: boolean;
   ownerName: string; campaignName: string | null; campaignId: string | null;
-  canEdit: boolean; isOwner: boolean; isGm: boolean; onDelete?: () => void; progression?: ProgressionConfig;
+  canEdit: boolean; isOwner: boolean; isGm: boolean; onDelete?: () => void; progression?: ProgressionConfig; affiliations?: AffiliationDef[];
 }
 
 const DEF_LABEL: Record<string, string> = { guard: "가드", evade: "회피", counter: "반격" };
 
-export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ownerName, campaignName, campaignId, canEdit, isOwner, isGm, onDelete, progression }: Props) {
+export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ownerName, campaignName, campaignId, canEdit, isOwner, isGm, onDelete, progression, affiliations }: Props) {
   const [gmOpen, setGmOpen] = useState(false);
   const p = progression ?? DEFAULT_PROGRESSION;
   const grade = gradeOf(d.level, p);
@@ -26,6 +26,8 @@ export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ow
   const passiveSlots = passiveSlotsAt(d.level, d.sync, p);
   const hpPct = Math.max(0, Math.min(100, (d.hp / d.maxHp) * 100));
   const aspects = (d.aspects ?? ["", "", ""]).slice(0, 3);
+  const origin = originOf(d.origin);
+  const affTrait = affiliationTrait(d.affiliation, affiliations);
   const dice = d.sync >= 3 ? 2 : d.speed.dice;
   return (
     <div className="space-y-3">
@@ -114,6 +116,14 @@ export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ow
             <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr]">
               <div className="sm:col-span-3"><Field label="정체성" value={d.identity} /></div>
               {aspects.map((a, i) => <Field key={i} label={`면모 ${i + 1}`} value={a} />)}
+              <div className="s-box">
+                <div className="s-label px-2 py-1"><Keyword id="origin" className="border-0 text-inherit">출신</Keyword></div>
+                <div className="px-2 py-2 text-center text-sm" title={origin ? `+1: ${origin.situations}` : undefined}>{d.origin || <span style={{ color: "var(--s-muted)" }}>—</span>}</div>
+              </div>
+              <div className="s-box sm:col-span-2">
+                <div className="s-label px-2 py-1"><Keyword id="affiliation" className="border-0 text-inherit">소속</Keyword></div>
+                <div className="px-2 py-2 text-center text-sm">{d.affiliation || <span style={{ color: "var(--s-muted)" }}>—</span>}</div>
+              </div>
             </div>
           </div>
 
@@ -146,6 +156,17 @@ export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ow
             {Array.from({ length: Math.max(0, passiveSlots - (d.passives ?? []).length) }).map((_, i) => (
               <div key={`p${i}`} className="s-box" style={{ borderColor: "var(--s-gold)" }}><div className="s-label px-2 py-1">패시브</div><div className="px-2 py-3 text-center text-[11px]" style={{ color: "var(--s-muted)" }}>해금됨 — 편집에서 적기</div></div>
             ))}
+            {affTrait ? (
+              <div className="s-box" style={{ borderColor: "var(--s-gold)" }}>
+                <div className="s-label px-2 py-1"><Keyword id="affiliation" className="border-0 text-inherit">소속 패시브</Keyword> · {d.affiliation}</div>
+                <div className="px-2 py-2 text-xs leading-relaxed">
+                  <KeywordText text={affTrait.description} />
+                  {affTrait.effects?.length ? <div className="mt-1 text-[10px]" style={{ color: "#7fc28a" }}>{affTrait.effects.map((e, i) => <div key={i}>자동 · {describeEffect(e)}</div>)}</div> : <div className="mt-1 text-[10px]" style={{ color: "var(--s-muted)" }}>수동(GM)</div>}
+                </div>
+              </div>
+            ) : d.affiliation ? (
+              <div className="s-box" style={{ borderColor: "var(--s-gold)" }}><div className="s-label px-2 py-1">소속 패시브 · {d.affiliation}</div><div className="px-2 py-3 text-center text-[11px]" style={{ color: "var(--s-muted)" }}>캠페인 소속 목록에 없음 — GM이 룰 설정에서 추가</div></div>
+            ) : null}
           </div>
         </div>
 

@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import type { CharacterData } from "@limbus/rules";
 import { newCharacterData } from "@limbus/rules";
 import { createClient, getUser } from "@/lib/supabase/server";
+import { getCampaignRules } from "@/lib/rules";
 import { CharacterWizard } from "@/components/sheet/wizard";
 
 export default async function EditCharacterPage({ params }: { params: Promise<{ id: string }> }) {
@@ -19,10 +20,11 @@ export default async function EditCharacterPage({ params }: { params: Promise<{ 
   const canEdit = isGm || (c.owner_id === user.id && !c.locked);
   if (!canEdit) redirect(`/characters/${id}`);
   const data = { ...newCharacterData(), ...(c.data as unknown as Partial<CharacterData>) } as CharacterData;
+  const affiliations = c.campaign_id ? (await getCampaignRules(c.campaign_id)).rules.affiliations : undefined;
   return (
     <div>
       <div className="mb-4 flex items-center gap-3"><Link href={`/characters/${id}`} className="text-sm text-muted hover:text-fg">← 시트</Link><h1 className="text-2xl font-bold">{c.name} 편집</h1></div>
-      <CharacterWizard id={id} campaignId={c.campaign_id} initialName={c.name} initialPortrait={c.portrait_url} initial={data} />
+      <CharacterWizard id={id} campaignId={c.campaign_id} initialName={c.name} initialPortrait={c.portrait_url} initial={data} affiliations={affiliations} />
     </div>
   );
 }

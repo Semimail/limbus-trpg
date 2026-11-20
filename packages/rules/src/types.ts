@@ -109,7 +109,21 @@ export interface RuleConfig {
   protectLightCost: number;        // 1
   /** 보호 가능 거리(칸) */
   protectRange: number;            // 2
+  /** 소속 목록과 소속 패시브 (배경 규칙). 캐릭터는 소속 이름을 저장한다 */
+  affiliations: AffiliationDef[];
 }
+
+/** 소속: 전투 전용 패시브 한 문장 (효과 문장 형태). 등급·동기화 패시브 칸과 별개 */
+export interface AffiliationDef { name: string; passive: string; desc: string }
+
+export const DEFAULT_AFFILIATIONS: AffiliationDef[] = [
+  { name: "사무소", passive: "합 승리 시 정신력 +3", desc: "해결사 사무소 소속. 싸움에 익숙하고 승리에서 힘을 얻는다." },
+  { name: "날개", passive: "전투 시작 시 자신에게 충전 4 부여", desc: "날개 계열사의 직원 또는 하수인. 장비와 기술로 싸움을 시작한다." },
+  { name: "핑거", passive: "처치 시 정신력 +5", desc: "핑거 조직원. 상대를 끝장내는 데서 안정을 찾는다." },
+  { name: "조합", passive: "체력 50% 미만이면 라운드 종료 시 자신에게 호흡 2 부여", desc: "뒷골목 조합·노동자 출신. 몰릴수록 끈질겨진다." },
+  { name: "교단", passive: "합 패배 시 정신력 +4", desc: "무언가를 믿는 신도. 패배에도 쉽게 흔들리지 않는다." },
+  { name: "무소속", passive: "전투 시작 시 자신에게 호흡 3 부여", desc: "어디에도 속하지 않은 떠돌이. 첫 수가 날카롭다." },
+];
 
 export const DEFAULT_RULES: RuleConfig = {
   sanityMin: -45,
@@ -135,6 +149,7 @@ export const DEFAULT_RULES: RuleConfig = {
   moveBonus: 3,
   protectLightCost: 1,
   protectRange: 2,
+  affiliations: DEFAULT_AFFILIATIONS,
 };
 
 /* ---------- 구조화된 효과 (특기 / 패시브 / 스킬 부가효과 / 적 기믹 공용) ---------- */

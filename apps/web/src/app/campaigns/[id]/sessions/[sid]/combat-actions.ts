@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getUser } from "@/lib/supabase/server";
 import {
-  startCombat, setPick, resolveRound, endCombat, redrawHand, moveUnit, seedFromString,
+  startCombat, setPick, resolveRound, endCombat, redrawHand, moveUnit, seedFromString, affiliationTrait,
   type CombatState, type UnitInput, type CharacterData, type EnemyData, type Pick, type Skill, type Unit, type Effect,
 } from "@limbus/rules";
 import { formatRound, unitNames } from "@/lib/combat-log";
@@ -41,10 +41,11 @@ export async function startCombatAction(campaignId: string, sessionId: string, s
   for (const c of chars ?? []) {
     const d = c.data as unknown as CharacterData;
     const dice: 1 | 2 = (d.sync ?? 1) >= 3 || d.speed.dice === 2 ? 2 : 1;   // 동기화 3단계부터 속도 다이스 2개
+    const aff = affiliationTrait(d.affiliation, rules.affiliations);          // 소속 패시브 (배경 규칙)
     inputs.push({
       id: `c_${c.id}`, name: c.name, side: "ally", maxHp: d.maxHp, hp: d.hp, sanity: d.sanity, speed: { ...d.speed, dice },
       skills: [...d.skills.map(toSkill), ...(d.ego ?? []).map(toSkill)],
-      passives: fx([...(d.traits ?? []), ...(d.passives ?? [])]), light: d.light ?? 0, erosion: d.erosion ?? 0, spriteUrl: d.spriteUrl ?? null, spritePoses: d.spritePoses ?? null, spriteAnims: d.spriteAnims ?? null,
+      passives: fx([...(d.traits ?? []), ...(d.passives ?? []), ...(aff ? [aff] : [])]), light: d.light ?? 0, erosion: d.erosion ?? 0, spriteUrl: d.spriteUrl ?? null, spritePoses: d.spritePoses ?? null, spriteAnims: d.spriteAnims ?? null,
       portraitUrl: c.portrait_url, source: { kind: "character", id: c.id, ownerId: c.owner_id },
     });
   }

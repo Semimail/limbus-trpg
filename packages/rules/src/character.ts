@@ -48,6 +48,10 @@ export interface CharacterData {
   identity?: string;
   /** 면모 3개: 서사 태그. GM이 빛 보상이나 판정 보너스의 근거로 쓴다 */
   aspects?: string[];
+  /** 출신 (ORIGINS 의 이름). 출신에 맞는 상황이면 비전투 판정 코인 +1 */
+  origin?: string;
+  /** 소속 (캠페인 룰 affiliations 의 이름). 소속 패시브가 전투에 합쳐진다 */
+  affiliation?: string;
   /** 스탠딩 일러스트 (상반신 또는 전신, 배경 투명 권장). 장면 무대와 합 연출에 쓴다 */
   spriteUrl?: string | null;
   /** 포즈별 추가 이미지 (SD 공방에서 생성). 없으면 코드 모션만 */

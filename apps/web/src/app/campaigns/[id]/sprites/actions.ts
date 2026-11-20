@@ -23,8 +23,8 @@ async function requireMember(campaignId: string) {
   const user = await getUser();
   if (!user) redirect("/");
   const { data: me } = await supabase.from("campaign_members").select("role").eq("campaign_id", campaignId).eq("user_id", user.id).maybeSingle();
-  if (!me) throw new Error("캠페인 멤버만 쓸 수 있습니다");
-  const isGm = me.role === "gm" || me.role === "temp_gm";
+  const isGm = !!me && (me.role === "gm" || me.role === "temp_gm");
+  if (!isGm) throw new Error("GM만 쓸 수 있습니다");   // 2026-11-20: 공방은 GM 전용
   return { supabase, user, isGm };
 }
 

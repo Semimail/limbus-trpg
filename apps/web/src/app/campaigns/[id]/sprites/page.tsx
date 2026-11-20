@@ -17,8 +17,9 @@ export default async function SpritesPage({ params, searchParams }: { params: Pr
   const user = await getUser();
   if (!user) notFound();
   const { data: me } = await supabase.from("campaign_members").select("role").eq("campaign_id", id).eq("user_id", user.id).maybeSingle();
-  if (!me) notFound();
-  const isGm = me.role === "gm" || me.role === "temp_gm";
+  // GM 전용 (2026-11-20 사용자 결정: 플레이어에게는 보이지 않게)
+  const isGm = !!me && (me.role === "gm" || me.role === "temp_gm");
+  if (!isGm) notFound();
   // 적 도감은 GM 만, 캐릭터는 본인 것(GM 은 캠페인 전체). 로그는 RLS 가 본인/GM 으로 거른다
   const charQuery = supabase.from("characters").select("id, name, owner_id, data").eq("campaign_id", id).order("name");
   const [{ data: enemies }, { data: chars }, { data: jobs }] = await Promise.all([

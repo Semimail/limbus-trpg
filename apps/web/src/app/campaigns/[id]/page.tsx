@@ -123,7 +123,6 @@ export default async function OfficePage({ params }: { params: Promise<{ id: str
               {mine.map((c) => <CharacterCard key={c.id} c={c} />)}
               {mine.length === 0 ? <p className="text-sm text-muted">아직 캐릭터가 없습니다.</p> : null}
             </div>
-            <Link href={`/campaigns/${id}/sprites`} className="mt-2 inline-block text-xs text-accent">SD 스프라이트 공방 (내 캐릭터 스탠딩 만들기) →</Link>
           </Panel>
 
           {isGm ? (

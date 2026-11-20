@@ -1,6 +1,5 @@
 "use client";
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, DEFAULT_PROGRESSION, coinCapAt, skillBudget, skillPresets, expectedPower,
@@ -82,7 +81,6 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
               <div className="space-y-3">
                 <PortraitUpload value={portrait} onChange={setPortrait} />
                 <PortraitUpload value={d.spriteUrl ?? null} onChange={(u) => setD({ ...d, spriteUrl: u })} label="스탠딩" size="h-40 w-28" hint="상반신/전신, 배경 투명(PNG) 권장. 장면 무대와 합 연출에 나옵니다" />
-                {campaignId ? <Link href={`/campaigns/${campaignId}/sprites${id ? `?character=${id}` : ""}`} className="inline-block text-xs text-accent">AI로 SD 스프라이트 만들기 →</Link> : null}
               </div>
               <div className="space-y-3">
                 <label className="block"><span className="text-xs text-muted">이름</span><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="해결사의 이름" autoFocus /></label>

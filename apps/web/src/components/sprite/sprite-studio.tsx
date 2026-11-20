@@ -14,7 +14,7 @@ import { sliceStrip } from "@/lib/sprite/slice";
 import { generateSprite, generatePose, generateStrip, saveStripFrames, applySprite, createEnemyFromSprite, deleteSpriteJob, type SpriteJobRow, type SpriteTarget } from "@/app/campaigns/[id]/sprites/actions";
 
 /*
- * SD 스프라이트 공방 (캠페인 멤버 전원)
+ * SD 스프라이트 공방 (GM 전용 — 플레이어에게는 보이지 않는다)
  *  - 이미지를 여러 장 올리거나 글만 적어 대기열에 넣고, 한 장씩 차례로 생성한다 (AI는 대기 1장, 모션은 코드).
  *  - 완료된 대기 이미지에는 "포즈 이미지"(모션당 정지 1장, 교차 페이드)와 "프레임 띠"(모션당 호출 1회로 N칸 띠 → 브라우저에서 잘라 프레임 재생)를 더할 수 있다.
  *  - 결과는 내 캐릭터(플레이어) 또는 적 도감·모든 캐릭터(GM)의 스탠딩으로 적용한다.
@@ -476,7 +476,6 @@ function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, character
     <Panel title={isGm ? "생성 로그 (캠페인 전체)" : "내 생성 로그"} stamp={`${all.length}건`} right={<span className="text-xs text-muted">완료 {done} · 실패 {all.filter((j) => j.status === "failed").length}{total ? ` · 추정 비용 $${total.toFixed(2)}` : ""}</span>}>
       {err ? <p className="mb-2 text-xs text-danger">{err}</p> : null}
       {all.length === 0 ? <p className="text-sm text-muted">아직 기록이 없습니다.</p> : null}
-      {isGm ? <p className="mb-2 text-[11px] text-muted">플레이어에게는 본인이 만든 것만 보입니다. GM이 만든 것은 플레이어에게 보이지 않습니다.</p> : null}
       <ul className="divide-y divide-border">
         {parents.map((j) => row(j, true))}
         {orphans.map((j) => row(j, false))}

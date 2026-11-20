@@ -53,10 +53,10 @@ export async function sendMessage(input: SendInput): Promise<{ error?: string; m
     text = `${r.expr} = [${r.rolls.join(", ")}]${r.mod ? (r.mod > 0 ? ` + ${r.mod}` : ` - ${-r.mod}`) : ""} = ${r.total}`;
   } else if (coin) {
     // /coin <수|능력치> [난이도] [+보너스] [빛]
-    let ch: CharacterData | null = null;
+    let ch: CharacterData | null = null; let chName: string | null = null;
     if (input.characterId) {
-      const { data } = await supabase.from("characters").select("data").eq("id", input.characterId).single();
-      ch = (data?.data as unknown as CharacterData | null) ?? null;
+      const { data } = await supabase.from("characters").select("name, data").eq("id", input.characterId).single();
+      ch = (data?.data as unknown as CharacterData | null) ?? null; chName = data?.name ?? null;
     }
     const statSin = sinOf(coin[1]!);
     const n = Math.min(30, Math.max(0, statSin ? (ch?.stats[statSin] ?? 0) : Number(coin[1])));
@@ -72,13 +72,14 @@ export async function sendMessage(input: SendInput): Promise<{ error?: string; m
     const sanity = ch?.sanity ?? 0;
     const j = judge(n, bonus, difficulty, sanity, rules, createRng((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0));
     kind = "system";
-    payload = { type: "coin", coins: j.coins, heads: j.heads, difficulty, sanity, success: difficulty > 0 ? j.success : null };
+    // 카드형 로그·판정 컷인용 상세 (sin: 죄악 id, stat: 코인 수, bonus: 보너스 코인, light: 빛 사용, name: 캐릭터 이름)
+    payload = { type: "coin", coins: j.coins, heads: j.heads, difficulty, sanity, success: difficulty > 0 ? j.success : null, sin: statSin, stat: n, bonus, light: !!coin[4], name: chName, characterId: input.characterId ?? null };
     const label = statSin ? `${SIN_LABEL[statSin]} ${n}` : `코인 ${n}개`;
     text = `${label}${bonus ? ` +${bonus}${lightNote}` : ""} (정신력 ${sanity >= 0 ? "+" : ""}${sanity}) → 앞면 ${j.heads}` + (difficulty > 0 ? ` / 난이도 ${difficulty} → ${j.success ? "성공" : "실패"}` : "");
   } else if (vs) {
     // /vs <내 능력치|수> <상대 캐릭터 이름> <상대 능력치|수>  — 대립 판정, 동률은 방어(상대) 승
-    let me: CharacterData | null = null;
-    if (input.characterId) { const { data } = await supabase.from("characters").select("data").eq("id", input.characterId).single(); me = (data?.data as unknown as CharacterData | null) ?? null; }
+    let me: CharacterData | null = null; let meName: string | null = null;
+    if (input.characterId) { const { data } = await supabase.from("characters").select("name, data").eq("id", input.characterId).single(); me = (data?.data as unknown as CharacterData | null) ?? null; meName = data?.name ?? null; }
     const { data: opp } = await supabase.from("characters").select("name, data").eq("campaign_id", campaignId).ilike("name", vs[2]!).maybeSingle();
     const mySin = sinOf(vs[1]!), opSin = sinOf(vs[3]!);
     const myStat = mySin ? (me?.stats[mySin] ?? 0) : Number(vs[1]);
@@ -87,7 +88,7 @@ export async function sendMessage(input: SendInput): Promise<{ error?: string; m
     if (opSin && !opp) return { error: `상대 캐릭터 "${vs[2]}"를 찾지 못했습니다` };
     const r = judgeOpposed({ stat: myStat, bonus: 0, sanity: me?.sanity ?? 0 }, { stat: opStat, bonus: 0, sanity: opData?.sanity ?? 0 }, rules, createRng((Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0));
     kind = "system";
-    payload = { type: "vs", attacker: r.attacker, defender: r.defender, winner: r.winner };
+    payload = { type: "vs", attacker: r.attacker, defender: r.defender, winner: r.winner, mySin, myStat, opSin, opStat, name: meName, opName: opp?.name ?? vs[2], characterId: input.characterId ?? null };
     text = `대립 판정: ${mySin ? SIN_LABEL[mySin] : "코인"} ${myStat} → 앞면 ${r.attacker.heads}  vs  ${opp?.name ?? vs[2]} ${opSin ? SIN_LABEL[opSin] : "코인"} ${opStat} → 앞면 ${r.defender.heads}  ⇒ ${r.winner === "attacker" ? "공격 측 승리" : "방어 측 승리"}`;
   }
 
@@ -142,7 +143,9 @@ export async function deleteMessage(sessionId: string, messageId: number): Promi
 export interface BoardToken { id: string; name: string; img: string | null; x: number; y: number; size: number; ownerId?: string | null; refKind?: "character" | "enemy" | "free"; refId?: string }
 /** 무대(비주얼 노벨) 상태: 출연진 id는 "c:<characterId>" 또는 "e:<enemyId>"(NPC) */
 export interface StageData { cast: string[]; split?: boolean }
-export interface BoardData { background: string | null; tokens: BoardToken[]; stage?: StageData }
+/** 무대 BGM (주소 재생). 장면 보드에 남겨 늦게 들어온 사람도 같은 곡을 듣는다 */
+export interface BgmData { url: string; title?: string }
+export interface BoardData { background: string | null; tokens: BoardToken[]; stage?: StageData; bgm?: BgmData | null }
 
 export async function updateBoard(campaignId: string, sceneId: string, patch: Partial<BoardData>): Promise<{ error?: string; board?: BoardData }> {
   const supabase = await createClient();
@@ -153,13 +156,14 @@ export async function updateBoard(campaignId: string, sceneId: string, patch: Pa
   const { data: sc } = await supabase.from("scenes").select("board").eq("id", sceneId).single();
   if (!sc) return { error: "장면이 없습니다" };
   const cur = (sc.board && typeof sc.board === "object" ? sc.board : {}) as Partial<BoardData>;
-  const board: BoardData = { background: cur.background ?? null, tokens: cur.tokens ?? [], stage: cur.stage ?? { cast: [] } };
+  const board: BoardData = { background: cur.background ?? null, tokens: cur.tokens ?? [], stage: cur.stage ?? { cast: [] }, bgm: cur.bgm ?? null };
   if (isGm) {
     if (patch.background !== undefined) board.background = patch.background;
+    if (patch.bgm !== undefined) board.bgm = patch.bgm;
     if (patch.tokens) board.tokens = patch.tokens;
     if (patch.stage) board.stage = { cast: patch.stage.cast ?? board.stage!.cast, split: patch.stage.split ?? board.stage!.split };
   } else {
-    if (patch.background !== undefined) return { error: "GM만 배경을 바꿀 수 있습니다" };
+    if (patch.background !== undefined || patch.bgm !== undefined) return { error: "GM만 배경·BGM을 바꿀 수 있습니다" };
     if (patch.stage) {
       // 플레이어: 자기 캐릭터의 등장/퇴장만
       const { data: mine } = await supabase.from("characters").select("id").eq("owner_id", user.id).eq("campaign_id", campaignId);

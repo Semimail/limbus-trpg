@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-mirror",
+      "runtimeExecutable": "fnm",
+      "runtimeArgs": ["exec", "--using", "24", "--", "cmd", "/c", "cd /d C:\\dev\\limbus-trpg\\apps\\web && pnpm dev -p 3100"],
+      "port": 3100
+    }
+  ]
+}

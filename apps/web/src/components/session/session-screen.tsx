@@ -10,20 +10,28 @@ import { SceneBoard, type TokenSource } from "@/components/board/scene-board";
 import { sendMessage, updateBoard, type BoardData, type MessageKind } from "@/app/campaigns/[id]/sessions/[sid]/actions";
 import type { SceneRow } from "./scene-bar";
 import type { AllyOption, EnemyOption } from "@/components/combat/setup";
+import type { Sin } from "@limbus/rules";
+import { JudgePopup, JudgeCutIn, judgeCutFromPayload, type JudgeChar, type JudgeCut } from "./judge";
+import { isCoinPayload, isVsPayload, judgeSummary } from "./log-cards";
+import { TransitionOverlay, TitleCard, BgmPlayer, playSfx, audioContext, applyMotion, type ActorFx, type StageFx, type TransitionMode } from "./stage-fx";
 
 /*
  * 세션 화면 (비전투): 참고 영상의 LIMBUS PLAY 모듈 레이아웃
  *  - 무대(스탠딩 + 대사 상자)가 화면을 채우고, 좌상단에 파티 초상(등장 상태), 아래 바에서 대사를 입력한다.
  *  - 입력 중이면 모두의 대사 상자에 "○○이(가) 잠시 말을 고른다…" 같은 지문이 뜬다(실시간 브로드캐스트).
  *  - 대사를 보내면 그 캐릭터가 무대에 없을 때 자동으로 등장한다(서버 액션이 출연진에 추가).
+ *  - 판정: 입력 바의 "판정" 버튼 → 7죄악 판정 팝업 → /coin 명령으로 전송 → 결과 메시지가 오면 모두의 화면에 3.6초 컷인 + 대사 띠 위 요약 줄.
+ *  - 무대 연출: GM 콘솔 무대 탭의 버튼이 `fx:<sceneId>` 브로드캐스트로 모두의 화면에 장면 전환·제목 카드·동작·효과음을 띄운다. BGM 은 보드에 남는다.
  *  - 오른쪽 서랍: 채팅 기록 / 시트 / GM 콘솔(진행·무대·전투·시트).
  */
+
+export interface CharRow { id: string; name: string; owner: string; approved: boolean; hp: number; maxHp: number; sanity: number; ownerId: string; stats: Record<Sin, number>; origin: string | null; traits: string[]; light: number; portraitUrl: string | null; cardUrl: string | null }
 
 interface Props {
   campaignId: string; sessionId: string; sessionTitle: string; sessionOpen: boolean; meId: string; isGm: boolean;
   members: Member[]; myChars: MyChar[]; charNames: Record<string, string>; initialMessages: ChatMessage[];
   scenes: SceneRow[]; current: SceneRow | null; board: BoardData; actors: StageActor[]; tokenSources: TokenSource[];
-  chars: { id: string; name: string; owner: string; approved: boolean; hp: number; maxHp: number; sanity: number; ownerId: string }[];
+  chars: CharRow[];
   setup: { allies: AllyOption[]; enemies: EnemyOption[] } | null; backHref: string;
 }
 
@@ -45,7 +53,7 @@ export function SessionScreen(p: Props) {
   if (p.board !== prevBoard) { setPrevBoard(p.board); setBoard(p.board); }
   useEffect(() => { const prev = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = prev; }; }, []);
 
-  // 실시간: 장면 보드(출연진·배경) / 세션의 현재 장면 바뀌면 새로고침
+  // 실시간: 장면 보드(출연진·배경·BGM) / 세션의 현재 장면 바뀌면 새로고침
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false; let ch: ReturnType<typeof supabase.channel> | null = null;
@@ -56,7 +64,7 @@ export function SessionScreen(p: Props) {
           (ev) => { const n = ev.new as { current_scene_id?: string | null; status?: string }; if (n.current_scene_id !== sceneId || (n.status === "closed") !== !p.sessionOpen) router.refresh(); })
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "combats" }, () => router.refresh());
       if (sceneId) ch.on("postgres_changes", { event: "UPDATE", schema: "public", table: "scenes", filter: `id=eq.${sceneId}` },
-        (ev) => { const b = (ev.new as { board?: Partial<BoardData> }).board; if (b) setBoard({ background: b.background ?? null, tokens: b.tokens ?? [], stage: b.stage }); });
+        (ev) => { const b = (ev.new as { board?: Partial<BoardData> }).board; if (b) setBoard({ background: b.background ?? null, tokens: b.tokens ?? [], stage: b.stage, bgm: b.bgm ?? null }); });
       ch.subscribe();
     });
     return () => { cancelled = true; if (ch) void supabase.removeChannel(ch); };
@@ -91,6 +99,67 @@ export function SessionScreen(p: Props) {
     void ch.send({ type: "broadcast", event: "typing", payload: { key, name: name ?? "GM", line: myLine.current.line } });
   }, [p.meId]);
 
+  /* ---- 무대 연출 (브로드캐스트 fx:<sceneId>) ---- */
+  const fxCh = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
+  const [transition, setTransition] = useState<{ mode: TransitionMode; key: number } | null>(null);
+  const [title, setTitle] = useState<{ title: string; subtitle?: string; key: number } | null>(null);
+  const [actorFx, setActorFx] = useState<Record<string, ActorFx>>({});
+  const [soundOn, setSoundOn] = useState<boolean>(() => { if (typeof window === "undefined") return false; try { return localStorage.getItem("limbus.sound") === "on"; } catch { return false; } });
+  const soundRef = useRef(soundOn);
+  useEffect(() => { soundRef.current = soundOn; }, [soundOn]);
+  useEffect(() => {
+    if (!sceneId) return;
+    const supabase = createClient();
+    let cancelled = false;
+    void realtimeReady(supabase).then(() => {
+      if (cancelled) return;
+      const ch = supabase.channel(`fx:${sceneId}`, { config: { broadcast: { self: true } } })
+        .on("broadcast", { event: "fx" }, ({ payload }) => {
+          const fx = payload as StageFx;
+          if (fx.type === "transition") setTransition({ mode: fx.mode, key: Date.now() });
+          else if (fx.type === "title") setTitle({ title: fx.title, subtitle: fx.subtitle, key: Date.now() });
+          else if (fx.type === "motion") setActorFx((cur) => applyMotion(cur, fx.actorId, fx.motion));
+          else if (fx.type === "sfx") { if (soundRef.current) playSfx(fx.id); }
+        })
+        .subscribe();
+      fxCh.current = ch;
+    });
+    return () => { cancelled = true; const ch = fxCh.current; fxCh.current = null; if (ch) void supabase.removeChannel(ch); setActorFx({}); };
+  }, [sceneId]);
+  const sendFx = useCallback((fx: StageFx) => { const ch = fxCh.current; if (!ch) return; void ch.send({ type: "broadcast", event: "fx", payload: fx }); }, []);
+  const toggleSound = () => { const v = !soundOn; setSoundOn(v); try { localStorage.setItem("limbus.sound", v ? "on" : "off"); } catch {} if (v) audioContext(); };
+  const clearTransition = useCallback(() => setTransition(null), []);
+  const clearTitle = useCallback(() => setTitle(null), []);
+
+  /* ---- 판정 팝업 + 컷인 ---- */
+  const [judgeOpen, setJudgeOpen] = useState(false);
+  const [cut, setCut] = useState<JudgeCut | null>(null);
+  const seenMsg = useRef<number>(Math.max(0, ...p.initialMessages.map((m) => m.id)));
+  const charById = useMemo(() => Object.fromEntries(p.chars.map((c) => [c.id, c])), [p.chars]);
+  useEffect(() => {
+    // 새로 들어온 판정 결과(코인·대립)만 컷인으로. 처음 열 때 있던 기록은 넘긴다
+    const fresh = store.msgs.filter((m) => m.id > seenMsg.current && m.kind === "system" && (isCoinPayload(m.payload) || isVsPayload(m.payload)));
+    if (!fresh.length) return;
+    seenMsg.current = Math.max(seenMsg.current, ...store.msgs.map((m) => m.id));
+    const m = fresh[fresh.length - 1]!;
+    const row = m.character_id ? charById[m.character_id] : undefined;
+    const pl = m.payload as unknown as Parameters<typeof judgeCutFromPayload>[1];
+    setCut(judgeCutFromPayload(`j${m.id}`, pl, { name: row?.name ?? (m.character_id ? p.charNames[m.character_id] ?? "?" : "?"), tag: row ? [row.origin, undefined].filter(Boolean).join(" · ") || null : null, portrait: row?.cardUrl ?? row?.portraitUrl ?? null }));
+  }, [store.msgs, charById, p.charNames]);
+  const clearCut = useCallback(() => setCut(null), []);
+  // 대사 띠 위 요약 줄: 마지막 판정이 마지막 대사보다 나중이면
+  const strip = useMemo(() => {
+    const lastLine = [...store.msgs].reverse().find((m) => m.kind === "ic" || m.kind === "gm");
+    const lastJudge = [...store.msgs].reverse().find((m) => m.kind === "system" && (isCoinPayload(m.payload) || isVsPayload(m.payload)));
+    if (!lastJudge || (lastLine && lastLine.id > lastJudge.id)) return null;
+    const pl = lastJudge.payload as unknown as Parameters<typeof judgeSummary>[0];
+    const s = judgeSummary(pl);
+    const who = (pl as { name?: string | null }).name ?? (lastJudge.character_id ? p.charNames[lastJudge.character_id] : null);
+    const color = s.tone === "gold" ? "#ffd54a" : s.tone === "red" ? "#ff7a7a" : "#f1ebe0";
+    return <span><b className="text-[#d9c08a]">{who ?? "판정"}</b> <span className="text-white/70">{s.title}</span> <span className="mx-1 text-white/40">→</span> <b style={{ color }}>{s.result}</b></span>;
+  }, [store.msgs, p.charNames]);
+  const judgeChars: JudgeChar[] = useMemo(() => p.chars.filter((c) => p.isGm || c.ownerId === p.meId).map((c) => ({ id: c.id, name: c.name, stats: c.stats, origin: c.origin, traits: c.traits, light: c.light, portraitUrl: c.portraitUrl, cardUrl: c.cardUrl })), [p.chars, p.isGm, p.meId]);
+
   /* ---- 입력 바 ---- */
   const [kind, setKind] = useState<MessageKind>(p.myChars.length ? "ic" : p.isGm ? "gm" : "ooc");
   const [speaker, setSpeaker] = useState<string>(p.myChars[0]?.id ?? "gm");   // 캐릭터 id | "gm" | "npc:<id>"
@@ -114,6 +183,13 @@ export function SessionScreen(p: Props) {
       if (r.message) store.append(r.message as unknown as ChatMessage);
     });
   };
+  // 판정 팝업: 고른 캐릭터로 /coin 명령 전송 (서버가 코인을 던지고 결과 메시지를 남긴다)
+  const submitJudge = (characterId: string, command: string) => start(async () => {
+    setErr(null); setJudgeOpen(false);
+    const r = await sendMessage({ sessionId: p.sessionId, sceneId, kind: "ic", content: command, characterId, toUserId: null, imageUrl: null, npc: null });
+    if (r.error) { setErr(r.error); return; }
+    if (r.message) store.append(r.message as unknown as ChatMessage);
+  });
   const uploadImage = async (file: File) => {
     setUploading(true); setErr(null);
     try {
@@ -148,9 +224,13 @@ export function SessionScreen(p: Props) {
         ) : mode === "map" ? (
           <div className="h-full overflow-auto p-2 pt-14"><SceneBoard key={p.current.id} campaignId={p.campaignId} sceneId={p.current.id} initial={board} isGm={p.isGm} meId={p.meId} sources={p.tokenSources} readOnly={!p.sessionOpen} /></div>
         ) : (
-          <Stage fill background={board.background} actors={p.actors} messages={store.msgs} gmNames={gmNames} cast={board.stage?.cast ?? null} split={board.stage?.split} typing={typingList}
+          <Stage fill background={board.background} actors={p.actors} messages={store.msgs} gmNames={gmNames} cast={board.stage?.cast ?? null} split={board.stage?.split} typing={typingList} strip={strip} fx={actorFx}
             overlay={p.current.kind === "combat" ? <div className="pointer-events-none absolute inset-x-0 top-[30%] flex justify-center"><div className="pointer-events-auto b-pane px-6 py-3 text-center text-sm"><div className="text-base font-bold text-[#f1d9a0]">전투 준비 중</div><div className="b-muted mt-1">{p.isGm ? "GM 콘솔 › 전투 탭에서 아군과 적을 고르고 전투를 시작하세요." : "GM이 전투를 준비하고 있습니다."}</div>{p.isGm ? <button type="button" className="b-btn-red mt-2" onClick={() => { setDrawer("gm"); setTab("combat"); }}>전투 준비 열기</button> : null}</div></div> : undefined} />
         )}
+        {/* 연출 오버레이: 판정 컷인 / 제목 카드 / 장면 전환 */}
+        {cut ? <JudgeCutIn cut={cut} onDone={clearCut} /> : null}
+        {title ? <TitleCard card={title} onDone={clearTitle} /> : null}
+        {transition ? <TransitionOverlay fx={transition} onDone={clearTransition} /> : null}
       </div>
 
       {/* 좌상단: 파티 초상 (등장 상태) */}
@@ -204,10 +284,12 @@ export function SessionScreen(p: Props) {
             <label className="b-btn hidden h-8 cursor-pointer items-center text-xs sm:flex">{uploading ? "…" : "이미지"}<input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f); e.target.value = ""; }} /></label>
             <button type="button" onClick={send} disabled={pending || !text.trim()} className="b-btn-red h-8 text-xs">전송</button>
             {castId && sceneId ? <button type="button" disabled={pending || !canToggleId(castId)} onClick={() => toggleCast(castId)} className={`b-tabx h-8 text-xs ${onStage ? "b-tabx-on" : ""}`} title={onStage ? "무대에서 내린다" : "말 없이 무대에 세운다"}>{onStage ? "퇴장" : "등장"}</button> : null}
+            {judgeChars.length ? <button type="button" disabled={pending} onClick={() => setJudgeOpen(true)} className="b-tabx h-8 text-xs" title="7죄악 판정 팝업">판정</button> : null}
           </>
         ) : <span className="b-muted px-2 text-xs">종료된 세션입니다. 기록만 볼 수 있습니다.</span>}
       </div>
       {err ? <div className="absolute bottom-[6rem] left-1/2 z-20 -translate-x-1/2 b-pane border-l-2 px-3 py-1 text-xs" style={{ borderLeftColor: "var(--b-red)", color: "#ffb3b3" }} onClick={() => setErr(null)}>{err}</div> : null}
+      {judgeOpen ? <JudgePopup chars={judgeChars} defaultCharId={kind === "ic" ? speaker : null} onSubmit={submitJudge} onClose={() => setJudgeOpen(false)} pending={pending} /> : null}
 
       {/* 맨 아래 붉은 바 */}
       <div className="b-banner absolute inset-x-0 bottom-0 z-20 flex h-8 items-center gap-1 px-2 text-[11px]">
@@ -215,7 +297,9 @@ export function SessionScreen(p: Props) {
         <button type="button" className={`b-tabx ${mode === "stage" ? "b-tabx-on" : ""}`} onClick={() => setMode("stage")}>스탠딩</button>
         <button type="button" className={`b-tabx ${mode === "map" ? "b-tabx-on" : ""}`} onClick={() => setMode("map")}>지도</button>
         {p.current?.kind === "combat" && p.isGm ? <button type="button" className="b-tabx" onClick={() => { setDrawer("gm"); setTab("combat"); }}>전투</button> : null}
-        <span className="ml-auto hidden truncate text-white/80 sm:inline">{p.sessionTitle}</span>
+        <button type="button" className={`b-tabx ${soundOn ? "b-tabx-on" : ""}`} onClick={toggleSound} title={soundOn ? "효과음·BGM 끄기" : "효과음·BGM 켜기 (브라우저는 한 번 눌러야 소리를 냅니다)"}>{soundOn ? "소리 켜짐" : "소리"}</button>
+        <BgmPlayer url={board.bgm?.url ?? null} enabled={soundOn} />
+        <span className="ml-auto hidden truncate text-white/80 sm:inline">{board.bgm?.title ? `♪ ${board.bgm.title} · ` : ""}{p.sessionTitle}</span>
         <button type="button" className={`b-tabx ${drawer === "chat" ? "b-tabx-on" : ""}`} onClick={() => setDrawer(drawer === "chat" ? null : "chat")}>채팅</button>
         <button type="button" className={`b-tabx ${drawer === "sheets" ? "b-tabx-on" : ""}`} onClick={() => setDrawer(drawer === "sheets" ? null : "sheets")}>시트</button>
         <span className="b-muted hidden px-1 sm:inline">● {p.members.length}명</span>
@@ -226,7 +310,7 @@ export function SessionScreen(p: Props) {
       <div className={`absolute inset-y-0 right-0 z-30 w-full flex-col pb-8 sm:w-[24rem] ${drawer ? "flex" : "hidden"} b-drawer`}>
         {drawer === "gm" ? (
           <GmConsole campaignId={p.campaignId} sessionId={p.sessionId} sessionOpen={p.sessionOpen} scenes={p.scenes} currentId={sceneId} current={p.current} board={board} actors={p.actors} meId={p.meId}
-            chars={p.chars} setup={p.setup} combatActive={false} tab={tab} setTab={setTab} onClose={() => setDrawer(null)} onBoard={setBoard} />
+            chars={p.chars} setup={p.setup} combatActive={false} tab={tab} setTab={setTab} onClose={() => setDrawer(null)} onBoard={setBoard} onFx={sendFx} />
         ) : (
           <>
             <div className="b-bar flex h-9 items-center gap-1 px-2 text-[11px]">

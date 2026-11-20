@@ -1,6 +1,6 @@
 "use client";
 import { useState, useTransition } from "react";
-import { DEFAULT_RULES, DEFAULT_PROGRESSION, DEFAULT_AFFILIATIONS, formatAffiliations, parseAffiliations, parseEffectText, type RuleConfig, type ProgressionConfig } from "@limbus/rules";
+import { DEFAULT_RULES, DEFAULT_PROGRESSION, DEFAULT_AFFILIATIONS, parseEffectText, describeEffect, type RuleConfig, type ProgressionConfig, type AffiliationDef } from "@limbus/rules";
 import { saveRules } from "./actions";
 import { Button } from "@/components/ui";
 import { Panel } from "@/components/office/panel";
@@ -9,20 +9,22 @@ export function RulesForm({ campaignId, rules, progression }: { campaignId: stri
   const [r, setR] = useState<RuleConfig>(rules);
   const [p, setP] = useState<ProgressionConfig>(progression);
   const [thr, setThr] = useState(rules.staggerThresholds.map((t) => Math.round(t * 100)).join(", "));
-  const [aff, setAff] = useState(formatAffiliations(rules.affiliations ?? DEFAULT_AFFILIATIONS));
-  const affList = parseAffiliations(aff);
-  const affManual = affList.filter((a) => a.passive && parseEffectText(a.passive, "passive").effects.length === 0).map((a) => a.name);
+  const [aff, setAff] = useState<AffiliationDef[]>((rules.affiliations ?? DEFAULT_AFFILIATIONS).map((a) => ({ ...a })));
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const cls = "w-full rounded-md border border-border bg-elev px-2 py-1 text-sm tabular-nums";
   const N = (label: string, v: number, on: (n: number) => void, step = 1) => (
     <label className="block text-xs"><span className="text-muted">{label}</span><input type="number" step={step} value={v} onChange={(e) => on(Number(e.target.value))} className={cls} /></label>
   );
+  // 소속 목록 정리: 이름 없는 줄 제외, 같은 이름은 앞의 것만
+  const affClean = aff.map((a) => ({ name: a.name.trim(), passive: a.passive.trim(), desc: a.desc.trim() })).filter((a, i, arr) => a.name && arr.findIndex((x) => x.name === a.name) === i);
+  const dupNames = aff.map((a) => a.name.trim()).filter((n, i, arr) => n && arr.indexOf(n) !== i);
   const submit = () => start(async () => {
     const thresholds = thr.split(",").map((x) => Number(x.trim()) / 100).filter((x) => x > 0 && x < 1).sort((a, b) => b - a);
-    const res = await saveRules(campaignId, { ...r, staggerThresholds: thresholds, affiliations: affList.length ? affList : DEFAULT_AFFILIATIONS }, p);
+    const res = await saveRules(campaignId, { ...r, staggerThresholds: thresholds, affiliations: affClean.length ? affClean : DEFAULT_AFFILIATIONS }, p);
     setMsg(res.error ?? "저장됨");
   });
+  const setAffAt = (i: number, patch: Partial<AffiliationDef>) => setAff(aff.map((a, k) => (k === i ? { ...a, ...patch } : a)));
   return (
     <div className="space-y-4">
       <Panel title="전투 규칙">
@@ -49,11 +51,46 @@ export function RulesForm({ campaignId, rules, progression }: { campaignId: stri
         </div>
       </Panel>
       <Panel title="배경 규칙 · 소속 패시브">
-        <p className="mb-2 text-xs text-muted">한 줄에 하나, <code>이름 | 패시브 문장 | 설명(선택)</code>. 패시브 문장은 특기와 같은 효과 문장 형태(룰북 9장)로 적으면 전투에서 자동 발동합니다. 캐릭터는 소속 이름으로 연결되므로 이름을 바꾸면 기존 캐릭터는 다시 골라야 합니다. 출신(둥지·뒷골목·외곽·그 밖)은 판정 코인 +1 전용이라 설정이 없습니다.</p>
-        <textarea value={aff} onChange={(e) => setAff(e.target.value)} rows={Math.max(6, affList.length + 1)} className={cls + " font-mono text-xs"} spellCheck={false} />
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
-          <span>{affList.length}개{affManual.length ? ` · 자동 해석 안 됨(수동 GM): ${affManual.join(", ")}` : ""}</span>
-          <Button variant="ghost" className="px-2 py-0.5 text-[11px]" onClick={() => setAff(formatAffiliations(DEFAULT_AFFILIATIONS))}>기본값으로</Button>
+        <p className="mb-2 text-xs text-muted">소속마다 이름, 소속 패시브 한 문장(특기와 같은 효과 문장 형태, 룰북 9장 — 해석되면 전투에서 자동 발동), 설명. 캐릭터는 소속 이름으로 연결되므로 이름을 바꾸면 기존 캐릭터는 다시 골라야 합니다. 출신(둥지·뒷골목·외곽·그 밖)은 판정 코인 +1 전용이라 설정이 없습니다.</p>
+        <div className="space-y-2">
+          {aff.map((a, i) => {
+            const parsed = a.passive.trim() ? parseEffectText(a.passive, "passive") : null;
+            const auto = !!parsed && parsed.effects.length > 0;
+            const dup = a.name.trim() && dupNames.includes(a.name.trim());
+            return (
+              <div key={i} className="grid gap-1 rounded-md border border-border p-2 sm:grid-cols-[8rem_1fr_auto]">
+                <div>
+                  <span className="text-[10px] text-muted">이름</span>
+                  <input value={a.name} onChange={(e) => setAffAt(i, { name: e.target.value })} className={`${cls} ${dup ? "border-danger" : ""}`} placeholder="예: 사무소" />
+                  {dup ? <span className="text-[10px] text-danger">이름이 겹칩니다</span> : null}
+                </div>
+                <div className="space-y-1">
+                  <div>
+                    <span className="text-[10px] text-muted">소속 패시브 <span className={`ml-1 rounded-sm px-1 ${a.passive.trim() ? (auto ? "bg-ok/20 text-ok" : "bg-danger/20 text-danger") : "bg-fg/10 text-muted"}`}>{a.passive.trim() ? (auto ? "자동" : "수동(GM)") : "없음"}</span></span>
+                    <input value={a.passive} onChange={(e) => setAffAt(i, { passive: e.target.value })} className={cls} placeholder="예: 합 승리 시 정신력 +3" />
+                    {parsed && auto ? <div className="mt-0.5 text-[10px] text-ok">{parsed.effects.map((e, k) => <div key={k}>자동 · {describeEffect(e)}</div>)}</div> : null}
+                    {parsed && !auto ? <div className="mt-0.5 text-[10px] text-danger">해석되지 않는 문장 — 전투에서 GM이 수동으로 적용합니다</div> : null}
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted">설명 (선택)</span>
+                    <input value={a.desc} onChange={(e) => setAffAt(i, { desc: e.target.value })} className={cls} placeholder="누가 이 소속인지 한 줄" />
+                  </div>
+                </div>
+                <div className="flex items-start gap-1 sm:flex-col">
+                  <Button variant="ghost" className="px-2 py-0.5 text-[11px]" disabled={i === 0} onClick={() => { const n = [...aff]; [n[i - 1], n[i]] = [n[i]!, n[i - 1]!]; setAff(n); }}>▲</Button>
+                  <Button variant="ghost" className="px-2 py-0.5 text-[11px]" disabled={i === aff.length - 1} onClick={() => { const n = [...aff]; [n[i + 1], n[i]] = [n[i]!, n[i + 1]!]; setAff(n); }}>▼</Button>
+                  <Button variant="danger" className="px-2 py-0.5 text-[11px]" onClick={() => setAff(aff.filter((_, k) => k !== i))}>삭제</Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+          <span>{affClean.length}개 · 자동 {affClean.filter((a) => a.passive && parseEffectText(a.passive, "passive").effects.length > 0).length}개</span>
+          <span className="flex gap-1">
+            <Button variant="ghost" className="px-2 py-0.5 text-[11px]" onClick={() => setAff([...aff, { name: "", passive: "", desc: "" }])}>+ 소속 추가</Button>
+            <Button variant="ghost" className="px-2 py-0.5 text-[11px]" onClick={() => setAff(DEFAULT_AFFILIATIONS.map((a) => ({ ...a })))}>기본값으로</Button>
+          </span>
         </div>
       </Panel>
       <Panel title="성장 규칙">
@@ -78,7 +115,7 @@ export function RulesForm({ campaignId, rules, progression }: { campaignId: stri
       </Panel>
       <div className="flex items-center gap-3">
         <Button onClick={submit} disabled={pending}>{pending ? "저장 중..." : "저장"}</Button>
-        <Button variant="ghost" onClick={() => { setR(DEFAULT_RULES); setP(DEFAULT_PROGRESSION); setThr("50, 30"); }}>기본값으로</Button>
+        <Button variant="ghost" onClick={() => { setR(DEFAULT_RULES); setP(DEFAULT_PROGRESSION); setThr("50, 30"); setAff(DEFAULT_AFFILIATIONS.map((a) => ({ ...a }))); }}>기본값으로</Button>
         {msg ? <span className="text-xs text-muted">{msg}</span> : null}
       </div>
     </div>

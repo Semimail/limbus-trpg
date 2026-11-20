@@ -12,6 +12,8 @@ import { Button, Input } from "@/components/ui";
 import { SinIcon, DamageIcon, DefenseIcon } from "@/components/icons";
 import { Keyword } from "@/components/keyword/keyword";
 import { PortraitUpload } from "./portrait-upload";
+import { FocusCrop } from "./focus-crop";
+import { createClient } from "@/lib/supabase/client";
 import { SkillEditor, Num } from "./skill-editor";
 import { SkillCard } from "./skill-card";
 import { EffectPreview } from "./effect-preview";
@@ -37,7 +39,20 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
   const [portrait, setPortrait] = useState<string | null>(initialPortrait);
   const [d, setD] = useState<CharacterData>(initial);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [focusOpen, setFocusOpen] = useState(false);
   const [pending, start] = useTransition();
+  // 그림 초점 맞추기용 원본 업로드 (portraits 버킷)
+  const uploadSource = async (file: File): Promise<string | null> => {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser(); if (!user) return null;
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const path = `${user.id}/src-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("portraits").upload(path, file, { upsert: true, contentType: file.type });
+      if (error) return null;
+      return supabase.storage.from("portraits").getPublicUrl(path).data.publicUrl;
+    } catch { return null; }
+  };
   const p = DEFAULT_PROGRESSION;
   const issues = useMemo(() => validateCharacter(d).filter((i) => i.level === "error"), [d]);
   const statSum = SINS.reduce((a, s) => a + d.stats[s], 0);
@@ -84,9 +99,21 @@ export function CharacterWizard({ id, campaignId, initialName, initialPortrait, 
             <h2 className="text-lg font-semibold">누구입니까?</h2>
             <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
               <div className="space-y-3">
-                <PortraitUpload value={portrait} onChange={setPortrait} />
+                <PortraitUpload value={portrait} onChange={(u) => { setPortrait(u); if (!u) setD({ ...d, cardUrl: null, portraitFocus: null }); }} />
+                <div className="flex items-start gap-3">
+                  <div className="h-24 w-16 shrink-0 overflow-hidden border border-border bg-fg/10" title="세로 카드 (판정 컷인·침식 연출)">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {d.cardUrl ? <img src={d.cardUrl} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-center text-[10px] text-muted">세로<br />카드</div>}
+                  </div>
+                  <div className="text-xs">
+                    <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => setFocusOpen(true)}>그림 초점 맞추기</Button>
+                    <p className="mt-1 text-muted">그림 한 장에서 초점·배율만 정하면 초상화와 세로 카드를 함께 만듭니다. 스탠딩이 있으면 그걸로 시작합니다.</p>
+                  </div>
+                </div>
                 <PortraitUpload value={d.spriteUrl ?? null} onChange={(u) => setD({ ...d, spriteUrl: u })} label="스탠딩" size="h-40 w-28" hint="상반신/전신, 배경 투명(PNG) 권장. 장면 무대와 합 연출에 나옵니다" />
               </div>
+              {focusOpen ? <FocusCrop src={d.portraitFocus?.src ?? d.spriteUrl ?? portrait} initial={d.portraitFocus ?? null} onUploadSource={uploadSource} onClose={() => setFocusOpen(false)}
+                onApply={(r) => { setPortrait(r.portraitUrl); setD({ ...d, cardUrl: r.cardUrl, portraitFocus: r.focus }); setFocusOpen(false); }} /> : null}
               <div className="space-y-3">
                 <label className="block"><span className="text-xs text-muted">이름</span><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="해결사의 이름" autoFocus /></label>
                 <label className="block"><span className="text-xs text-muted">대사 한 줄 (선택) · 시트 맨 위에 크게 실립니다</span><Input value={d.quote ?? ""} onChange={(e) => setD({ ...d, quote: e.target.value })} placeholder="예: 퇴사 마렵네. 오늘인가?" /></label>

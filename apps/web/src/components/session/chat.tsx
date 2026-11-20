@@ -4,6 +4,7 @@ import { createClient, realtimeReady } from "@/lib/supabase/client";
 import { sendMessage, deleteMessage, type MessageKind } from "@/app/campaigns/[id]/sessions/[sid]/actions";
 import { CoinIcon } from "@/components/icons";
 import { KeywordText } from "@/components/keyword/keyword";
+import { CoinCard, VsCard, DiceCard, isCoinPayload, isVsPayload, isDicePayload } from "./log-cards";
 
 export interface ChatMessage {
   id: number; kind: MessageKind; content: string; created_at: string;
@@ -171,6 +172,11 @@ function Line({ m, names, charNames, meId, onDelete }: { m: ChatMessage; names: 
   );
   if (m.kind === "system") {
     const p = m.payload ?? {};
+    // 카드형 로그: 코인 판정 / 대립 판정 / 자유 굴림
+    const who = m.character_id ? charNames[m.character_id] ?? author : author;
+    if (isCoinPayload(p)) return <CoinCard p={p} who={who} time={time} extra={del} />;
+    if (isVsPayload(p)) return <VsCard p={p} who={who} time={time} extra={del} />;
+    if (isDicePayload(p)) return <DiceCard p={p} who={who} time={time} extra={del} />;
     return (
       <div className="group border-l-2 border-gold bg-gold/5 px-2 py-1 text-xs">
         <span className="text-muted">{time} · {author}{m.character_id ? ` (${charNames[m.character_id] ?? ""})` : ""}</span>{del}

@@ -1,25 +1,30 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { ChatMessage } from "./chat";
 import { KeywordText } from "@/components/keyword/keyword";
 import { BACKGROUNDS } from "@/components/icons";
 import { SdSprite } from "@/components/sprite/sd-sprite";
 import type { SpritePoses, SpriteAnims } from "@limbus/rules";
+import type { ActorFx } from "./stage-fx";
 
-/** 무대 배우. id는 "c:<characterId>"(PC) 또는 "e:<enemyId>"(NPC) */
-export interface StageActor { id: string; name: string; spriteUrl: string | null; spritePoses?: SpritePoses | null; spriteAnims?: SpriteAnims | null; portraitUrl: string | null; kind: "pc" | "npc" }
+/** 무대 배우. id는 "c:<characterId>"(PC) 또는 "e:<enemyId>"(NPC). tag 는 이름표 위 꼬리표(출신·소속 / 위험 등급) */
+export interface StageActor { id: string; name: string; spriteUrl: string | null; spritePoses?: SpritePoses | null; spriteAnims?: SpriteAnims | null; portraitUrl: string | null; cardUrl?: string | null; tag?: string | null; kind: "pc" | "npc" }
 export interface TypingLine { key: string; name: string; line: string }
 
 interface Props {
   background: string | null; actors: StageActor[]; messages: ChatMessage[]; gmNames: Record<string, string>;
   /** 장면 출연진(board.stage.cast). null이면 최근 발언자로 추정 */
-  cast?: string[] | null; split?: boolean; typing?: TypingLine[]; fill?: boolean; overlay?: React.ReactNode;
+  cast?: string[] | null; split?: boolean; typing?: TypingLine[]; fill?: boolean; overlay?: ReactNode;
+  /** 대사 띠 위에 얹는 한 줄 (판정 결과 요약) */
+  strip?: ReactNode;
+  /** 배우별 연출 동작·자세 (GM 콘솔 무대 탭) */
+  fx?: Record<string, ActorFx>;
 }
 
 export const speakerOf = (m: ChatMessage): string | null => m.kind === "ic" && m.character_id ? `c:${m.character_id}` : m.kind === "gm" && m.payload && typeof m.payload.npc === "object" && m.payload.npc ? `e:${(m.payload.npc as { id: string }).id}` : null;
 
-/** 배경 위에 출연진 스탠딩을 세우고, 마지막 대사를 상자에 보여준다 (비주얼 노벨식) */
-export function Stage({ background, actors, messages, gmNames, cast, split, typing, fill, overlay }: Props) {
+/** 배경 위에 출연진 스탠딩을 세우고, 마지막 대사를 상자에 보여준다 (비주얼 노벨식). 화자가 아닌 배우는 어둡게 */
+export function Stage({ background, actors, messages, gmNames, cast, split, typing, fill, overlay, strip, fx }: Props) {
   const [cursor, setCursor] = useState<number | null>(null); // null = 최신
   const lines = useMemo(() => messages.filter((m) => m.kind === "ic" || m.kind === "gm"), [messages]);
   const idx = cursor === null ? lines.length - 1 : Math.max(0, Math.min(lines.length - 1, cursor));
@@ -38,21 +43,31 @@ export function Stage({ background, actors, messages, gmNames, cast, split, typi
 
   // 말할 때마다 살짝 움직이도록 (최근 대사 번호를 키로)
   const bumpKey = current ? `${current.id}` : undefined;
-  const standing = (a: StageActor) => {
+  const standing = (a: StageActor, i: number, n: number) => {
     const active = a.id === speakerId;
+    const f = fx?.[a.id];
+    // 가운데 방향: 왼쪽 반에 있으면 1, 오른쪽 반이면 -1 (진영 배치면 PC 1, NPC -1)
+    const dir = split ? (a.kind === "npc" ? -1 : 1) : (i < n / 2 ? 1 : -1);
+    const stanceCls = f?.stance ? `st-stance-${f.stance}` : "";
+    const actCls = f?.motion ? `st-act-${f.motion.id}` : "";
     return (
       <div key={a.id} className="relative flex h-full max-w-[26%] flex-1 items-end justify-center transition-all duration-300" style={{ filter: active || !speakerId ? "none" : "brightness(.5) saturate(.6)", transform: active ? "scale(1.04)" : "scale(1)" }}>
-        {a.spriteUrl ? (
-          <SdSprite src={a.spriteUrl} poses={a.spritePoses} anims={a.spriteAnims} alt={a.name} height="100%" flip={a.kind === "npc" && !!split} motion={active && bumpKey !== undefined ? "ready" : "idle"} motionKey={bumpKey} phase={a.kind === "npc" ? 1 : 0} className="h-full" />
-        ) : (
-          <div className="flex h-[70%] w-full flex-col items-center justify-end">
-            <div className="aspect-square w-[46%] max-w-[9rem] overflow-hidden rounded-full border-2 bg-black/60" style={{ borderColor: a.kind === "npc" ? "#b3161c" : "rgba(217,179,91,.8)" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {a.portraitUrl ? <img src={a.portraitUrl} alt={a.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm">{a.name.slice(0, 2)}</div>}
+        <div key={f?.motion?.key ?? "still"} className={`st-act flex h-full w-full items-end justify-center ${actCls}`} style={{ ["--dir" as string]: dir }}>
+         <div className={`flex h-full w-full items-end justify-center transition-transform duration-300 ${stanceCls}`} style={{ ["--dir" as string]: dir }}>
+          {a.spriteUrl ? (
+            <SdSprite src={a.spriteUrl} poses={a.spritePoses} anims={a.spriteAnims} alt={a.name} height="100%" flip={a.kind === "npc" && !!split} motion={active && bumpKey !== undefined ? "ready" : "idle"} motionKey={bumpKey} phase={a.kind === "npc" ? 1 : 0} className="h-full" />
+          ) : (
+            <div className="flex h-[70%] w-full flex-col items-center justify-end">
+              <div className="aspect-square w-[46%] max-w-[9rem] overflow-hidden rounded-full border-2 bg-black/60" style={{ borderColor: a.kind === "npc" ? "#b3161c" : "rgba(217,179,91,.8)" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {a.portraitUrl ? <img src={a.portraitUrl} alt={a.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm">{a.name.slice(0, 2)}</div>}
+              </div>
+              <div className="mt-1 text-xs" style={{ textShadow: "0 1px 2px #000" }}>{a.name}</div>
+              {a.tag ? <div className="text-[10px] text-[#d9c08a]" style={{ textShadow: "0 1px 2px #000" }}>{a.tag}</div> : null}
             </div>
-            <div className="mt-1 text-xs" style={{ textShadow: "0 1px 2px #000" }}>{a.name}</div>
-          </div>
-        )}
+          )}
+         </div>
+        </div>
       </div>
     );
   };
@@ -64,20 +79,22 @@ export function Stage({ background, actors, messages, gmNames, cast, split, typi
       <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,.25) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,.7) 100%)" }} />
       {/* 스탠딩 */}
       <div className="absolute inset-x-0 bottom-[24%] top-[6%] flex items-end px-[3%]">
-        <div className={`flex h-full items-end justify-center gap-[2%] ${split ? "w-1/2" : "w-full"}`}>{left.map(standing)}</div>
-        {split ? <div className="flex h-full w-1/2 items-end justify-center gap-[2%]">{right.map(standing)}</div> : null}
+        <div className={`flex h-full items-end justify-center gap-[2%] ${split ? "w-1/2" : "w-full"}`}>{left.map((a, i) => standing(a, i, left.length))}</div>
+        {split ? <div className="flex h-full w-1/2 items-end justify-center gap-[2%]">{right.map((a) => standing(a, 1, 1))}</div> : null}
         {onStage.length === 0 ? <div className="absolute inset-0 flex items-center justify-center text-xs text-white/60">등장한 캐릭터가 없습니다. 대사를 보내면 무대에 섭니다.</div> : null}
       </div>
       {overlay}
       {/* 대사 상자 */}
       <div className="absolute inset-x-[2%] bottom-[2.5%] sm:inset-x-[4%]">
+        {strip ? <div className="st-strip mb-1 px-4 py-1 text-center text-xs">{strip}</div> : null}
         {/* 이름 플레이트 */}
         {current ? (
           <div className="relative z-10 ml-2 flex items-end gap-2 sm:ml-6">
             <div className="relative flex h-10 min-w-[8rem] items-center justify-center px-5 text-base font-bold text-[#f7e7c3] sm:h-11 sm:text-lg" style={{ backgroundImage: "url(/assets/limbus/ui/plate-tag.png)", backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>
               {speaker ? speaker.name : current.kind === "gm" ? "GM" : "?"}
-              <span className="absolute -top-3 left-3 rounded-sm px-1.5 text-[9px] font-black" style={{ background: speaker?.kind === "npc" ? "#b3161c" : current.kind === "gm" && !speaker ? "#3a2a1a" : "#c9a24a", color: speaker?.kind === "npc" || (current.kind === "gm" && !speaker) ? "#fff" : "#1a1208" }}>
-                {speaker ? (speaker.kind === "npc" ? "NPC" : "PC") : "서술"}
+              {/* 꼬리표: 출신·소속 / 위험 등급, 없으면 PC·NPC·서술 */}
+              <span className="absolute -top-3 left-3 whitespace-nowrap rounded-sm px-1.5 text-[9px] font-black" style={{ background: speaker?.kind === "npc" ? "#b3161c" : current.kind === "gm" && !speaker ? "#3a2a1a" : "#c9a24a", color: speaker?.kind === "npc" || (current.kind === "gm" && !speaker) ? "#fff" : "#1a1208" }}>
+                {speaker ? (speaker.tag ?? (speaker.kind === "npc" ? "NPC" : "PC")) : "서술"}
               </span>
             </div>
           </div>

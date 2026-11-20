@@ -55,13 +55,16 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       };
     }
   }
+  // 이름표 꼬리표: PC 는 "출신 · 소속", NPC 는 위험 등급
   const actors: StageActor[] = [
-    ...(chars ?? []).map((c) => ({ id: `c:${c.id}`, name: c.name, portraitUrl: c.portrait_url, spriteUrl: ((c.data as unknown as Partial<CharacterData>)?.spriteUrl ?? null), spritePoses: ((c.data as unknown as Partial<CharacterData>)?.spritePoses ?? null), spriteAnims: ((c.data as unknown as Partial<CharacterData>)?.spriteAnims ?? null), kind: "pc" as const })),
-    ...(foes ?? []).map((f) => ({ id: `e:${f.id}`, name: f.name, portraitUrl: f.portrait_url, spriteUrl: ((f.data as unknown as Partial<EnemyData>)?.spriteUrl ?? null), spritePoses: ((f.data as unknown as Partial<EnemyData>)?.spritePoses ?? null), spriteAnims: ((f.data as unknown as Partial<EnemyData>)?.spriteAnims ?? null), kind: "npc" as const })),
+    ...(chars ?? []).map((c) => { const d = c.data as unknown as Partial<CharacterData>; return { id: `c:${c.id}`, name: c.name, portraitUrl: c.portrait_url, cardUrl: d?.cardUrl ?? null, tag: [d?.origin, d?.affiliation].filter(Boolean).join(" · ") || null, spriteUrl: d?.spriteUrl ?? null, spritePoses: d?.spritePoses ?? null, spriteAnims: d?.spriteAnims ?? null, kind: "pc" as const }; }),
+    ...(foes ?? []).map((f) => { const d = f.data as unknown as Partial<EnemyData>; return { id: `e:${f.id}`, name: f.name, portraitUrl: f.portrait_url, cardUrl: null, tag: d?.threat ? `위험 등급 ${d.threat}` : null, spriteUrl: d?.spriteUrl ?? null, spritePoses: d?.spritePoses ?? null, spriteAnims: d?.spriteAnims ?? null, kind: "npc" as const }; }),
   ];
-  const boardData: BoardData = (() => { const b = (current?.board ?? {}) as Partial<BoardData>; return { background: b.background ?? null, tokens: b.tokens ?? [], stage: b.stage }; })();
+  const boardData: BoardData = (() => { const b = (current?.board ?? {}) as Partial<BoardData>; return { background: b.background ?? null, tokens: b.tokens ?? [], stage: b.stage, bgm: b.bgm ?? null }; })();
   const ownerName = (uid: string) => memberList.find((m) => m.user_id === uid)?.username ?? "";
-  const charRows = (chars ?? []).map((c) => { const d = c.data as unknown as Partial<CharacterData>; return { id: c.id, name: c.name, owner: ownerName(c.owner_id), ownerId: c.owner_id, approved: c.approved, hp: d.hp ?? 0, maxHp: d.maxHp ?? 0, sanity: d.sanity ?? 0 }; });
+  const charRows = (chars ?? []).map((c) => { const d = c.data as unknown as Partial<CharacterData>; return { id: c.id, name: c.name, owner: ownerName(c.owner_id), ownerId: c.owner_id, approved: c.approved, hp: d.hp ?? 0, maxHp: d.maxHp ?? 0, sanity: d.sanity ?? 0,
+    // 판정 팝업용: 능력치·출신·특기 이름·빛·초상
+    stats: d.stats ?? ({} as CharacterData["stats"]), origin: d.origin ?? null, traits: (d.traits ?? []).map((t) => t.name).filter(Boolean), light: d.light ?? 0, portraitUrl: c.portrait_url, cardUrl: d.cardUrl ?? null }; });
   let tokenSources: TokenSource[] = (chars ?? []).map((c) => ({ id: c.id, name: c.name, img: c.portrait_url, ownerId: c.owner_id, kind: "character" as const }));
   if (isGm && current && current.kind !== "combat") {
     tokenSources = [...tokenSources, ...(foes ?? []).map((f) => ({ id: f.id, name: f.name, img: f.portrait_url, ownerId: null, kind: "enemy" as const }))];

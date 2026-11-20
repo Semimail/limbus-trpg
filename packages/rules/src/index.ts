@@ -19,3 +19,4 @@ export * from "./glossary";
 export * from "./grid";
 export * from "./estimate";
 export * from "./background";
+export * from "./erosion";

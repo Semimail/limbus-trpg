@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient, realtimeReady } from "@/lib/supabase/client";
-import { STATUS_IDS, SIN_LABEL, SINS, slotKey, isCorroded, dist, skillRange, estimateClash, describeEffect, type CombatState, type Unit, type StatusId, type Skill, type Pos, type RuleConfig, type Pick, type Sin } from "@limbus/rules";
+import { STATUS_IDS, SIN_LABEL, SINS, slotKey, isCorroded, dist, skillRange, estimateClash, describeEffect, erosionStageChanged, erosionStage, EROSION_STAGE_LABEL, type CombatState, type Unit, type StatusId, type Skill, type Pos, type RuleConfig, type Pick, type Sin } from "@limbus/rules";
 import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction, redrawHandAction } from "@/app/campaigns/[id]/sessions/[sid]/combat-actions";
 import { revealToAll } from "@/app/campaigns/[id]/enemies/actions";
 import { formatRound, unitNames } from "@/lib/combat-log";
@@ -11,6 +11,7 @@ import { SinIcon, DamageIcon, DefenseIcon, CoinIcon, StatusBadge, StatusIcon, BA
 import { Keyword, KeywordText } from "@/components/keyword/keyword";
 import { buildPlaySteps, type PlayStep } from "./playback";
 import { SdSprite } from "@/components/sprite/sd-sprite";
+import { ErosionReveal, type ErosionCard } from "./erosion-reveal";
 
 /*
  * 전투 화면 v4 — 림버스 컴퍼니 UI 조각(드라이브 UI/Battle 아틀라스) + 참고 영상(FVTT 림버스 모듈) 레이아웃
@@ -82,6 +83,20 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
     return () => clearTimeout(t);
   }, [state.round, play]);
   const playNext = useCallback(() => setPlay((p) => (!p ? p : p.i >= p.steps.length - 1 ? null : { ...p, i: p.i + 1 })), []);
+  // 전투 종료 뒤 침식도 단계 연출 (한 번만). 전투 시작 침식도(erosionStart)와 비교해 단계가 바뀐 아군 캐릭터
+  // 처음부터 끝난 전투(새로고침)에서는 보여주지 않고, 닫으면 다시 뜨지 않는다
+  const [erosionDone, setErosionDone] = useState(initial.phase === "ended");
+  const erosionCards = useMemo<ErosionCard[] | null>(() => {
+    if (state.phase !== "ended" || play || erosionDone) return null;
+    const cards: ErosionCard[] = [];
+    for (const u of state.units) {
+      if (u.source.kind !== "character" || u.erosionStart === undefined) continue;
+      const ch = erosionStageChanged(u.erosionStart, u.erosion, rules);
+      if (ch) cards.push({ unitId: u.id, name: u.name, portrait: u.portraitUrl, before: u.erosionStart, after: u.erosion, from: ch.from, to: ch.to, max: rules.erosionMax });
+    }
+    return cards.length ? cards : null;
+  }, [state, play, rules, erosionDone]);
+  const clearErosion = useCallback(() => setErosionDone(true), []);
   useEffect(() => {
     if (!play || play.paused || !playStep) return;
     const t = setTimeout(playNext, playStep.hold);
@@ -275,7 +290,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   return (
     <div className="battle fixed inset-0 z-40 select-none overflow-hidden">
       <Arena state={state} names={names} isGm={isGm} selId={selId} onSelect={setSelId} mine={mine} drag={drag} background={background}
-        startDrag={startDrag} draggedRef={draggedRef} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} oddsMode={oddsMode} play={playStep} playKey={play?.i ?? -1} onPlayTap={play ? playNext : undefined} cutin={cutin} />
+        startDrag={startDrag} draggedRef={draggedRef} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} oddsMode={oddsMode} play={playStep} playKey={play?.i ?? -1} onPlayTap={play ? playNext : undefined} cutin={cutin} thresholds={rules.staggerThresholds} />
 
       {/* 좌상단 HUD */}
       <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-1">
@@ -441,6 +456,8 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       {flash !== null && !play ? <div className="pointer-events-none absolute inset-x-0 top-[26%] z-30 flex justify-center"><div className="b-turn-flash flex items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={ui("turn-text")} alt="TURN" className="h-14 md:h-20" draggable={false} /><span className="text-5xl font-black text-[#ffb347] md:text-7xl" style={{ textShadow: "0 0 24px rgba(255,120,40,.8), 0 2px 0 #000" }}>{flash}</span></div></div> : null}
+      {/* 전투 종료: 침식도 단계 연출 */}
+      {erosionCards ? <ErosionReveal cards={erosionCards} onDone={clearErosion} /> : null}
       {/* 연출 배너 (합 승리 · 전투불능 · 승패) */}
       {playStep?.banner ? <div className="pointer-events-none absolute inset-x-0 top-[34%] z-30 flex justify-center"><div className="b-play-banner px-8 py-2 text-3xl font-black tracking-widest md:text-5xl" style={{ color: playStep.banner.tone === "gold" ? "#ffd54a" : playStep.banner.tone === "red" ? "#ff4d55" : "#f1ebe0" }}>{playStep.banner.text}</div></div> : null}
     </div>
@@ -496,8 +513,8 @@ function Tracker({ state, names, selId, onSelect, className }: { state: CombatSt
 // 바닥 좌표 (u: 가로 0~1, v: 깊이 0=뒤 1=앞). 아군은 왼쪽 앞에서 뒤로 지그재그, 적은 좌우 반전
 const FORMATION: [number, number][] = [[0.17, 0.92], [0.31, 0.68], [0.43, 0.96], [0.10, 0.60], [0.47, 0.72], [0.25, 0.46], [0.37, 0.42], [0.06, 0.80], [0.20, 0.30], [0.44, 0.52]];
 
-function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, draggedRef, loaded, activeDie, onEnemyTap, odds, oddsMode, play, playKey, onPlayTap, background, cutin }: {
-  state: CombatState; names: Record<string, string>; isGm: boolean; selId: string | null; onSelect: (id: string | null) => void; mine: (u: Unit) => boolean;
+function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, draggedRef, loaded, activeDie, onEnemyTap, odds, oddsMode, play, playKey, onPlayTap, background, cutin, thresholds }: {
+  state: CombatState; names: Record<string, string>; isGm: boolean; selId: string | null; onSelect: (id: string | null) => void; mine: (u: Unit) => boolean; /** 흐트러짐 구간 (체력 바 눈금) */ thresholds: number[];
   drag: { payload: DragPayload; over: DropId | null } | null; startDrag: (p: DragPayload) => (e: RPointerEvent) => void; draggedRef: React.MutableRefObject<boolean>;
   loaded: Record<string, string>; activeDie: string | null; onEnemyTap: (t: DropId) => boolean; odds: Record<string, ReturnType<typeof estimateClash>>;
   oddsMode: "odds" | "power" | "off"; play: PlayStep | null; /** 연출 단계 번호 (바뀔 때마다 모션 재생) */ playKey: number; onPlayTap?: () => void; background: string | null; cutin: boolean;
@@ -599,7 +616,7 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
             </button>
             {/* 체력·이름 */}
             <div className="pointer-events-none absolute left-0 top-1 w-28 -translate-x-1/2 text-center">
-              <span className="mx-auto block h-1.5 w-[70%] overflow-hidden bg-black/70"><span className="block h-full" style={{ width: `${Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100))}%`, background: u.side === "ally" ? "linear-gradient(90deg,#2f7a4a,#4fb374)" : "linear-gradient(90deg,#7a0f13,#e04b52)" }} /></span>
+              <span className="relative mx-auto block h-1.5 w-[70%] overflow-hidden bg-black/70"><span className="block h-full" style={{ width: `${Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100))}%`, background: u.side === "ally" ? "linear-gradient(90deg,#2f7a4a,#4fb374)" : "linear-gradient(90deg,#7a0f13,#e04b52)" }} />{thresholds.map((t) => <span key={t} className="absolute top-0 h-full w-px" style={{ left: `${t * 100}%`, background: u.staggerTriggered.includes(t) ? "#ffb347" : "rgba(255,255,255,.55)" }} />)}</span>
               <span className="block truncate text-[10px] leading-tight" style={{ textShadow: "0 1px 2px #000, 0 0 4px #000" }}>{names[u.id]}{u.side === "ally" && !u.sanityLocked ? <span className="text-sky-300"> {u.sanity > 0 ? "+" : ""}{u.sanity}</span> : null}</span>
             </div>
             {u.staggered ? <span className="pointer-events-none absolute left-0 -translate-x-1/2 bg-yellow-400 px-1 text-[9px] font-black text-black" style={{ top: -bodyH(u) * 0.5 }}>흐트러짐</span> : null}
@@ -733,6 +750,7 @@ function StatusBar({ u, state, rules, protect, setProtect, onRedraw, hint }: { u
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {state.grid ? <span className="flex items-center gap-1 tabular-nums"><img src={ui("ico-boot")} alt="이동" className="h-3.5" />남은 이동 <b className="b-gold">{u.move ?? 0}</b></span> : null}
       <span className="b-muted">빛 {u.light}</span>
+      <StaggerPips u={u} rules={rules} compact />
       {protectable && state.grid ? <label className={`flex cursor-pointer items-center gap-1 ${protect ? "text-amber-200" : "b-muted"}`} title="켜고 아군을 노리는 적 다이스에 스킬을 놓으면, 빛을 쓰고 자리를 바꿔 대신 받습니다"><input type="checkbox" checked={protect} onChange={(e) => setProtect(e.target.checked)} />보호</label> : null}
       {!corroded && u.light >= rules.lightRedrawCost ? <button type="button" onClick={onRedraw} className="b-gold hover:underline">빛 {rules.lightRedrawCost}: 손패 교체</button> : null}
       <span className="b-muted ml-auto hidden sm:inline">{corroded ? "침식 상태: 자동 조종" : u.staggered ? "흐트러짐: 이번 라운드 행동 불가" : hint}</span>
@@ -914,9 +932,9 @@ function UnitCard({ u, state, isGm, names, rules, campaignId, combatId, onApply,
         </div>
         <div className="b-muted mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] tabular-nums">
           <span className="text-white">{hideNumbers ? `체력 ${Math.round(hpPct)}%` : `체력 ${u.hp}/${u.maxHp}`}</span>
-          <span>흐트러짐 {rules.staggerThresholds.map((t, i) => <span key={i} className={u.staggerTriggered?.includes(i) ? "text-amber-300" : ""}>◆{Math.round(t * 100)}% </span>)}</span>
+          <StaggerPips u={u} rules={rules} />
           {!u.sanityLocked ? <span>정신력 <span className="text-sky-300">{u.sanity > 0 ? "+" : ""}{u.sanity}</span></span> : null}
-          {u.source.kind === "character" ? <span><Keyword id="light">빛</Keyword> {u.light} · <Keyword id="erosion">침식도</Keyword> {u.erosion}</span> : null}
+          {u.source.kind === "character" ? <span><Keyword id="light">빛</Keyword> {u.light} · <Keyword id="erosion">침식도</Keyword> {u.erosion} <span className={erosionStage(u.erosion, rules) >= 3 ? "text-red-400" : erosionStage(u.erosion, rules) >= 2 ? "text-orange-300" : "text-sky-300"}>({EROSION_STAGE_LABEL[erosionStage(u.erosion, rules)]})</span></span> : null}
           {state.grid ? <span>이동 {u.move ?? 0}</span> : null}
           <span>{u.incapacitated ? <Keyword id="down">전투불능</Keyword> : isCorroded(u, state.round) ? <Keyword id="corrosion" className="text-red-400">침식</Keyword> : u.staggered ? <Keyword id="stagger">흐트러짐</Keyword> : null}</span>
         </div>
@@ -940,6 +958,19 @@ function UnitCard({ u, state, isGm, names, rules, campaignId, combatId, onApply,
           </>)
         : sec("passive", "패시브", u.passives.length, u.passives.length ? u.passives.map((e, i) => <div key={i} className="text-[11px]">{e.source ? <b className="b-gold">{e.source}</b> : null}<span className="b-muted block">{describeEffect(e)}</span></div>) : <div className="b-muted text-[10px]">없음</div>)}
     </div>
+  );
+}
+
+/** 흐트러짐 구간 표시 (참고: 타 팀 VTT 의 부상 단계 ◇◇◇): 구간마다 ◇, 이미 넘긴 구간은 ◆(주황), 지금 흐트러진 상태면 깜빡임 */
+function StaggerPips({ u, rules, compact }: { u: Unit; rules: RuleConfig; compact?: boolean }) {
+  const hpPct = u.maxHp > 0 ? u.hp / u.maxHp : 0;
+  return (
+    <span className="inline-flex items-center gap-1 tabular-nums" title={`흐트러짐 구간: 체력이 ${rules.staggerThresholds.map((t) => `${Math.round(t * 100)}%`).join(" · ")} 아래로 처음 떨어질 때 (전투당 구간마다 1회)`}>
+      {!compact ? <span className="b-muted">흐트러짐</span> : null}
+      {rules.staggerThresholds.map((t) => { const done = u.staggerTriggered.includes(t); const next = !done && hpPct > t;
+        return <span key={t} className={`inline-flex items-center gap-0.5 rounded-sm border px-1 text-[10px] ${done ? "border-amber-400/70 text-amber-300" : next ? "border-white/25 text-white/80" : "border-white/15 text-white/40"} ${u.staggered && done && t === u.staggerTriggered[u.staggerTriggered.length - 1] ? "b-pulse" : ""}`}>{done ? "◆" : "◇"}{Math.round(t * 100)}%</span>; })}
+      {u.staggered ? <span className="rounded-sm bg-yellow-400 px-1 text-[9px] font-black text-black">흐트러짐</span> : null}
+    </span>
   );
 }
 

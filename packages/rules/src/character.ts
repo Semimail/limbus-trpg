@@ -54,6 +54,10 @@ export interface CharacterData {
   affiliation?: string;
   /** 스탠딩 일러스트 (상반신 또는 전신, 배경 투명 권장). 장면 무대와 합 연출에 쓴다 */
   spriteUrl?: string | null;
+  /** 세로 카드 초상(2:3). "그림 초점 맞추기"가 초상화와 함께 잘라 올린다. 판정 컷인·침식 연출에 쓴다 */
+  cardUrl?: string | null;
+  /** 그림 초점 맞추기 설정 (다시 열 때 복원): 원본 그림 주소, 초점(0~1), 배율 */
+  portraitFocus?: { src: string; x: number; y: number; zoom: number } | null;
   /** 포즈별 추가 이미지 (SD 공방에서 생성). 없으면 코드 모션만 */
   spritePoses?: SpritePoses | null;
   /** 모션별 프레임 애니메이션 (SD 공방 프레임 띠). 있으면 포즈 이미지보다 우선 */

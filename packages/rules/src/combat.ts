@@ -29,6 +29,8 @@ export interface Unit extends Combatant {
   light: number;
   /** 침식도 */
   erosion: number;
+  /** 전투 시작 때의 침식도 (전투 종료 연출: 단계가 올라갔는지) */
+  erosionStart?: number;
   /** E.G.O 사용 횟수 (스킬 id → 횟수) */
   egoUsed: Record<string, number>;
   /** 침식 상태: 이 라운드까지 GM/자동 조종 */
@@ -167,7 +169,7 @@ export function startCombat(inputs: UnitInput[], seed: number, rules: RuleConfig
   const units: Unit[] = inputs.map((i) => ({
     ...i, statuses: i.statuses ?? {}, staggered: false, staggerTriggered: [], incapacitated: i.hp <= 0,
     deck: shuffle(buildDeckIds(i.skills), r), discard: [], hand: [],
-    passives: i.passives ?? [], usedOnce: [], light: i.light ?? 0, erosion: i.erosion ?? 0, egoUsed: {},
+    passives: i.passives ?? [], usedOnce: [], light: i.light ?? 0, erosion: i.erosion ?? 0, erosionStart: i.erosion ?? 0, egoUsed: {},
     pos: { x: 0, y: 0 }, move: 0,
   }));
   if (grid) placeUnits(units, grid);

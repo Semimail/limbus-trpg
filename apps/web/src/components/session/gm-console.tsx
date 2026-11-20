@@ -2,13 +2,14 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createScene, setCurrentScene, updateBoard, type BoardData } from "@/app/campaigns/[id]/sessions/[sid]/actions";
+import { createScene, setCurrentScene, updateBoard, type BoardData, type BgmData } from "@/app/campaigns/[id]/sessions/[sid]/actions";
 import { closeSession } from "@/app/campaigns/actions";
 import { createClient } from "@/lib/supabase/client";
 import { CombatSetup, type AllyOption, type EnemyOption } from "@/components/combat/setup";
 import { BACKGROUNDS, BACKGROUND_LIST } from "@/components/icons";
 import type { SceneRow } from "./scene-bar";
 import type { StageActor } from "./stage";
+import { STAGE_MOTIONS, TRANSITIONS, SFX, playSfx, type StageFx, type TransitionMode } from "./stage-fx";
 
 export type ConsoleTab = "flow" | "stage" | "combat" | "sheets";
 const KIND_LABEL = { drama: "드라마", explore: "탐색", combat: "전투" } as const;
@@ -19,7 +20,31 @@ interface Props {
   chars: { id: string; name: string; owner: string; approved: boolean; hp: number; maxHp: number; sanity: number }[];
   setup: { allies: AllyOption[]; enemies: EnemyOption[] } | null; combatActive: boolean;
   tab: ConsoleTab; setTab: (t: ConsoleTab) => void; onClose: () => void; onBoard: (b: BoardData) => void;
+  /** 무대 연출 브로드캐스트 (세션 화면이 fx 채널로 보낸다) */
+  onFx?: (fx: StageFx) => void;
 }
+
+/** 배경 이미지 업로드 (uploads 버킷) → 공개 주소 */
+async function uploadBgFile(meId: string, file: File): Promise<string> {
+  const supabase = createClient();
+  const path = `${meId}/bg-${Date.now()}-${file.name.replace(/[^\w.\-]/g, "_")}`;
+  const { error } = await supabase.storage.from("uploads").upload(path, file, { contentType: file.type });
+  if (error) throw error;
+  return supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
+}
+const readBgmList = (key: string): BgmData[] => { if (typeof window === "undefined") return []; try { const v = localStorage.getItem(key); return v ? (JSON.parse(v) as BgmData[]) : []; } catch { return []; } };
+/** 전환 뒤 배경 교체 타이머 (언마운트 뒤에 와도 보드만 갱신되므로 모듈 변수로 둔다) */
+const swapTimers: number[] = [];
+
+/** 연출 큐의 한 단계: 연출 또는 대기 */
+type QueueStep = StageFx | { type: "wait"; ms: number };
+const stepLabel = (s: QueueStep, actors: StageActor[]) =>
+  s.type === "wait" ? `대기 ${s.ms / 1000}초`
+  : s.type === "transition" ? `전환 · ${TRANSITIONS.find((t) => t.id === s.mode)?.label}`
+  : s.type === "title" ? `제목 · ${s.title}`
+  : s.type === "motion" ? `${actors.find((a) => a.id === s.actorId)?.name ?? "?"} · ${STAGE_MOTIONS.find((m) => m.id === s.motion)?.label}`
+  : s.type === "sfx" ? `효과음 · ${SFX.find((x) => x.id === s.id)?.label}`
+  : `BGM · ${s.title ?? (s.url ? "재생" : "끄기")}`;
 
 /** GM 콘솔 (영상의 오른쪽 패널): 진행 / 무대 / 전투 / 시트 */
 export function GmConsole(p: Props) {
@@ -33,17 +58,45 @@ export function GmConsole(p: Props) {
   const toggleCast = (id: string) => patchBoard({ stage: { cast: cast.includes(id) ? cast.filter((x) => x !== id) : [...cast, id], split: p.board.stage?.split } });
   const uploadBg = async (file: File) => {
     setUploading(true); setErr(null);
-    try {
-      const supabase = createClient();
-      const path = `${p.meId}/bg-${Date.now()}-${file.name.replace(/[^\w.\-]/g, "_")}`;
-      const { error } = await supabase.storage.from("uploads").upload(path, file, { contentType: file.type });
-      if (error) throw error;
-      const { data } = supabase.storage.from("uploads").getPublicUrl(path);
-      patchBoard({ background: data.publicUrl });
-    } catch (e) { setErr(e instanceof Error ? e.message : "업로드 실패"); } finally { setUploading(false); }
+    try { const url = await uploadBgFile(p.meId, file); setBgPick(url); patchBoard({ background: url }); }
+    catch (e) { setErr(e instanceof Error ? e.message : "업로드 실패"); } finally { setUploading(false); }
   };
+
+  /* ---- 무대 연출 ---- */
+  const [bgPick, setBgPick] = useState<string | null>(p.board.background);
+  const [transMode, setTransMode] = useState<TransitionMode>("fade");
+  const [titleText, setTitleText] = useState("");
+  const [subText, setSubText] = useState("");
+  const [motionActor, setMotionActor] = useState<string>(cast[0] ?? p.actors[0]?.id ?? "");
+  const bgmKey = `limbus.bgm.${p.campaignId}`;
+  const [bgmList, setBgmList] = useState<BgmData[]>(() => readBgmList(bgmKey));
+  const [bgmTitle, setBgmTitle] = useState(""); const [bgmUrl, setBgmUrl] = useState("");
+  const [collect, setCollect] = useState(false);
+  const [queue, setQueue] = useState<QueueStep[]>([]);
+  const [playing, setPlaying] = useState(false);
+  const saveBgmList = (l: BgmData[]) => { setBgmList(l); try { localStorage.setItem(bgmKey, JSON.stringify(l)); } catch {} };
+  // 연출 하나를 실제로 쏜다: 브로드캐스트 + 부수 효과(전환은 어두워진 순간 배경 교체, BGM 은 보드에 저장)
+  const fire = (fx: StageFx) => {
+    p.onFx?.(fx);
+    if (fx.type === "transition") {
+      const def = TRANSITIONS.find((t) => t.id === fx.mode)!;
+      if (fx.background !== p.board.background) swapTimers.push(window.setTimeout(() => patchBoard({ background: fx.background }), def.swapAt));
+    } else if (fx.type === "bgm") patchBoard({ bgm: fx.url ? { url: fx.url, title: fx.title } : null });
+  };
+  const act = (fx: StageFx) => { if (collect) setQueue((q) => [...q, fx]); else fire(fx); };
+  const playQueue = async () => {
+    if (playing || !queue.length) return; setPlaying(true);
+    for (const s of queue) {
+      if (s.type === "wait") await new Promise((r) => setTimeout(r, s.ms));
+      else { fire(s); const hold = s.type === "transition" ? TRANSITIONS.find((t) => t.id === s.mode)!.total : s.type === "title" ? 3200 : s.type === "motion" ? 700 : 300; await new Promise((r) => setTimeout(r, hold)); }
+    }
+    setPlaying(false);
+  };
+  const bgChoices: { url: string | null; label: string }[] = [{ url: null, label: "기본" }, ...BACKGROUND_LIST.map((b) => ({ url: BACKGROUNDS[b.key], label: b.label })), ...(p.board.background && !Object.values(BACKGROUNDS).includes(p.board.background as never) ? [{ url: p.board.background, label: "현재(업로드)" }] : [])];
+
   const tabs: [ConsoleTab, string][] = [["flow", "진행"], ["stage", "무대"], ["combat", "전투"], ["sheets", "시트"]];
   const sec = (title: string) => <div className="gm-sec">{title}</div>;
+  const btn = (label: string, onClick: () => void, cls = "b-btn") => <button type="button" className={`${cls} text-[11px]`} disabled={pending || !p.currentId} onClick={onClick}>{label}</button>;
   return (
     <div className="flex h-full flex-col text-xs">
       <div className="b-bar flex h-10 items-center gap-2 px-3">
@@ -101,15 +154,74 @@ export function GmConsole(p: Props) {
               <label className="flex items-center gap-1"><input type="checkbox" checked={!!p.board.stage?.split} onChange={(e) => patchBoard({ stage: { cast, split: e.target.checked } })} />진영 배치 (왼쪽 PC · 오른쪽 NPC)</label>
               <button type="button" className="b-btn" disabled={pending} onClick={() => patchBoard({ stage: { cast: [], split: p.board.stage?.split } })}>전부 퇴장</button>
             </div>
-            {sec("배경")}
-            <div className="flex flex-wrap items-center gap-1">
-              <label className="b-btn cursor-pointer">{uploading ? "업로드 중…" : "이미지 업로드"}<input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadBg(f); e.target.value = ""; }} /></label>
-              {BACKGROUND_LIST.map((b) => <button key={b.key} type="button" className="b-btn" onClick={() => patchBoard({ background: BACKGROUNDS[b.key] })}>{b.label}</button>)}
-              <button type="button" className="b-btn" onClick={() => patchBoard({ background: null })}>기본</button>
+
+            {sec("장면 전환 · 배경")}
+            <div className="b-muted">① 배경 고르기 → ② 방식 → ③ 전환. 어두워지는 순간 배경이 바뀝니다.</div>
+            <div className="flex flex-wrap gap-1">
+              {bgChoices.map((b) => (
+                <button key={b.label} type="button" onClick={() => setBgPick(b.url)} className={`relative h-10 w-[4.5rem] overflow-hidden border ${bgPick === b.url ? "border-[#ffd54a]" : "border-[#3a2626]"}`} title={b.label}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={b.url ?? BACKGROUNDS.backstreet} alt="" className="h-full w-full object-cover opacity-80" draggable={false} />
+                  <span className="absolute inset-x-0 bottom-0 bg-black/70 text-center text-[9px] leading-tight">{b.label}</span>
+                  {p.board.background === b.url ? <span className="absolute left-0 top-0 bg-[#b3161c] px-0.5 text-[8px] font-black">현재</span> : null}
+                </button>
+              ))}
+              <label className="b-btn flex h-10 cursor-pointer items-center text-[10px]">{uploading ? "…" : "업로드"}<input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadBg(f); e.target.value = ""; }} /></label>
             </div>
-            <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const v = String(new FormData(e.currentTarget).get("url") ?? "").trim(); if (v) patchBoard({ background: v }); }}>
-              <input name="url" placeholder="배경 이미지 URL" defaultValue={p.board.background ?? ""} className="b-input min-w-0 flex-1 px-2 py-1" /><button type="submit" className="b-btn">적용</button>
+            <div className="flex flex-wrap items-center gap-1">
+              {TRANSITIONS.map((t) => <button key={t.id} type="button" onClick={() => setTransMode(t.id)} className={`b-tabx px-2 py-0 ${transMode === t.id ? "b-tabx-on" : ""}`}>{t.label}</button>)}
+              {btn("전환", () => act({ type: "transition", mode: transMode, background: bgPick }), "b-btn-red")}
+            </div>
+            <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const v = String(new FormData(e.currentTarget).get("url") ?? "").trim(); if (v) { setBgPick(v); patchBoard({ background: v }); } }}>
+              <input name="url" placeholder="배경 이미지 URL" className="b-input min-w-0 flex-1 px-2 py-1" /><button type="submit" className="b-btn">바로 적용</button>
             </form>
+
+            {sec("제목 카드")}
+            <div className="flex gap-1">
+              <input value={titleText} onChange={(e) => setTitleText(e.target.value)} placeholder="제1장 · 녹슨 사슬" className="b-input min-w-0 flex-1 px-2 py-1" />
+              <input value={subText} onChange={(e) => setSubText(e.target.value)} placeholder="부제 (선택)" className="b-input w-28 px-2 py-1" />
+              {btn("표시", () => { if (titleText.trim()) act({ type: "title", title: titleText.trim(), subtitle: subText.trim() || undefined }); })}
+            </div>
+
+            {sec("캐릭터 동작")}
+            <div className="flex flex-wrap items-center gap-1">
+              <select value={motionActor} onChange={(e) => setMotionActor(e.target.value)} className="b-input px-1 py-0.5">
+                {p.actors.filter((a) => cast.includes(a.id)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {p.actors.filter((a) => !cast.includes(a.id)).map((a) => <option key={a.id} value={a.id}>{a.name} (무대 밖)</option>)}
+              </select>
+              {STAGE_MOTIONS.map((m) => <button key={m.id} type="button" className={`b-btn text-[11px] ${m.stance === "reset" ? "text-[#ffd54a]" : ""}`} disabled={pending || !motionActor} onClick={() => act({ type: "motion", actorId: motionActor, motion: m.id })}>{m.label}</button>)}
+            </div>
+            <div className="b-muted">다가서기·물러서기·쓰러짐·돌아서기는 자세로 남고, 제자리로 되돌립니다. 짧은 동작은 한 번 재생됩니다.</div>
+
+            {sec("BGM")}
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="b-muted">재생 중: {p.board.bgm?.title ?? (p.board.bgm?.url ? "제목 없음" : "없음")}</span>
+              {p.board.bgm ? btn("끄기", () => act({ type: "bgm", url: null })) : null}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {bgmList.map((b) => <span key={b.url} className="flex items-center"><button type="button" className={`b-tabx px-2 py-0 ${p.board.bgm?.url === b.url ? "b-tabx-on" : ""}`} disabled={pending} onClick={() => act({ type: "bgm", url: b.url, title: b.title })}>{b.title || b.url.slice(-16)}</button><button type="button" className="b-muted px-1 hover:text-red-300" title="목록에서 지우기" onClick={() => saveBgmList(bgmList.filter((x) => x.url !== b.url))}>✕</button></span>)}
+              {bgmList.length === 0 ? <span className="b-muted">아래에 mp3·ogg 주소를 넣어 목록을 만드세요 (이 브라우저에 저장).</span> : null}
+            </div>
+            <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const u = bgmUrl.trim(); if (!u) return; saveBgmList([...bgmList.filter((x) => x.url !== u), { url: u, title: bgmTitle.trim() || u.split("/").pop() }]); setBgmTitle(""); setBgmUrl(""); }}>
+              <input value={bgmTitle} onChange={(e) => setBgmTitle(e.target.value)} placeholder="곡 이름" className="b-input w-24 px-2 py-1" />
+              <input value={bgmUrl} onChange={(e) => setBgmUrl(e.target.value)} placeholder="음원 주소 (mp3·ogg 직접 주소)" className="b-input min-w-0 flex-1 px-2 py-1" />
+              <button type="submit" className="b-btn">추가</button>
+            </form>
+
+            {sec("효과음")}
+            <div className="flex flex-wrap gap-1">
+              {SFX.map((s) => <button key={s.id} type="button" className="b-btn text-[11px]" disabled={pending || !p.currentId} onClick={() => act({ type: "sfx", id: s.id })} onContextMenu={(e) => { e.preventDefault(); playSfx(s.id); }} title="누르면 모두에게, 오른쪽 클릭은 나만 미리 듣기">{s.label}</button>)}
+            </div>
+            <div className="b-muted">소리는 각자 하단 바의 「소리」를 켜야 들립니다. 음원 파일 없이 합성한 소리입니다.</div>
+
+            {sec("연출 큐")}
+            <div className="flex flex-wrap items-center gap-1">
+              <label className={`flex cursor-pointer items-center gap-1 ${collect ? "text-[#ffd54a]" : ""}`}><input type="checkbox" checked={collect} onChange={(e) => setCollect(e.target.checked)} />큐에 담기 (바로 쏘지 않음)</label>
+              {[1000, 2000, 3000].map((ms) => <button key={ms} type="button" className="b-btn text-[11px]" onClick={() => setQueue((q) => [...q, { type: "wait", ms }])}>대기 {ms / 1000}초</button>)}
+              <button type="button" className="b-btn-red text-[11px]" disabled={playing || !queue.length} onClick={() => void playQueue()}>{playing ? "재생 중…" : `재생 (${queue.length})`}</button>
+              <button type="button" className="b-btn text-[11px]" disabled={playing || !queue.length} onClick={() => setQueue([])}>비우기</button>
+            </div>
+            {queue.length ? <ol className="space-y-0.5">{queue.map((s, i) => <li key={i} className="flex items-center gap-1 border border-[#3a2626] px-2 py-0.5"><span className="b-muted tabular-nums">{i + 1}.</span><span className="flex-1 truncate">{stepLabel(s, p.actors)}</span><button type="button" className="b-muted hover:text-red-300" onClick={() => setQueue((q) => q.filter((_, k) => k !== i))}>✕</button></li>)}</ol> : null}
           </>
         ) : null}
 

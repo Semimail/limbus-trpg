@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { CharacterData, SkillDraft, ProgressionConfig, AffiliationDef } from "@limbus/rules";
-import { SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, DEFAULT_PROGRESSION, DEFAULT_RULES, gradeOf, coinCapAt, describeEffect, levelUpCost, traitSlotsAt, passiveSlotsAt, originOf, affiliationTrait } from "@limbus/rules";
+import { SINS, SIN_LABEL, DAMAGE_TYPE_LABEL, DEFAULT_PROGRESSION, DEFAULT_RULES, gradeOf, coinCapAt, describeEffect, levelUpCost, traitSlotsAt, passiveSlotsAt, originOf, affiliationTrait, erosionStage, EROSION_STAGE_LABEL } from "@limbus/rules";
 import { LevelUp } from "./level-up";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon } from "@/components/icons";
 import { Keyword, KeywordText } from "@/components/keyword/keyword";
@@ -96,7 +96,7 @@ export function SheetView({ id, name, portraitUrl, data: d, approved, locked, ow
               <Stat label="속도" kw="speed" value={`${d.speed.min}~${d.speed.max} ×${dice}`} />
               <Stat label="빛" kw="light" value={`${d.light} / ${p.lightPerSession}`} />
               <Stat label="경험치" value={`${d.exp ?? 0} / ${cost}`} />
-              <Stat label="침식도" kw="erosion" value={`${d.erosion} / ${DEFAULT_RULES.erosionMax}`} />
+              <Stat label="침식도" kw="erosion" value={`${d.erosion} / ${DEFAULT_RULES.erosionMax} · ${EROSION_STAGE_LABEL[erosionStage(d.erosion, DEFAULT_RULES)]}`} />
               <Stat label="코인 상한" kw="coin" value={`${coinCapAt(d.level)}`} />
               <div className="s-cell col-span-2 flex items-center gap-2 px-3 py-2 text-xs">
                 <span style={{ color: "var(--s-muted)" }}><Keyword id="resist" className="border-0 text-inherit">내성</Keyword></span>

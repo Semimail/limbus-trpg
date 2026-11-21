@@ -116,12 +116,14 @@ $Filters = @(
   # 인격·E.G.O 그림 (다운로드 캐시에만 있음): Unit/CG 인격 일러스트(_normal/_gacksung), Unit/EgoCG E.G.O 일러스트, Unit/Profile·Info·Portrait 초상, PassiveBanner
   @{ name = "unit";  types = "tex";        match = "Resources_moved/Sprite/Unit/" },
   # SD 스프라이트 (Spine): 인격 Prefab/SD/Personality, E.G.O Prefab/SD/EGO — 아틀라스 페이지(tex) + 스켈레톤·.atlas(text)
-  @{ name = "sd";    types = "tex,text";   match = "Resources_moved/Prefab/SD/(Personality|EGO)/" }
+  @{ name = "sd";    types = "tex,text";   match = "Resources_moved/Prefab/SD/(Personality|EGO)/" },
+  # SD 자세 스프라이트: 같은 프리팹 안의 Unity Sprite(idle/mov/gud/dmg/dead/skillN_M/…)를 아틀라스에서 잘라낸 PNG. Spine 은 idle 뿐이라 다른 자세는 이쪽
+  @{ name = "sd-pose"; types = "sprite";   match = "Resources_moved/Prefab/SD/(Personality|EGO)/" }
 )
 $step = 2
 foreach ($f in $Filters) {
   $dir = Join-Path $Out $f.name
-  Write-Host "== $step/6 $($f.name) 추출 (types=$($f.types), match=$($f.match)) → $dir"
+  Write-Host "== $step/7 $($f.name) 추출 (types=$($f.types), match=$($f.match)) → $dir"
   & $py extract.py @common --out $dir --types $f.types --match $f.match
   $step++
 }

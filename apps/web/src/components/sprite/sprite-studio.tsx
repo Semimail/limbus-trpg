@@ -11,13 +11,16 @@ import { SdSprite, SPRITE_MOTIONS, type SpriteMotion } from "./sd-sprite";
 import { buildSpritePrompt, POSES, STRIPS } from "@/lib/sprite/prompt";
 import { STRIP_SPECS, skillStripSpec, fpsFor, isSkillKey, type StripSpec } from "@/lib/sprite/strip";
 import { sliceStrip } from "@/lib/sprite/slice";
-import { generateSprite, generatePose, generateStrip, saveStripFrames, applySprite, createEnemyFromSprite, deleteSpriteJob, type SpriteJobRow, type SpriteTarget } from "@/app/campaigns/[id]/sprites/actions";
+import { generateSprite, generatePose, generateStrip, saveStripFrames, applySprite, createEnemyFromSprite, deleteSpriteJob, type SpriteJobRow, type SpriteRefRow, type SpriteTarget } from "@/app/campaigns/[id]/sprites/actions";
+import { REF_AUTO, REF_OFF } from "@/lib/sprite/refs";
+import { RefPanel } from "./ref-panel";
 
 /*
  * SD 스프라이트 공방 (GM 전용 — 플레이어에게는 보이지 않는다)
  *  - 이미지를 여러 장 올리거나 글만 적어 대기열에 넣고, 한 장씩 차례로 생성한다 (AI는 대기 1장, 모션은 코드).
  *  - 완료된 대기 이미지에는 "포즈 이미지"(모션당 정지 1장, 교차 페이드)와 "프레임 띠"(모션당 호출 1회로 N칸 띠 → 브라우저에서 잘라 프레임 재생)를 더할 수 있다.
  *  - 결과는 내 캐릭터(플레이어) 또는 적 도감·모든 캐릭터(GM)의 스탠딩으로 적용한다.
+ *  - 원작 참고 세트(RefPanel)가 있으면 생성 요청에 원작 대기 그림(스타일)과 같은 동작의 예시(동작)를 입력 이미지로 함께 보낸다. 항목마다 세트를 고르거나 끌 수 있다.
  *  - 로그는 본인 것만 보인다. GM은 캠페인 전체를 보지만, GM이 만든 것은 플레이어에게 보이지 않는다.
  */
 
@@ -26,7 +29,7 @@ interface EnemyLite { id: string; name: string; spriteUrl: string | null; skills
 interface CharLite { id: string; name: string; mine: boolean; spriteUrl: string | null; skills: SkillLite[] }
 const DEFENSE_LABEL: Record<DefenseKind, string> = { guard: "방어", evade: "회피", counter: "반격" };
 const skillLabel = (sk: SkillLite) => `${sk.name || "(이름 없음)"} · ${sk.kind === "attack" ? DAMAGE_TYPE_LABEL[sk.damageType] : DEFENSE_LABEL[sk.defenseKind ?? "guard"]}`;
-interface QueueItem { key: string; file: File | null; preview: string | null; label: string; notes: string; target: string; status: "wait" | "upload" | "gen" | "done" | "fail"; result?: string; error?: string; /** 세트 생성 진행 문구 */ progress?: string }
+interface QueueItem { key: string; file: File | null; preview: string | null; label: string; notes: string; target: string; /** 원작 참고: auto | off | 세트 이름 */ refSet: string; status: "wait" | "upload" | "gen" | "done" | "fail"; result?: string; error?: string; /** 세트 생성 진행 문구 */ progress?: string }
 interface PreviewSet { src: string; poses: SpritePoses; anims: SpriteAnims }
 
 const STATUS_LABEL: Record<SpriteJobRow["status"], string> = { queued: "대기", running: "생성 중", done: "완료", failed: "실패" };
@@ -72,11 +75,22 @@ function TargetSelect({ value, onChange, name, enemies, characters, className = 
   );
 }
 
-export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, provider, initialTarget }: { campaignId: string; isGm: boolean; enemies: EnemyLite[]; characters: CharLite[]; jobs: SpriteJobRow[]; provider: { name: string; model: string; configured: boolean }; initialTarget: SpriteTarget }) {
+export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, refs, provider, initialTarget }: { campaignId: string; isGm: boolean; enemies: EnemyLite[]; characters: CharLite[]; jobs: SpriteJobRow[]; refs: SpriteRefRow[]; provider: { name: string; model: string; configured: boolean }; initialTarget: SpriteTarget }) {
   const router = useRouter();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [notes, setNotes] = useState("");
   const [target, setTarget] = useState<string>(encodeTarget(initialTarget));
+  // 원작 참고 세트 설정 (세트가 있으면 자동, 없으면 끔). 세트 목록은 RefPanel 이 올린 행에서
+  const refSetNames = useMemo(() => Array.from(new Set(refs.map((r) => r.set_name))).sort(), [refs]);
+  const [refSet, setRefSet] = useState<string>(refs.length ? REF_AUTO : REF_OFF);
+  const refIdleCount = refs.filter((r) => r.role === "idle").length;
+  const refSelect = (value: string, onChange: (v: string) => void, className: string, disabled?: boolean) => (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={className} disabled={disabled} title="원작 참고 세트">
+      <option value={REF_OFF}>참고 안 함</option>
+      {refs.length ? <option value={REF_AUTO}>원작 참고 · 자동</option> : null}
+      {refSetNames.map((n) => <option key={n} value={n}>참고: {n}</option>)}
+    </select>
+  );
   const [running, setRunning] = useState(false);
   const stopRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -102,12 +116,12 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
   const addFiles = (files: FileList | null) => {
     if (!files?.length) return;
     const items: QueueItem[] = Array.from(files).filter((f) => f.type.startsWith("image/")).map((f) => ({
-      key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, file: f, preview: URL.createObjectURL(f), label: f.name.replace(/\.[^.]+$/, ""), notes, target, status: "wait",
+      key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, file: f, preview: URL.createObjectURL(f), label: f.name.replace(/\.[^.]+$/, ""), notes, target, refSet, status: "wait",
     }));
     setQueue((q) => [...q, ...items]);
     if (fileRef.current) fileRef.current.value = "";
   };
-  const addTextOnly = () => setQueue((q) => [...q, { key: `${Date.now()}-t`, file: null, preview: null, label: "", notes, target, status: "wait" }]);
+  const addTextOnly = () => setQueue((q) => [...q, { key: `${Date.now()}-t`, file: null, preview: null, label: "", notes, target, refSet, status: "wait" }]);
   const patch = (key: string, p: Partial<QueueItem>) => setQueue((q) => q.map((x) => (x.key === key ? { ...x, ...p } : x)));
 
   const run = async () => {
@@ -130,7 +144,7 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
           sourceUrl = supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
         }
         patch(item.key, { status: "gen" });
-        const r = await generateSprite(campaignId, { sourceUrl, label: item.label, notes: item.notes, target: decodeTarget(item.target) });
+        const r = await generateSprite(campaignId, { sourceUrl, label: item.label, notes: item.notes, target: decodeTarget(item.target), refSet: item.refSet });
         if (!r.resultUrl || !r.jobId) throw new Error(r.error ?? "생성 실패");
         patch(item.key, { result: r.resultUrl, error: r.error }); setPreviewSrc(r.resultUrl);
         router.refresh();
@@ -163,7 +177,10 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
   };
   const totalCalls = queue.filter((q) => q.status === "wait" || q.status === "fail").reduce((n, q) => n + callsFor(q), 0);
   const waiting = queue.filter((q) => q.status === "wait" || q.status === "fail").length;
-  const promptPreview = useMemo(() => buildSpritePrompt({ label: queue[0]?.label, notes, hasSource: !!queue[0]?.file }), [queue, notes]);
+  const promptPreview = useMemo(() => {
+    const rs = queue[0]?.refSet ?? refSet;
+    return buildSpritePrompt({ label: queue[0]?.label, notes, hasSource: !!queue[0]?.file, refs: rs !== REF_OFF && refIdleCount ? { style: Math.min(2, refIdleCount) } : null });
+  }, [queue, notes, refSet, refIdleCount]);
   const busy = (q: QueueItem) => q.status === "upload" || q.status === "gen";
 
   return (
@@ -182,7 +199,9 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={field} placeholder="예: 녹슨 식칼을 든 뒷골목 청소부, 낡은 작업복, 방독면" /></label>
             <label className="block"><span className="block text-xs text-muted">생성 후 바로 스탠딩으로 적용할 대상 (선택)</span>
               <TargetSelect value={target} onChange={setTarget} enemies={enemies} characters={characters} none="적용 안 함 (나중에 로그에서 적용)" />
-              <span className="mt-1 block text-[11px] text-muted">메모와 대상은 대기열에 추가할 때 각 항목에 복사됩니다.{isGm ? "" : " 내 캐릭터에만 적용할 수 있습니다."}</span></label>
+              <span className="mt-1 block text-[11px] text-muted">메모·대상·참고 설정은 대기열에 추가할 때 각 항목에 복사됩니다.{isGm ? "" : " 내 캐릭터에만 적용할 수 있습니다."}</span></label>
+            <label className="block sm:col-span-2"><span className="block text-xs text-muted">원작 참고 {refs.length ? `(대기 ${refIdleCount}장 · ${refSetNames.length}세트)` : "(아래 패널에서 세트를 올리면 쓸 수 있음)"}</span>
+              {refSelect(refSet, setRefSet, field, !refs.length)}</label>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border border-border/70 bg-elev/40 p-2 text-[11px]">
             <span className="font-semibold text-muted">세트로 함께 만들기:</span>
@@ -214,6 +233,7 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
                   <div className="flex gap-2">
                     <Input value={q.label} onChange={(e) => patch(q.key, { label: e.target.value })} placeholder="이름 (프롬프트·로그에 씀)" disabled={busy(q)} />
                     <TargetSelect value={q.target} onChange={(v) => patch(q.key, { target: v })} enemies={enemies} characters={characters} className={`${field} w-44 shrink-0`} disabled={busy(q)} />
+                    {refs.length ? refSelect(q.refSet, (v) => patch(q.key, { refSet: v }), `${field} w-40 shrink-0`, busy(q)) : null}
                   </div>
                   <Input value={q.notes} onChange={(e) => patch(q.key, { notes: e.target.value })} placeholder="이 항목만의 메모" disabled={busy(q)} />
                   {q.progress ? <p className="text-[11px] text-accent">{q.progress}</p> : null}
@@ -232,13 +252,15 @@ export function SpriteStudio({ campaignId, isGm, enemies, characters, jobs, prov
           <details className="mt-3">
             <summary className="cursor-pointer text-xs text-muted">보낼 프롬프트 보기</summary>
             <p className="mt-1 whitespace-pre-wrap border border-border bg-elev p-2 text-xs text-muted">{promptPreview}</p>
-            {isGm ? <p className="mt-1 text-[11px] text-muted">스타일·포즈·띠 문장은 <code>apps/web/src/lib/sprite/prompt.ts</code> 에서 바꿉니다. 원작 이미지는 참고로 보내지 않습니다.</p> : null}
+            {isGm ? <p className="mt-1 text-[11px] text-muted">스타일·포즈·띠 문장은 <code>apps/web/src/lib/sprite/prompt.ts</code> 에서 바꿉니다. 원작 참고 세트가 있고 &lsquo;참고 안 함&rsquo;이 아니면 원작 대기 그림과 같은 동작의 예시를 입력 이미지로 함께 보냅니다(포즈·띠도 부모의 설정을 따름).</p> : null}
           </details>
         </Panel>
 
         {/* 오른쪽: 미리보기 + 코드 모션 (+ 포즈·띠) */}
         <MotionPreview set={preview} skillInfo={skillInfo} />
       </div>
+
+      {isGm ? <RefPanel campaignId={campaignId} refs={refs} /> : null}
 
       <JobLog campaignId={campaignId} isGm={isGm} parents={parents} kidsOf={kidsOf} orphans={orphans} enemies={enemies} characters={characters} skillInfo={skillInfo} configured={provider.configured}
         onPreview={(p) => setPreviewSrc(p.result_url!)} />
@@ -354,6 +376,7 @@ function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, character
     router.refresh(); setProgress(""); setWorking(null);
   };
 
+  const refsDropped = (j: SpriteJobRow): string | null => { const u = j.usage; return u && typeof u === "object" && "refsDropped" in u && typeof (u as { refsDropped?: unknown }).refsDropped === "string" ? (u as { refsDropped: string }).refsDropped : null; };
   const meta = (j: SpriteJobRow) => `${new Date(j.created_at).toLocaleString("ko-KR")} · ${j.provider}/${j.model}${j.duration_ms ? ` · ${(j.duration_ms / 1000).toFixed(1)}초` : ""}${j.cost_usd !== null ? ` · $${Number(j.cost_usd).toFixed(3)}` : ""}`;
   const thumb = (j: SpriteJobRow, size: string, click?: () => void) => (
     <button type="button" className={`${size} overflow-hidden bg-fg/10`} onClick={click} title={click ? "미리보기" : undefined}>
@@ -378,10 +401,19 @@ function JobLog({ campaignId, isGm, parents, kidsOf, orphans, enemies, character
               <span className={`text-xs ${j.status === "failed" ? "text-danger" : j.status === "done" ? "text-ok" : "text-muted"}`}>{STATUS_LABEL[j.status]}</span>
               {ln ? <Link href={ln.href} className="text-xs text-accent">→ {ln.name}</Link> : null}
             </div>
-            <div className="text-xs text-muted">{meta(j)}{j.source_url ? (isParent ? " · 참고 이미지" : "") : " · 글만"}</div>
+            <div className="text-xs text-muted">{meta(j)}{j.source_url ? (isParent ? " · 원본 이미지" : "") : " · 글만"}{j.ref_urls?.length ? ` · 원작 참고 ${j.ref_urls.length}장${j.ref_set && j.ref_set !== REF_AUTO ? ` (${j.ref_set})` : ""}` : ""}</div>
+            {refsDropped(j) ? <div className="text-xs text-danger">참고 이미지가 거절되어 참고 없이 만들어졌습니다: {refsDropped(j)}</div> : null}
             {j.error ? <div className="text-xs text-danger">{j.error}</div> : null}
             <button type="button" className="text-[11px] text-muted hover:text-fg" onClick={() => setOpen(open === j.id ? null : j.id)}>{open === j.id ? "프롬프트 접기" : "프롬프트·사용량"}</button>
-            {open === j.id ? <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap border border-border bg-elev p-2 text-[11px] text-muted">{j.prompt}{j.usage ? `\n\n사용량: ${JSON.stringify(j.usage)}` : ""}</pre> : null}
+            {open === j.id ? (
+              <div className="mt-1 space-y-1">
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap border border-border bg-elev p-2 text-[11px] text-muted">{j.prompt}{j.usage ? `\n\n사용량: ${JSON.stringify(j.usage)}` : ""}</pre>
+                {j.ref_urls?.length ? <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted">보낸 참고: {j.ref_urls.map((u) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" className="h-10 max-w-28 bg-fg/10 object-contain" /></a>
+                ))}</div> : null}
+              </div>
+            ) : null}
             {/* 프레임 띠·포즈: 완료된 대기 이미지에만 */}
             {isParent && j.status === "done" && j.result_url ? (
               <div className="mt-2 space-y-2 border border-border/70 bg-elev/40 p-2">

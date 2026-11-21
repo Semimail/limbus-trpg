@@ -3,12 +3,14 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { newEnemyData, type EnemyData, type SpritePose, type SpritePoses, type SpriteAnimKey, type SpriteAnims } from "@limbus/rules";
-import { buildSpritePrompt, buildPosePrompt, buildStripPrompt, buildSkillStripPrompt, POSES, STRIPS, type SkillForStrip } from "@/lib/sprite/prompt";
+import { buildSpritePrompt, buildPosePrompt, buildStripPrompt, buildSkillStripPrompt, POSES, STRIPS, type SkillForStrip, type RefHint } from "@/lib/sprite/prompt";
+import { REF_AUTO, REF_OFF, REF_ROLE_EN, REF_ROLES, isRefRole, refRoleForAnim, type RefRole } from "@/lib/sprite/refs";
 import { STRIP_SPECS, stripSize, skillStripSpec, fpsFor, isSkillKey, type StripSpec } from "@/lib/sprite/strip";
-import { resolveSpriteProvider, type SpriteProvider } from "@/lib/sprite/provider";
+import { resolveSpriteProvider, type SpriteProvider, type ImageInput } from "@/lib/sprite/provider";
 import type { Database } from "@/lib/supabase/database.types";
 
 export type SpriteJobRow = Database["public"]["Tables"]["sprite_jobs"]["Row"];
+export type SpriteRefRow = Database["public"]["Tables"]["sprite_refs"]["Row"];
 /** 결과를 붙일 대상: 적 도감 항목(GM) 또는 캐릭터(본인, GM은 전부) */
 export type SpriteTarget = { kind: "enemy"; id: string } | { kind: "character"; id: string } | null;
 
@@ -32,7 +34,36 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 const targetOf = (j: { enemy_id: string | null; character_id: string | null }): SpriteTarget => j.enemy_id ? { kind: "enemy", id: j.enemy_id } : j.character_id ? { kind: "character", id: j.character_id } : null;
 const isAnimKey = (k: string): k is SpriteAnimKey => k === "idle" || POSES.some((p) => p.id === k) || isSkillKey(k);
 
-async function fetchSource(url: string): Promise<{ bytes: Uint8Array; mime: string }> {
+/** 스타일 참고 장수 (SPRITE_REF_STYLE_COUNT, 기본 2, 최대 6). 동작 예시 1장은 따로 */
+function styleRefCount(): number {
+  const v = Number(process.env.SPRITE_REF_STYLE_COUNT);
+  return Number.isFinite(v) && v >= 0 ? Math.min(Math.floor(v), 6) : 2;
+}
+
+/**
+ * 원작 참고 세트에서 이번 요청에 붙일 이미지를 고른다.
+ *  - setting: 'off' 참고 안 함 · 'auto' 아무 세트 · 세트 이름이면 그 세트를 우선.
+ *  - 스타일 = 대기(idle) 그림 n장(우선 세트 먼저, 나머지는 무작위로 섞어 매번 조금 다르게), 동작 = motionRole 과 같은 역할의 띠·자세 1장.
+ */
+async function pickRefs(supabase: Supa, campaignId: string, setting: string | null | undefined, motionRole: RefRole | null): Promise<{ urls: string[]; hint: RefHint | null }> {
+  if (setting === REF_OFF) return { urls: [], hint: null };
+  const { data } = await supabase.from("sprite_refs").select("set_name, role, frames, url").eq("campaign_id", campaignId);
+  const rows = data ?? [];
+  if (!rows.length) return { urls: [], hint: null };
+  const preferred = setting && setting !== REF_AUTO ? setting : null;
+  const pri = (r: { set_name: string }) => (r.set_name === preferred ? 0 : 1);
+  const style = rows.filter((r) => r.role === "idle").map((r) => ({ r, k: Math.random() })).sort((a, b) => pri(a.r) - pri(b.r) || a.k - b.k).slice(0, styleRefCount()).map((x) => x.r);
+  let motion: typeof rows[number] | null = null;
+  if (motionRole) {
+    const cands = rows.filter((r) => r.role === motionRole);
+    motion = cands.find((r) => r.set_name === preferred) ?? cands[Math.floor(Math.random() * cands.length)] ?? null;
+  }
+  const urls = [...style.map((r) => r.url), ...(motion ? [motion.url] : [])];
+  if (!urls.length) return { urls: [], hint: null };
+  return { urls, hint: { style: style.length, motion: motion && isRefRole(motion.role) ? { frames: motion.frames, label: REF_ROLE_EN[motion.role] } : null } };
+}
+
+async function fetchSource(url: string): Promise<ImageInput> {
   const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) throw new Error(`원본 이미지를 받지 못했습니다 (${r.status})`);
   const buf = new Uint8Array(await r.arrayBuffer());
@@ -41,17 +72,21 @@ async function fetchSource(url: string): Promise<{ bytes: Uint8Array; mime: stri
 }
 
 /** 작업 1건 실행: 생성 → Storage 저장 → 로그 갱신. 실패하면 로그에 적고 throw */
-async function runJob(supabase: Supa, userId: string, jobId: string, provider: SpriteProvider, prompt: string, sourceUrl: string | null, campaignId: string, size?: string): Promise<string> {
+async function runJob(supabase: Supa, userId: string, jobId: string, provider: SpriteProvider, prompt: string, sourceUrl: string | null, campaignId: string, size?: string, refUrls: string[] = []): Promise<string> {
   const started = Date.now();
   try {
     const source = sourceUrl ? await fetchSource(sourceUrl) : null;
-    const out = await provider.generate({ prompt, source, size });
+    const refs: ImageInput[] = [];
+    for (const u of refUrls) refs.push(await fetchSource(u));
+    const out = await provider.generate({ prompt, source, refs, size });
     const path = `${userId}/${jobId}.png`;
     const { error: upErr } = await supabase.storage.from("sprites").upload(path, out.png, { contentType: "image/png", upsert: true });
     if (upErr) throw new Error(`결과 저장 실패: ${upErr.message}`);
     const resultUrl = supabase.storage.from("sprites").getPublicUrl(path).data.publicUrl;
     await supabase.from("sprite_jobs").update({
-      status: "done", result_url: resultUrl, usage: (out.usage ?? null) as never, cost_usd: out.costUsd, duration_ms: Date.now() - started, finished_at: new Date().toISOString(),
+      status: "done", result_url: resultUrl, cost_usd: out.costUsd, duration_ms: Date.now() - started, finished_at: new Date().toISOString(),
+      // 참고 이미지가 거절되어 참고 없이 만들어졌으면 사용량에 적어 로그에서 알 수 있게 한다
+      usage: (out.refsDropped ? { ...(typeof out.usage === "object" && out.usage ? out.usage as Record<string, unknown> : {}), refsDropped: out.refsDropped } : out.usage ?? null) as never,
     }).eq("id", jobId);
     return resultUrl;
   } catch (e) {
@@ -63,19 +98,21 @@ async function runJob(supabase: Supa, userId: string, jobId: string, provider: S
 }
 
 /** 업로드 이미지(또는 글만)로 SD 대기 스프라이트 1장을 만들고 sprite_jobs 에 기록한다. */
-export async function generateSprite(campaignId: string, input: { sourceUrl: string | null; label: string; notes: string; target: SpriteTarget }): Promise<{ error?: string; jobId?: string; resultUrl?: string }> {
+export async function generateSprite(campaignId: string, input: { sourceUrl: string | null; label: string; notes: string; target: SpriteTarget; /** 'auto' | 'off' | 세트 이름 (기본 auto) */ refSet?: string | null }): Promise<{ error?: string; jobId?: string; resultUrl?: string }> {
   const { supabase, user, isGm } = await requireMember(campaignId);
   if (input.target?.kind === "enemy" && !isGm) return { error: "적 도감은 GM만 바꿀 수 있습니다" };
   const provider = resolveSpriteProvider();
-  const prompt = buildSpritePrompt({ label: input.label, notes: input.notes, hasSource: !!input.sourceUrl });
+  const refSet = input.refSet?.trim() || REF_AUTO;
+  const refs = await pickRefs(supabase, campaignId, refSet, null);
+  const prompt = buildSpritePrompt({ label: input.label, notes: input.notes, hasSource: !!input.sourceUrl, refs: refs.hint });
   const { data: job, error: insErr } = await supabase.from("sprite_jobs").insert({
-    campaign_id: campaignId, created_by: user.id, status: "running", pose: "idle", kind: "still",
+    campaign_id: campaignId, created_by: user.id, status: "running", pose: "idle", kind: "still", ref_set: refSet, ref_urls: refs.urls,
     enemy_id: input.target?.kind === "enemy" ? input.target.id : null, character_id: input.target?.kind === "character" ? input.target.id : null,
     provider: provider.name, model: provider.model, label: input.label.trim(), prompt, source_url: input.sourceUrl,
   }).select("id").single();
   if (insErr || !job) return { error: insErr?.message ?? "작업을 기록하지 못했습니다" };
   let resultUrl: string;
-  try { resultUrl = await runJob(supabase, user.id, job.id, provider, prompt, input.sourceUrl, campaignId); }
+  try { resultUrl = await runJob(supabase, user.id, job.id, provider, prompt, input.sourceUrl, campaignId, undefined, refs.urls); }
   catch (e) { return { error: e instanceof Error ? e.message : "생성 실패", jobId: job.id }; }
   let applyError: string | undefined;
   if (input.target) {
@@ -101,15 +138,16 @@ export async function generatePose(campaignId: string, parentJobId: string, pose
   let parent: SpriteJobRow;
   try { parent = await loadParent(supabase, campaignId, parentJobId, isGm); } catch (e) { return { error: e instanceof Error ? e.message : "오류" }; }
   const provider = resolveSpriteProvider();
-  const prompt = buildPosePrompt(pose, parent.label);
+  const refs = await pickRefs(supabase, campaignId, parent.ref_set, refRoleForAnim(pose));
+  const prompt = buildPosePrompt(pose, parent.label, refs.hint);
   const { data: job, error: insErr } = await supabase.from("sprite_jobs").insert({
-    campaign_id: campaignId, created_by: user.id, status: "running", pose, kind: "still", parent_job_id: parent.id,
+    campaign_id: campaignId, created_by: user.id, status: "running", pose, kind: "still", parent_job_id: parent.id, ref_set: parent.ref_set, ref_urls: refs.urls,
     enemy_id: parent.enemy_id, character_id: parent.character_id,
     provider: provider.name, model: provider.model, label: `${parent.label} · ${POSES.find((p) => p.id === pose)!.label}`, prompt, source_url: parent.result_url,
   }).select("id").single();
   if (insErr || !job) return { error: insErr?.message ?? "작업을 기록하지 못했습니다" };
   let resultUrl: string;
-  try { resultUrl = await runJob(supabase, user.id, job.id, provider, prompt, parent.result_url, campaignId); }
+  try { resultUrl = await runJob(supabase, user.id, job.id, provider, prompt, parent.result_url, campaignId, undefined, refs.urls); }
   catch (e) { return { error: e instanceof Error ? e.message : "생성 실패", jobId: job.id }; }
   const target = targetOf(parent);
   let applyError: string | undefined;
@@ -129,7 +167,7 @@ export async function generateStrip(campaignId: string, parentJobId: string, key
   if (!isAnimKey(key)) return { error: "알 수 없는 모션입니다" };
   let parent: SpriteJobRow;
   try { parent = await loadParent(supabase, campaignId, parentJobId, isGm); } catch (e) { return { error: e instanceof Error ? e.message : "오류" }; }
-  let spec: StripSpec; let prompt: string; let stripLabel: string;
+  let spec: StripSpec; let prompt: string; let stripLabel: string; let refs: { urls: string[]; hint: RefHint | null };
   if (isSkillKey(key)) {
     // 스킬 띠: 부모가 연결된 적/캐릭터의 스킬에서 이름·피해 유형·방어 종류를 가져온다
     const target = targetOf(parent);
@@ -140,21 +178,25 @@ export async function generateStrip(campaignId: string, parentJobId: string, key
     const sid = key.slice("skill:".length);
     const skill = [...(d?.skills ?? []), ...(d?.ego ?? [])].find((s) => (s as { id: string }).id === sid);
     if (!skill) return { error: "대상에 그 스킬이 없습니다" };
-    spec = skillStripSpec(skill); prompt = buildSkillStripPrompt(skill, spec.frames, parent.label); stripLabel = skill.name || "스킬";
+    spec = skillStripSpec(skill);
+    refs = await pickRefs(supabase, campaignId, parent.ref_set, refRoleForAnim(key, skill));
+    prompt = buildSkillStripPrompt(skill, spec.frames, parent.label, refs.hint); stripLabel = skill.name || "스킬";
   } else {
     if (!STRIPS.some((s) => s.id === key)) return { error: "알 수 없는 모션입니다" };
-    spec = STRIP_SPECS[key as keyof typeof STRIP_SPECS]; prompt = buildStripPrompt(key, spec.frames, parent.label); stripLabel = STRIPS.find((s) => s.id === key)!.label;
+    spec = STRIP_SPECS[key as keyof typeof STRIP_SPECS];
+    refs = await pickRefs(supabase, campaignId, parent.ref_set, refRoleForAnim(key));
+    prompt = buildStripPrompt(key, spec.frames, parent.label, refs.hint); stripLabel = STRIPS.find((s) => s.id === key)!.label;
   }
   const { w, h } = stripSize(spec.frames);
   const provider = resolveSpriteProvider();
   const { data: job, error: insErr } = await supabase.from("sprite_jobs").insert({
-    campaign_id: campaignId, created_by: user.id, status: "running", pose: key, kind: "strip", frames: spec.frames, parent_job_id: parent.id,
+    campaign_id: campaignId, created_by: user.id, status: "running", pose: key, kind: "strip", frames: spec.frames, parent_job_id: parent.id, ref_set: parent.ref_set, ref_urls: refs.urls,
     enemy_id: parent.enemy_id, character_id: parent.character_id,
     provider: provider.name, model: provider.model, label: `${parent.label} · ${stripLabel} 띠`, prompt, source_url: parent.result_url,
   }).select("id").single();
   if (insErr || !job) return { error: insErr?.message ?? "작업을 기록하지 못했습니다" };
   let resultUrl: string;
-  try { resultUrl = await runJob(supabase, user.id, job.id, provider, prompt, parent.result_url, campaignId, `${w}x${h}`); }
+  try { resultUrl = await runJob(supabase, user.id, job.id, provider, prompt, parent.result_url, campaignId, `${w}x${h}`, refs.urls); }
   catch (e) { return { error: e instanceof Error ? e.message : "생성 실패", jobId: job.id }; }
   revalidatePath(`/campaigns/${campaignId}/sprites`);
   return { jobId: job.id, resultUrl, frames: spec.frames };
@@ -268,6 +310,47 @@ export async function deleteSpriteJob(campaignId: string, jobId: string): Promis
   if (files.length) await supabase.storage.from("sprites").remove(files);
   if (kids?.length) await supabase.from("sprite_jobs").delete().eq("parent_job_id", jobId);
   const { error } = await supabase.from("sprite_jobs").delete().eq("id", jobId);
+  if (error) return { error: error.message };
+  revalidatePath(`/campaigns/${campaignId}/sprites`);
+  return {};
+}
+
+const SPRITES_PUBLIC = "/storage/v1/object/public/sprites/";
+const storagePathOf = (url: string): string | null => { const i = url.indexOf(SPRITES_PUBLIC); return i < 0 ? null : decodeURIComponent(url.slice(i + SPRITES_PUBLIC.length).split("?")[0]!); };
+
+/**
+ * (GM) 원작 참고 세트 저장. 브라우저가 역할별 띠 PNG 를 sprites/<uid>/refs/… 에 올린 뒤 URL 을 넘긴다.
+ * 같은 세트·역할이 있으면 교체한다.
+ */
+export async function saveRefSet(campaignId: string, setName: string, items: { role: string; frames: number; url: string }[]): Promise<{ error?: string }> {
+  const { supabase, user, isGm } = await requireMember(campaignId);
+  if (!isGm) return { error: "GM만 참고 세트를 올릴 수 있습니다" };
+  const name = setName.trim().slice(0, 80);
+  if (!name) return { error: "세트 이름이 없습니다" };
+  if (!items.length || items.length > REF_ROLES.length) return { error: "역할이 없거나 너무 많습니다" };
+  for (const it of items) {
+    if (!isRefRole(it.role)) return { error: `알 수 없는 역할: ${it.role}` };
+    if (!Number.isInteger(it.frames) || it.frames < 1 || it.frames > 8) return { error: "칸 수가 올바르지 않습니다" };
+    if (!storagePathOf(it.url)?.startsWith(`${user.id}/refs/`)) return { error: "참고 이미지 URL 이 올바르지 않습니다" };
+  }
+  const { error } = await supabase.from("sprite_refs").upsert(
+    items.map((it) => ({ campaign_id: campaignId, created_by: user.id, set_name: name, role: it.role, frames: it.frames, url: it.url })),
+    { onConflict: "campaign_id,set_name,role" },
+  );
+  if (error) return { error: error.message };
+  revalidatePath(`/campaigns/${campaignId}/sprites`);
+  return {};
+}
+
+/** (GM) 참고 세트 삭제: 행과, 내가 올린 파일. 이미 보낸 작업 로그의 ref_urls 는 그대로 둔다 */
+export async function deleteRefSet(campaignId: string, setName: string): Promise<{ error?: string }> {
+  const { supabase, user, isGm } = await requireMember(campaignId);
+  if (!isGm) return { error: "GM만 지울 수 있습니다" };
+  const { data: rows } = await supabase.from("sprite_refs").select("id, url, created_by").eq("campaign_id", campaignId).eq("set_name", setName);
+  if (!rows?.length) return { error: "세트가 없습니다" };
+  const files = rows.filter((r) => r.created_by === user.id).map((r) => storagePathOf(r.url)).filter((p): p is string => !!p);
+  if (files.length) await supabase.storage.from("sprites").remove(files);
+  const { error } = await supabase.from("sprite_refs").delete().eq("campaign_id", campaignId).eq("set_name", setName);
   if (error) return { error: error.message };
   revalidatePath(`/campaigns/${campaignId}/sprites`);
   return {};

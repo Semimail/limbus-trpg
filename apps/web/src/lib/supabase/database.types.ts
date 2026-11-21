@@ -497,6 +497,54 @@ export type Database = {
           },
         ]
       }
+      sprite_refs: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          created_by: string
+          frames: number
+          id: string
+          role: string
+          set_name: string
+          url: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          created_by: string
+          frames?: number
+          id?: string
+          role: string
+          set_name: string
+          url: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          created_by?: string
+          frames?: number
+          id?: string
+          role?: string
+          set_name?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sprite_refs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sprite_refs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sprite_jobs: {
         Row: {
           campaign_id: string
@@ -519,6 +567,8 @@ export type Database = {
           prompt: string
           provider: string
           result_url: string | null
+          ref_set: string | null
+          ref_urls: string[] | null
           source_url: string | null
           status: Database["public"]["Enums"]["sprite_job_status"]
           usage: Json | null
@@ -544,6 +594,8 @@ export type Database = {
           prompt: string
           provider: string
           result_url?: string | null
+          ref_set?: string | null
+          ref_urls?: string[] | null
           source_url?: string | null
           status?: Database["public"]["Enums"]["sprite_job_status"]
           usage?: Json | null
@@ -569,6 +621,8 @@ export type Database = {
           prompt?: string
           provider?: string
           result_url?: string | null
+          ref_set?: string | null
+          ref_urls?: string[] | null
           source_url?: string | null
           status?: Database["public"]["Enums"]["sprite_job_status"]
           usage?: Json | null

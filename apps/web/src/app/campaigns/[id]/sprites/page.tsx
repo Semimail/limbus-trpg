@@ -22,10 +22,11 @@ export default async function SpritesPage({ params, searchParams }: { params: Pr
   if (!isGm) notFound();
   // 적 도감은 GM 만, 캐릭터는 본인 것(GM 은 캠페인 전체). 로그는 RLS 가 본인/GM 으로 거른다
   const charQuery = supabase.from("characters").select("id, name, owner_id, data").eq("campaign_id", id).order("name");
-  const [{ data: enemies }, { data: chars }, { data: jobs }] = await Promise.all([
+  const [{ data: enemies }, { data: chars }, { data: jobs }, { data: refs }] = await Promise.all([
     isGm ? supabase.from("enemies").select("id, name, data").eq("campaign_id", id).order("name") : Promise.resolve({ data: [] as { id: string; name: string; data: unknown }[] }),
     isGm ? charQuery : charQuery.eq("owner_id", user.id),
     supabase.from("sprite_jobs").select("*").eq("campaign_id", id).order("created_at", { ascending: false }).limit(200),
+    supabase.from("sprite_refs").select("*").eq("campaign_id", id).order("set_name").order("role"),
   ]);
   const providerName = (process.env.SPRITE_PROVIDER || "openai").toLowerCase();
   const configured = providerName === "mock" || !!process.env.OPENAI_API_KEY;
@@ -38,7 +39,7 @@ export default async function SpritesPage({ params, searchParams }: { params: Pr
       <SpriteStudio campaignId={id} isGm={isGm} initialTarget={initialTarget}
         enemies={(enemies ?? []).map((e) => { const d = e.data as unknown as Partial<EnemyData>; return { id: e.id, name: e.name, spriteUrl: d?.spriteUrl ?? null, skills: skillsOf(d?.skills) }; })}
         characters={(chars ?? []).map((c) => { const d = c.data as unknown as Partial<CharacterData>; return { id: c.id, name: c.name, mine: c.owner_id === user.id, spriteUrl: d?.spriteUrl ?? null, skills: [...skillsOf(d?.skills), ...skillsOf(d?.ego)] }; })}
-        jobs={jobs ?? []} provider={{ name: providerName, model, configured }} />
+        jobs={jobs ?? []} refs={refs ?? []} provider={{ name: providerName, model, configured }} />
     </div>
   );
 }

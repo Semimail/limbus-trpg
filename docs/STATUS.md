@@ -1,6 +1,6 @@
 # 진행 상황과 결정 (인수인계)
 
-마지막 갱신: 2026-11-20. 사이트: https://limbus-trpg.vercel.app · 저장소: github.com/Semimail/limbus-trpg
+마지막 갱신: 2026-11-21. 사이트: https://limbus-trpg.vercel.app · 저장소: github.com/Semimail/limbus-trpg
 
 ## 구현 완료
 - 로그인(디스코드), 사무소 허브(세션·의뢰 게시판·내 캐릭터·파티원·기록 보관소·적 도감·GM 패널·캠페인 삭제·룰 설정 링크), 초대 코드, 임시 GM.
@@ -151,6 +151,15 @@
 - 2026-11-20 사용자 확인: 스킬별 띠까지 실제 생성해 보고 "잘 되었어" (띠 자르기·재생·스킬 동작 구분 모두 사용 가능 상태).
 - 미결: 결과 PNG 여백 트리밍·축소(이미지 라이브러리 없음), 대량 생성 시 비용 관리(NPC 1명 풀 세트 ≈ 호출 11회).
 - 로컬 환경 메모: 2026-11-20 "환경 일치화" 항목 참고.
+
+## 공방 원작 참고 세트 (2026-11-21, 사용자 "추출한 인격·환상체 SD 를 참고해서 공방에서 새로 만들 수 있어?")
+- 결정: **원작 추출 SD 를 입력 이미지로 함께 보낸다**(이전 "원작 이미지는 참고로 보내지 않는다" 방침을 사용자 요청으로 뒤집음). 결과에 원작 그림을 그대로 쓰진 않는다.
+- 마이그레이션 **0014** — 테이블 `sprite_refs`(campaign_id·set_name·role·frames·url, GM 전용 RLS, (campaign, set, role) 유일) + `sprite_jobs.ref_urls text[]`·`ref_set text`. **적용 필요**(`scripts/db-push.ps1`).
+- 공방 페이지에 "원작 참고 스프라이트" 패널(`components/sprite/ref-panel.tsx`, GM): PC 의 `sd-pose-512/<그룹>/<프리팹>` 폴더를 통째로(webkitdirectory) 또는 파일 여러 장을 올리면 브라우저가 이름으로 역할을 정한다(`lib/sprite/refs.ts classifyRefFile`): idle/Default/idel/standing → 대기(스타일), dmg → 피격, miss → 회피, gud → 방어, dead → 전투불능, skill1_N·skill_N → 공격(프레임 고르게 최대 6칸), `이름__2` 는 같은 프레임의 다른 레이어라 발밑 가운데 기준으로 겹침. `_e`·숫자(피)·Fx_·mov·skill2/3 은 건너뜀. 폴더 없이 파일만 고르면 자세 파일은 "새 세트" 하나로(저장 전 이름 수정), 모르는 이름(sd-render 렌더)은 파일마다 대기 세트. `lib/sprite/refs-compose.ts composeRefStrip` 이 512×512 칸·공통 배율·발밑 정렬로 띠 PNG 를 만들어 `sprites/<uid>/refs/<세트>-<ts>/<역할>.png` 에 올리고 `saveRefSet`(upsert) 로 기록. 세트 삭제는 행 + 내 파일.
+- 생성(`actions.ts pickRefs`): 설정 `'off' | 'auto' | 세트 이름`(대기열 항목마다 선택, 포즈·띠는 부모 작업의 `ref_set` 을 따름). 스타일 참고 = 대기 그림 `SPRITE_REF_STYLE_COUNT`장(기본 2, 우선 세트 먼저·나머지 무작위) + 동작 예시 1장(모션 키 → 역할: attack/hit/evade/down, 스킬 띠는 공격→attack·방어→guard·회피→evade·반격→guard, idle·win 은 없음). 입력 순서 원본(또는 부모 대기) → 스타일 → 동작, 프롬프트가 `describeRefs` 로 "image N 은 다른 인물의 스타일 참고 / 같은 동작 예시, 정체성은 베끼지 말 것"을 설명. `provider.ts` 는 입력이 여러 장이면 `image[]` 로 edits 호출, 글만+참고 있으면 edits(참고만). **참고 붙인 요청이 400 이면 참고 없이 1회 재시도**하고 `usage.refsDropped` 에 오류를 남겨 로그에 붉게 표시.
+- 로그: "원작 참고 n장 (세트)" 표기, 프롬프트 펼치면 보낸 참고 썸네일.
+- 검증: typecheck·lint·build 통과. 합치기는 헤드리스 크롬에서 가짜 자세 파일로 확인(9프레임 → 6칸, 레이어 겹침, 세트 묶기). **실제 생성 품질(gpt-image-2.5 가 image[] 여러 장을 받는지 포함)은 키가 있는 배포본에서 확인 필요** — 거절되면 refsDropped 로 알 수 있다.
+- 미결: 환상체·시즌 보스의 `s{스킬}_f{프레임}_l{레이어}_p{부위}` 식 부위 레이어는 분류하지 않음(통째 세트는 Spine 렌더 idle 만 쓰는 게 낫다). 참고 세트는 캠페인별 저장(다른 캠페인에 재사용하려면 다시 올림).
 
 ## 환경 일치화: 사용자 Windows PC (2026-11-20)
 - 클라우드 샌드박스 → 사용자 PC로 옮김. 작업 폴더 `D:

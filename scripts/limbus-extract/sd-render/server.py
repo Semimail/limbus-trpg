@@ -5,6 +5,10 @@ extract.py 로 뽑은 `extracted/cache/sd/` (text: json+.atlas, tex: 페이지 p
 
     python sd-render/server.py --root extracted/cache/sd --out extracted/cache/sd-render --port 8765
 
+--root 는 여러 번 줄 수 있다(인격·E.G.O / 적 / 환상체 / 시즌 폴더를 따로 뽑았을 때). 각 root 의
+text/Resources_moved/Prefab/SD/ 아래를 깊이 제한 없이 훑어 .json 이 있는 폴더마다 항목을 만든다
+(id = 그 폴더의 상대 경로, 예 Personality/10401_Ryoshu_BaseAppearance, SEASON7/P1/xxx, 10113_YiSang_DerSchutzeAppearance).
+
 그 뒤 브라우저에서 http://127.0.0.1:8765/ 를 열면 자동으로 전부 렌더한다.
   ?only=Personality/10401_Ryoshu_BaseAppearance   하나만
   ?skip=1                                         이미 저장된 것은 건너뜀(기본)
@@ -28,23 +32,30 @@ def atlas_pages(path: str) -> list[str]:
     return [lines[i].strip() for i in range(len(lines) - 1) if lines[i + 1].startswith("size:")]
 
 
-def build_list(root: str) -> list[dict]:
-    """프리팹마다 (json, atlas) 쌍을 만든다. 이름이 같으면 짝, 아니면 남은 것끼리."""
-    text_root = os.path.join(root, "text", "Resources_moved", "Prefab", "SD")
-    tex_root = os.path.join(root, "tex", "Resources_moved", "Prefab", "SD")
+SD_REL = os.path.join("Resources_moved", "Prefab", "SD")
+
+
+def dirs_for(root: str, pid: str) -> tuple[str, str]:
+    """항목 id → (text 폴더, tex 폴더)."""
+    rel = pid.replace("/", os.sep)
+    return os.path.join(root, "text", SD_REL, rel), os.path.join(root, "tex", SD_REL, rel)
+
+
+def build_list(roots: list[str]) -> list[dict]:
+    """.json 이 있는 폴더(깊이 무관)마다 (json, atlas) 쌍을 만든다. 이름이 같으면 짝, 아니면 남은 것끼리."""
     out: list[dict] = []
-    for group in sorted(os.listdir(text_root)):
-        gdir = os.path.join(text_root, group)
-        if not os.path.isdir(gdir):
+    for root in roots:
+        text_root = os.path.join(root, "text", SD_REL)
+        if not os.path.isdir(text_root):
+            print(f"! {text_root} 없음", flush=True)
             continue
-        for prefab in sorted(os.listdir(gdir)):
-            pdir = os.path.join(gdir, prefab)
-            if not os.path.isdir(pdir):
-                continue
-            files = os.listdir(pdir)
+        for pdir, _dirs, files in sorted(os.walk(text_root)):
             jsons = sorted(f for f in files if f.endswith(".json"))
+            if not jsons:
+                continue
+            pid = os.path.relpath(pdir, text_root).replace(os.sep, "/")
             atlases = sorted(f for f in files if f.endswith(".atlas"))
-            texdir = os.path.join(tex_root, group, prefab)
+            texdir = dirs_for(root, pid)[1]
             texs = set(os.listdir(texdir)) if os.path.isdir(texdir) else set()
             pairs: list[tuple[str, str]] = []
             rest = list(atlases)
@@ -61,13 +72,12 @@ def build_list(root: str) -> list[dict]:
                 if rest:
                     pairs[i] = (pairs[i][0], rest.pop(0))
             for j, a in pairs:
-                pid = f"{group}/{prefab}"
                 if not a:
-                    out.append({"id": pid, "json": j, "atlas": None, "error": "atlas 없음"})
+                    out.append({"id": pid, "root": root, "json": j, "atlas": None, "error": "atlas 없음"})
                     continue
                 pages = atlas_pages(os.path.join(pdir, a))
                 missing = [p for p in pages if p not in texs and not resolve_page(texdir, p)]
-                entry = {"id": pid, "json": j, "atlas": a, "pages": pages, "stem": j[:-5]}
+                entry = {"id": pid, "root": root, "json": j, "atlas": a, "pages": pages, "stem": j[:-5]}
                 if missing:
                     entry["error"] = f"페이지 없음: {missing}"
                 out.append(entry)
@@ -153,9 +163,10 @@ class Server(ThreadingHTTPServer):
 
 class Handler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"  # keep-alive: 브라우저가 연결을 재사용(연결 폭주로 타임아웃 나던 것 완화)
-    root = ""
+    roots: list[str] = []
     out = ""
     listing: list[dict] = []
+    root_of: dict[str, str] = {}  # id → root
 
     def log_message(self, fmt, *args):  # 조용히
         if "/save" in (args[0] if args else ""):
@@ -182,11 +193,13 @@ class Handler(SimpleHTTPRequestHandler):
         if path.startswith("/sd/"):
             rel = path[4:]
             parts = rel.split("/")
-            if len(parts) != 3 or ".." in parts:
+            if len(parts) < 2 or ".." in parts or "" in parts:
                 return self._send(404, b"bad", "text/plain")
-            group, prefab, name = parts
-            textdir = os.path.join(self.root, "text", "Resources_moved", "Prefab", "SD", group, prefab)
-            texdir = os.path.join(self.root, "tex", "Resources_moved", "Prefab", "SD", group, prefab)
+            pid, name = "/".join(parts[:-1]), parts[-1]
+            root = self.root_of.get(pid)
+            if not root:
+                return self._send(404, b"unknown id", "text/plain")
+            textdir, texdir = dirs_for(root, pid)
             f = os.path.join(textdir, name) if os.path.isfile(os.path.join(textdir, name)) else resolve_page(texdir, name)
             if not f:
                 return self._send(404, b"not found", "text/plain")
@@ -214,19 +227,20 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def out_name(e: dict) -> str:
-    group, prefab = e["id"].split("/")
-    return f"{group}__{prefab}__{e['stem']}.png" if e.get("stem") else f"{group}__{prefab}.png"
+    base = e["id"].replace("/", "__")
+    return f"{base}__{e['stem']}.png" if e.get("stem") else f"{base}.png"
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", required=True)
+    ap.add_argument("--root", required=True, action="append", help="추출 폴더(text/·tex/ 가 있는 곳). 여러 번 가능")
     ap.add_argument("--out", required=True)
     ap.add_argument("--port", type=int, default=8765)
     a = ap.parse_args()
-    Handler.root = os.path.abspath(a.root)
+    Handler.roots = [os.path.abspath(r) for r in a.root]
     Handler.out = os.path.abspath(a.out)
-    Handler.listing = build_list(Handler.root)
+    Handler.listing = build_list(Handler.roots)
+    Handler.root_of = {e["id"]: e["root"] for e in Handler.listing}
     bad = [e for e in Handler.listing if e.get("error")]
     print(f"항목 {len(Handler.listing)}개, 문제 {len(bad)}개", flush=True)
     for e in bad:

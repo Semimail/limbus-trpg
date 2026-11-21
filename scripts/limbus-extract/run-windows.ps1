@@ -118,12 +118,20 @@ $Filters = @(
   # SD 스프라이트 (Spine): 인격 Prefab/SD/Personality, E.G.O Prefab/SD/EGO — 아틀라스 페이지(tex) + 스켈레톤·.atlas(text)
   @{ name = "sd";    types = "tex,text";   match = "Resources_moved/Prefab/SD/(Personality|EGO)/" },
   # SD 자세 스프라이트: 같은 프리팹 안의 Unity Sprite(idle/mov/gud/dmg/dead/skillN_M/…)를 아틀라스에서 잘라낸 PNG. Spine 은 idle 뿐이라 다른 자세는 이쪽
-  @{ name = "sd-pose"; types = "sprite";   match = "Resources_moved/Prefab/SD/(Personality|EGO)/" }
+  @{ name = "sd-pose"; types = "sprite";   match = "Resources_moved/Prefab/SD/(Personality|EGO)/" },
+  # 나머지 SD(2026-11-21 "환상체랑 다른 sd 전부"): 환상체 / 적 / 시즌 폴더·DeadScene·Prefab/SD 바로 아래 프리팹. Spine(tex,text)+자세 Sprite 한 번에
+  @{ name = "sd-abno";   types = "sprite,tex,text"; match = "Resources_moved/Prefab/SD/Abnormality/" },
+  @{ name = "sd-enemy";  types = "sprite,tex,text"; match = "Resources_moved/Prefab/SD/Enemy/" },
+  @{ name = "sd-season"; types = "sprite,tex,text"; match = "Resources_moved/Prefab/SD/(SEASON\d+|DeadScene)/|Resources_moved/Prefab/SD/[^/]+\.prefab$" },
+  # 배경: 스토리 배경(1920x1080) / 전투 맵 프리셋(2000x1200 바닥·벽·안개 레이어) / 거울 던전 배경
+  @{ name = "bg2";       types = "tex";             match = "Resources_moved/Story/Backgrounds/|Resources_moved/Prefab/Battle/BattleMapPresets/|Prefab/Dungeon/Mirror/Background/" },
+  # 스토리 스탠딩(LD): StandingModel(.psb 레이어 — standing-compose.py 로 합성) / StandingSprite(단장) / StoryPortrait
+  @{ name = "standing";  types = "sprite,tex,text"; match = "Resources_moved/Story/(StandingModel|StandingSprite|StoryPortrait)/" }
 )
 $step = 2
 foreach ($f in $Filters) {
   $dir = Join-Path $Out $f.name
-  Write-Host "== $step/7 $($f.name) 추출 (types=$($f.types), match=$($f.match)) → $dir"
+  Write-Host "== $step/12 $($f.name) 추출 (types=$($f.types), match=$($f.match)) → $dir"
   & $py extract.py @common --out $dir --types $f.types --match $f.match
   $step++
 }

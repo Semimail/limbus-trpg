@@ -65,18 +65,41 @@ async function renderOne(entry) {
     const sj = new spine.SkeletonJson(loader);
     const data = sj.readSkeletonData(am.require(entry.json));
     const skeleton = new spine.Skeleton(data);
-    const state = new spine.AnimationState(new spine.AnimationStateData(data));
+    // 기본 스킨이 비어 있고 이름 있는 스킨만 있는 스켈레톤(환상체 'normal'/'destroy' 등) → 스킨을 골라 준다
+    let skinName = q.get("skin") || null;
+    if (!skinName && data.skins.length > 1) {
+      const count = s => { let n = 0; for (const a of s.attachments) if (a) n += Object.keys(a).length; return n; };
+      const def = data.defaultSkin;
+      if (!def || count(def) === 0) {
+        const named = data.skins.filter(s => s !== def);
+        const pick = ["normal", "default", "idle", "base", "Normal", "Default"].map(n => named.find(s => s.name === n)).find(Boolean) || named[0];
+        skinName = pick && pick.name;
+      }
+    }
     const anim = q.get("anim") === "none" ? null : (q.get("anim") || pickAnimation(data));
-    if (anim) state.setAnimation(0, anim, true);
-    skeleton.setToSetupPose();
-    state.update(parseFloat(q.get("t") || "0"));
-    state.apply(skeleton);
-    skeleton.updateWorldTransform();
-    window.lastSkeleton = skeleton;
-
+    const t0 = parseFloat(q.get("t") || "0");
     const offset = new spine.Vector2(), size = new spine.Vector2();
-    skeleton.getBounds(offset, size, []);
-    if (!(size.x > 0 && size.y > 0)) throw new Error("빈 경계");
+    const pose = (skin, t) => {
+      if (skin) skeleton.setSkinByName(skin);
+      skeleton.setToSetupPose();
+      const state = new spine.AnimationState(new spine.AnimationStateData(data));
+      if (anim) state.setAnimation(0, anim, true);
+      state.update(t);
+      state.apply(skeleton);
+      skeleton.updateWorldTransform();
+      skeleton.getBounds(offset, size, []);
+      return size.x > 0 && size.y > 0;
+    };
+    // 첫 시도가 빈 경계면: 다른 스킨, 다른 시각(0.5·1초·2초) 순으로 다시 시도
+    let usedT = t0, ok = pose(skinName, t0);
+    if (!ok) {
+      const skins = [skinName, ...data.skins.map(s => s.name).filter(n => n !== skinName)];
+      outer: for (const t of [t0, 0.5, 1, 2]) for (const s of skins) {
+        if (pose(s, t)) { skinName = s; usedT = t; ok = true; break outer; }
+      }
+    }
+    window.lastSkeleton = skeleton;
+    if (!ok) throw new Error("빈 경계");
     let scale = SCALE;
     if (size.x * scale + PAD * 2 > MAX || size.y * scale + PAD * 2 > MAX) scale = Math.min((MAX - PAD * 2) / size.x, (MAX - PAD * 2) / size.y);
     const w = Math.ceil(size.x * scale) + PAD * 2, h = Math.ceil(size.y * scale) + PAD * 2;
@@ -96,15 +119,14 @@ async function renderOne(entry) {
     const name = outName(entry);
     const res = await fetch(`/save?name=${encodeURIComponent(name)}`, { method: "POST", body: blob });
     if (!res.ok) throw new Error("save " + res.status);
-    return { name, anim, w, h, pages: atlas.pages.length };
+    return { name, anim, skin: skinName, t: usedT, w, h, pages: atlas.pages.length };
   } finally {
     am.dispose();
   }
 }
 
 function outName(e) {
-  const [group, prefab] = e.id.split("/");
-  return `${group}__${prefab}__${e.stem}.png`;
+  return `${e.id.replace(/\//g, "__")}__${e.stem}.png`;
 }
 
 async function main() {
@@ -125,7 +147,7 @@ async function main() {
         e.pma = /^pma:\s*true/m.test(atlasText);
         const r = await renderOne(e);
         results.ok.push({ id: e.id, ...r });
-        log(`ok ${e.id} ${r.anim} ${r.w}x${r.h} pma=${e.pma}${attempt > 1 ? ` (재시도 ${attempt})` : ""}`);
+        log(`ok ${e.id} ${r.anim}${r.skin ? ` skin=${r.skin}` : ""}${r.t ? ` t=${r.t}` : ""} ${r.w}x${r.h} pma=${e.pma}${attempt > 1 ? ` (재시도 ${attempt})` : ""}`);
         lastErr = null;
         break;
       } catch (err) {

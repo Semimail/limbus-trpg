@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>SD 렌더</title>
+<style>
+  body { font: 13px/1.5 system-ui, sans-serif; background: #222; color: #ddd; margin: 0; padding: 12px; }
+  #log { white-space: pre-wrap; max-height: 40vh; overflow: auto; background: #111; padding: 8px; }
+  canvas { background: repeating-conic-gradient(#333 0 25%, #2a2a2a 0 50%) 0 0 / 24px 24px; }
+  #status { font-weight: bold; }
+</style>
+</head>
+<body>
+<div id="status">준비 중…</div>
+<div id="log"></div>
+<canvas id="c" width="64" height="64"></canvas>
+<script src="https://unpkg.com/@esotericsoftware/spine-webgl@4.0.31/dist/iife/spine-webgl.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+const SCALE = parseFloat(q.get("scale") || "0.5"); // 스켈레톤 단위 → 픽셀
+const PAD = 8;
+const MAX = 4096;
+const only = q.get("only");
+const skipDone = q.get("skip") !== "0";
+const statusEl = document.getElementById("status");
+const logEl = document.getElementById("log");
+const canvas = document.getElementById("c");
+const results = { ok: [], fail: [] };
+window.sdResults = results;
+
+function log(s) { logEl.textContent += s + "\n"; logEl.scrollTop = logEl.scrollHeight; }
+
+const ctx = new spine.ManagedWebGLRenderingContext(canvas, { alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
+const gl = ctx.gl;
+const renderer = new spine.SceneRenderer(canvas, ctx);
+
+function pickAnimation(data) {
+  const names = data.animations.map(a => a.name);
+  for (const n of ["idle", "Idle", "animation", "idle_body"]) if (names.includes(n)) return n;
+  return names[0] || null;
+}
+
+function loadAssets(entry) {
+  return new Promise((resolve, reject) => {
+    const prefix = `/sd/${entry.id}/`;
+    const am = new spine.AssetManager(ctx, prefix);
+    am.loadText(entry.json);
+    am.loadTextureAtlas(entry.atlas);
+    const t0 = performance.now();
+    const tick = () => {
+      if (am.isLoadingComplete()) return resolve(am);
+      if (am.hasErrors()) return reject(new Error(JSON.stringify(am.getErrors())));
+      if (performance.now() - t0 > 30000) return reject(new Error("timeout"));
+      setTimeout(tick, 30);
+    };
+    tick();
+  });
+}
+
+async function renderOne(entry) {
+  const am = await loadAssets(entry);
+  try {
+    const atlas = am.require(entry.atlas);
+    const loader = new spine.AtlasAttachmentLoader(atlas);
+    const sj = new spine.SkeletonJson(loader);
+    const data = sj.readSkeletonData(am.require(entry.json));
+    const skeleton = new spine.Skeleton(data);
+    const state = new spine.AnimationState(new spine.AnimationStateData(data));
+    const anim = q.get("anim") === "none" ? null : (q.get("anim") || pickAnimation(data));
+    if (anim) state.setAnimation(0, anim, true);
+    skeleton.setToSetupPose();
+    state.update(parseFloat(q.get("t") || "0"));
+    state.apply(skeleton);
+    skeleton.updateWorldTransform();
+    window.lastSkeleton = skeleton;
+
+    const offset = new spine.Vector2(), size = new spine.Vector2();
+    skeleton.getBounds(offset, size, []);
+    if (!(size.x > 0 && size.y > 0)) throw new Error("빈 경계");
+    let scale = SCALE;
+    if (size.x * scale + PAD * 2 > MAX || size.y * scale + PAD * 2 > MAX) scale = Math.min((MAX - PAD * 2) / size.x, (MAX - PAD * 2) / size.y);
+    const w = Math.ceil(size.x * scale) + PAD * 2, h = Math.ceil(size.y * scale) + PAD * 2;
+    canvas.width = w; canvas.height = h;
+    // renderer.resize() 는 CSS 크기(clientWidth)로 캔버스를 바꿔 버리므로 직접 설정
+    renderer.camera.setViewport(w, h);
+    renderer.camera.position.set(offset.x + size.x / 2, offset.y + size.y / 2, 0);
+    renderer.camera.zoom = 1 / scale;
+    renderer.camera.update();
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    renderer.begin();
+    renderer.drawSkeleton(skeleton, entry.pma);
+    renderer.end();
+    const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+    const name = outName(entry);
+    const res = await fetch(`/save?name=${encodeURIComponent(name)}`, { method: "POST", body: blob });
+    if (!res.ok) throw new Error("save " + res.status);
+    return { name, anim, w, h, pages: atlas.pages.length };
+  } finally {
+    am.dispose();
+  }
+}
+
+function outName(e) {
+  const [group, prefab] = e.id.split("/");
+  return `${group}__${prefab}__${e.stem}.png`;
+}
+
+async function main() {
+  let list = await (await fetch("/list")).json();
+  if (only) list = list.filter(e => e.id === only || e.id.endsWith("/" + only));
+  const todo = list.filter(e => !e.error && !(skipDone && e.done));
+  log(`전체 ${list.length}, 할 것 ${todo.length}, 문제 ${list.filter(e => e.error).length}`);
+  for (const e of list.filter(e => e.error)) { results.fail.push({ id: e.id, json: e.json, error: e.error }); log(`!! ${e.id} ${e.json}: ${e.error}`); }
+  let i = 0;
+  for (const e of todo) {
+    i++;
+    statusEl.textContent = `${i}/${todo.length} ${e.id} ${e.json}`;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        // 아틀라스의 pma 플래그
+        const atlasText = await (await fetch(`/sd/${e.id}/${encodeURIComponent(e.atlas)}`)).text();
+        e.pma = /^pma:\s*true/m.test(atlasText);
+        const r = await renderOne(e);
+        results.ok.push({ id: e.id, ...r });
+        log(`ok ${e.id} ${r.anim} ${r.w}x${r.h} pma=${e.pma}${attempt > 1 ? ` (재시도 ${attempt})` : ""}`);
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+      }
+    }
+    if (lastErr) {
+      results.fail.push({ id: e.id, json: e.json, error: String(lastErr && lastErr.message || lastErr) });
+      log(`!! ${e.id} ${e.json}: ${lastErr && lastErr.message || lastErr}`);
+    }
+  }
+  statusEl.textContent = `끝: 성공 ${results.ok.length}, 실패 ${results.fail.length}`;
+  window.sdDone = true;
+}
+main().catch(e => { statusEl.textContent = "오류 " + e; log(String(e.stack || e)); window.sdDone = true; });
+</script>
+</body>
+</html>

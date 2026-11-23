@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient, realtimeReady } from "@/lib/supabase/client";
 import { STATUS_IDS, SIN_LABEL, SINS, slotKey, isCorroded, dist, skillRange, estimateClash, describeEffect, erosionStageChanged, erosionStage, EROSION_STAGE_LABEL, type CombatState, type Unit, type StatusId, type Skill, type Pos, type RuleConfig, type Pick, type Sin } from "@limbus/rules";
-import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction, redrawHandAction } from "@/app/campaigns/[id]/sessions/[sid]/combat-actions";
+import { setPickAction, resolveRoundAction, endCombatAction, gmAdjustUnitAction, redrawHandAction, rerollEnemyPicksAction } from "@/app/campaigns/[id]/sessions/[sid]/combat-actions";
 import { revealToAll } from "@/app/campaigns/[id]/enemies/actions";
 import { formatRound, unitNames } from "@/lib/combat-log";
 import { SinIcon, DamageIcon, DefenseIcon, CoinIcon, StatusBadge, StatusIcon, BACKGROUNDS } from "@/components/icons";
@@ -18,7 +18,9 @@ import { ErosionReveal, type ErosionCard } from "./erosion-reveal";
  *  - 조각 이름 ↔ 원작 스프라이트 대응은 scripts/limbus-extract/README.md "전투 UI 조각" 절. 폰트: Excelsior(제목)·BebasKai(숫자)·SCDream(본문).
  *  - 좌상단 TURN/ENEMY 프레임, 왼쪽 행동 순서, 우상단 버튼, 오른쪽 유닛 카드(적은 공개된 기믹만), 우하단 로그, 붉은 원형 START.
  *  - 가운데 아래 림버스식 스킬 슬롯 띠: 자기 캐릭터의 다이스를 누르면 1·2·3번 손패/방어/E.G.O를 골라 올리고,
- *    다이스를 끌어(또는 적을 눌러) 대상을 정한다. 남의 캐릭터는 보기만.
+ *    다이스를 끌어(또는 상대를 눌러) 대상을 정한다. 남의 캐릭터는 GM 이라도 보기만. "선택 완료" 단계는 없다 — 고른 스킬이 곧 선택.
+ *  - 적의 스킬은 GM 이 같은 띠에서 지정한다(라운드 시작 때는 무작위로 깔리고, "무작위" 버튼으로 다시 굴릴 수 있다).
+ *  - 아래 줄은 스킬 띠 + 승률/피해량 + START 를 한 덩어리로 가운데 모은다(넓은 화면에서 멀리 떨어지지 않게).
  */
 
 export interface EnemyInfo { threat: string; description: string; gimmicks: { id: string; name: string; text: string }[]; revealed: string[] }
@@ -120,9 +122,10 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   useEffect(() => { const prev = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = prev; }; }, []);
 
   const names = useMemo(() => unitNames(state), [state]);
-  const mine = useCallback((u: Unit) => isGm || (u.source.kind === "character" && u.source.ownerId === meId), [isGm, meId]);
-  const myUnits = state.units.filter((u) => u.side === "ally" && mine(u) && !u.incapacitated);
-  const [selId, setSelId] = useState<string | null>(() => initial.units.find((u) => u.side === "ally" && !u.incapacitated && (isGm || (u.source.kind === "character" && u.source.ownerId === meId)))?.id ?? null);
+  // 조종 권한: 캐릭터는 주인만(GM 이라도 남의 캐릭터는 못 건드린다), 적은 GM 만
+  const mine = useCallback((u: Unit) => (u.source.kind === "character" ? u.source.ownerId === meId : isGm), [isGm, meId]);
+  const myUnits = state.units.filter((u) => mine(u) && !u.incapacitated);
+  const [selId, setSelId] = useState<string | null>(() => { const ctrl = (u: Unit) => !u.incapacitated && (u.source.kind === "character" ? u.source.ownerId === meId : isGm); return (initial.units.find((u) => u.side === "ally" && ctrl(u)) ?? initial.units.find(ctrl))?.id ?? null; });
   const selected = state.units.find((u) => u.id === selId) ?? null;
   const allyUnpicked = state.slots.filter((s) => state.units.find((x) => x.id === s.combatantId)!.side === "ally" && !state.picks[slotKey(s.combatantId, s.slot)]);
   const alliesAlive = state.units.filter((u) => u.side === "ally" && !u.incapacitated).length;
@@ -142,6 +145,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
 
   const act = (fn: () => Promise<{ error?: string; state?: CombatState }>) => start(async () => { setErr(null); const r = await fn(); if (r.error) setErr(r.error); if (r.state) applyState(r.state); });
   const pick = (unitId: string, slot: number, p: Pick | null) => act(() => setPickAction(campaignId, combatId, unitId, slot, p));
+  const reroll = (unitId?: string) => act(() => rerollEnemyPicksAction(campaignId, combatId, unitId));
 
   /* ---- 드래그 ---- */
   const [drag, setDrag] = useState<{ payload: DragPayload; x: number; y: number; over: DropId | null } | null>(null);
@@ -173,9 +177,9 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   }, []);
 
   const buildPick = (unitId: string, skillId: string, target: DropId): Pick | string => {
-    if (target.kind === "cell") return "스킬은 적에게 놓아야 합니다";
-    const t = state.units.find((u) => u.id === target.unitId);
-    if (!t || t.side === "ally") return "적에게 놓아야 합니다";
+    if (target.kind === "cell") return "스킬은 상대에게 놓아야 합니다";
+    const me = state.units.find((u) => u.id === unitId); const t = state.units.find((u) => u.id === target.unitId);
+    if (!me || !t || t.side === me.side) return "상대편에게 놓아야 합니다";
     if (target.kind === "unit") return { skillId, targetId: t.id };
     const tp = state.picks[slotKey(t.id, target.slot)];
     if (tp && tp.targetId === unitId) return { skillId, targetId: t.id };                       // 서로 노림 → 합
@@ -237,7 +241,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
     const slot = drag.payload.kind === "die" ? drag.payload.slot : dieFor(unit.id);
     const skillId = drag.payload.kind === "skill" ? drag.payload.skillId : slot !== undefined ? (loaded[slotKey(unit.id, slot)] ?? state.picks[slotKey(unit.id, slot)]?.skillId) : undefined;
     const skill = unit.skills.find((s) => s.id === skillId); if (!skill) return null;
-    const t = state.units.find((u) => u.id === (drag.over as { unitId: string }).unitId); if (!t || t.side === "ally") return null;
+    const t = state.units.find((u) => u.id === (drag.over as { unitId: string }).unitId); if (!t || t.side === unit.side) return null;
     const d = state.grid ? dist(unit.pos, t.pos) : 0;
     const outOfRange = !!state.grid && d > skillRange(skill) && !(drag.over.kind === "slot" && protectMode[unit.id]);
     let vs: { skill: Skill; est: ReturnType<typeof estimateClash> } | null = null;
@@ -257,14 +261,14 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
     const out: Record<string, ReturnType<typeof estimateClash>> = {};
     for (const [k, p] of Object.entries(state.picks)) {
       const [uid] = k.split(":"); const a = state.units.find((u) => u.id === uid); const t = state.units.find((u) => u.id === p.targetId);
-      if (!a || !t || a.side !== "ally") continue;
+      if (!a || !t || (a.side !== "ally" && !isGm)) continue; // 적 쪽 승률은 GM 에게만
       const opp = Object.entries(state.picks).find(([k2, p2]) => k2.startsWith(t.id + ":") && p2.targetId === a.id && (p.targetSlot === undefined || Number(k2.split(":")[1]) === p.targetSlot));
       const tp = opp?.[1] ?? (p.targetSlot !== undefined ? state.picks[slotKey(t.id, p.targetSlot)] : undefined);
       const as = a.skills.find((s) => s.id === p.skillId), ts = tp ? t.skills.find((s) => s.id === tp.skillId) : undefined;
       if (as && ts) out[k] = estimateClash(as, a.sanity, ts, t.sanity, rules, 150);
     }
     return out;
-  }, [state, rules, showOdds]);
+  }, [state, rules, showOdds, isGm]);
 
   const phaseText = state.phase === "select" ? "선택 단계" : state.phase === "ended" ? (state.winner === "ally" ? "승리" : "패배") : "처리 중";
   const pickerUnit = picker ? state.units.find((u) => picker.startsWith(u.id + ":")) : undefined;
@@ -275,24 +279,27 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
     const key = slotKey(pickerUnit.id, pickerSlot); const cur = state.picks[key];
     const sk = pickerUnit.skills.find((s) => s.id === (cur?.skillId ?? loaded[key])); if (!sk) return null;
     const opts: { value: string; label: string }[] = [];
-    for (const t of state.units.filter((x) => x.side === "enemy" && !x.incapacitated)) {
+    for (const t of state.units.filter((x) => x.side !== pickerUnit.side && !x.incapacitated)) {
       const d = state.grid ? dist(pickerUnit.pos, t.pos) : 0; const oor = !!state.grid && d > skillRange(sk);
       opts.push({ value: `unit|${t.id}`, label: `${names[t.id]} · 일방 공격${state.grid ? ` · 거리 ${d}` : ""}${oor ? " · 사거리 밖" : ""}` });
       for (const s of state.slots.filter((x) => x.combatantId === t.id)) {
         const tp = state.picks[slotKey(t.id, s.slot)]; const ts = tp ? t.skills.find((x) => x.id === tp.skillId) : undefined;
         const mode = tp?.targetId === pickerUnit.id ? "합" : protectMode[pickerUnit.id] ? "보호" : "가로채기";
         const est = ts ? estimateClash(sk, pickerUnit.sanity, ts, t.sanity, rules, 120) : null;
-        opts.push({ value: `slot|${t.id}|${s.slot}`, label: `${names[t.id]} 다이스 ${s.speed} · ${ts ? (isGm ? ts.name : "???") : "미선택"} · ${mode}${est ? ` · ${est.label} ${Math.round(est.winRate * 100)}%` : ""}${oor && mode !== "보호" ? " · 사거리 밖" : ""}` });
+        opts.push({ value: `slot|${t.id}|${s.slot}`, label: `${names[t.id]} 다이스 ${s.speed} · ${ts ? (t.side === "enemy" && !isGm ? "???" : ts.name) : "미선택"} · ${mode}${est ? ` · ${est.label} ${Math.round(est.winRate * 100)}%` : ""}${oor && mode !== "보호" ? " · 사거리 밖" : ""}` });
       }
     }
     const value = cur ? (cur.targetSlot !== undefined ? `slot|${cur.targetId}|${cur.targetSlot}` : `unit|${cur.targetId}`) : "";
     return { opts, value, locked: !!cur?.locked };
   }, [pickerUnit, pickerSlot, state, loaded, protectMode, rules, isGm, names]);
+  // 지금 대상이 되는 편: 끌고 있는(없으면 활성) 다이스 주인의 반대편. 적 다이스를 다루는 GM 은 아군이 대상
+  const ctrlId = drag?.payload.unitId ?? activeDie?.split(":")[0];
+  const targetSide: "ally" | "enemy" = state.units.find((u) => u.id === ctrlId)?.side === "enemy" ? "ally" : "enemy";
   const sinCounts = useMemo(() => { const c: Partial<Record<Sin, number>> = {}; for (const [k, p] of Object.entries(state.picks)) { const u = state.units.find((x) => k.startsWith(x.id + ":")); if (u?.side !== "ally") continue; const s = u.skills.find((x) => x.id === p.skillId); if (s) c[s.sin] = (c[s.sin] ?? 0) + 1; } return c; }, [state]);
 
   return (
     <div className="battle fixed inset-0 z-40 select-none overflow-hidden">
-      <Arena state={state} names={names} isGm={isGm} selId={selId} onSelect={setSelId} mine={mine} drag={drag} background={background}
+      <Arena state={state} names={names} isGm={isGm} selId={selId} onSelect={setSelId} mine={mine} drag={drag} background={background} targetSide={targetSide}
         startDrag={startDrag} draggedRef={draggedRef} loaded={loaded} activeDie={activeDie} onEnemyTap={targetByClick} odds={odds} oddsMode={oddsMode} play={playStep} playKey={play?.i ?? -1} onPlayTap={play ? playNext : undefined} cutin={cutin} thresholds={rules.staggerThresholds} />
 
       {/* 좌상단 HUD */}
@@ -307,7 +314,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
           </span>
         </div>
         <HudFrame img="hud-enemy" value={enemiesAlive} title="남은 적" />
-        <span className="b-plate-d ml-1 px-3 py-0.5 text-[11px]">{phaseText}{state.phase === "select" && allyUnpicked.length ? ` · 미선택 ${allyUnpicked.length}` : state.phase === "select" ? " · 준비 완료" : ""}</span>
+        <span className="b-plate-d ml-1 px-4 py-0.5 text-[11px]">{phaseText}</span>
       </div>
       {/* 상단 가운데: 연출 띠 / 오류·공지 (영상의 "차례" 띠 자리) */}
       <div className="pointer-events-none absolute left-1/2 top-2 z-10 flex w-[min(80vw,40rem)] -translate-x-1/2 flex-col items-center gap-1 text-xs">
@@ -350,13 +357,13 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       </div>
 
       {/* 오른쪽: 죄악 자원(아군 선택 스킬 속성 수) */}
-      <div className="absolute right-2 top-1/2 z-10 hidden -translate-y-1/2 flex-col gap-1 lg:flex" style={{ marginTop: "-2rem" }}>
-        {SINS.map((s) => <span key={s} className="flex items-center gap-1 text-[11px] tabular-nums"><SinIcon sin={s} size={18} /><span className={sinCounts[s] ? "b-gold font-bold" : "b-muted"}>{sinCounts[s] ?? 0}</span></span>)}
+      <div className="absolute right-2 top-1/2 z-10 hidden -translate-y-1/2 flex-col gap-1 lg:flex" style={{ marginTop: "-1rem" }}>
+        {SINS.map((s) => <span key={s} className="b-res flex items-center gap-2" title={`${SIN_LABEL[s]} 자원 (아군이 고른 ${SIN_LABEL[s]} 스킬 수)`}><SinIcon sin={s} size={30} /><span className={`b-num text-2xl leading-none ${sinCounts[s] ? "b-gold" : "b-muted"}`}>{sinCounts[s] ?? 0}</span></span>)}
       </div>
 
       {/* 오른쪽: 유닛 카드 */}
       {selected && !play ? (
-        <div className="absolute right-2 top-16 z-10 w-[min(92vw,20rem)] max-h-[46vh] overflow-y-auto md:right-14 lg:right-16">
+        <div className="absolute right-2 top-16 z-10 w-[min(92vw,21rem)] max-h-[46vh] overflow-y-auto md:right-16 lg:right-28">
           <UnitCard u={selected} state={state} isGm={isGm} names={names} rules={rules} campaignId={campaignId} combatId={combatId} onApply={applyState} onClose={() => setSelId(null)} info={selected.source.kind === "enemy" ? enemyInfo[selected.source.id] : undefined} />
         </div>
       ) : null}
@@ -377,7 +384,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       {/* 가운데 아래: 상태 바 + 스킬 팝업 + 스킬 띠 */}
       {state.phase === "select" && myUnits.length > 0 ? (
         <>
-          {selected && mine(selected) && selected.side === "ally" && !(pickerUnit && mine(pickerUnit)) ? (
+          {selected && mine(selected) && !(pickerUnit && mine(pickerUnit)) ? (
             <div className="pointer-events-none absolute inset-x-0 bottom-[13.4rem] z-10 flex justify-center px-2">
               <StatusBar u={selected} state={state} rules={rules} protect={!!protectMode[selected.id]} setProtect={(v) => setProtectMode((m) => ({ ...m, [selected.id]: v }))}
                 onRedraw={() => { if (confirm(`빛 ${rules.lightRedrawCost}을 써서 손패를 교체할까요? (남은 빛 ${selected.light})`)) act(() => redrawHandAction(campaignId, combatId, selected.id)); }}
@@ -391,24 +398,25 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
                 onClear={() => { const k = slotKey(pickerUnit.id, pickerSlot); if (state.picks[k]) pick(pickerUnit.id, pickerSlot, null); else setLoaded((l) => { const n = { ...l }; delete n[k]; return n; }); }} />
             </div>
           ) : null}
-          <div className="absolute inset-x-0 bottom-8 z-10 flex justify-center">
-            <SkillStrip units={myUnits} state={state} names={names} rules={rules} loaded={loaded} activeDie={activeDie} picker={picker} selId={selId} odds={odds}
-              onDie={(u, slot) => { const k = slotKey(u.id, slot); setActiveDie(k); setSelId(u.id); setPicker(picker === k ? null : k); }}
-              onPortrait={(u) => { setSelId(u.id); const d = firstFreeDie(u.id); if (d) setActiveDie(slotKey(u.id, d.slot)); }}
-              onDefense={(u, s) => { const slot = dieFor(u.id); if (slot !== undefined) chooseSkill(u, slot, s); }}
-              onCancel={(u, slot) => { const k = slotKey(u.id, slot); if (state.picks[k]) pick(u.id, slot, null); else setLoaded((l) => { const n = { ...l }; delete n[k]; return n; }); }}
-              startDrag={startDrag} />
-          </div>
         </>
       ) : null}
 
-      {/* 우하단: 라운드 버튼 */}
-      <div className="absolute bottom-10 right-3 z-20 flex flex-col items-center gap-1 md:bottom-12 md:right-5">
-        <div className="flex items-end gap-1">
-          <div className="mb-3 mr-3 hidden flex-col items-end gap-1 md:flex">
-            <button type="button" onClick={() => setOddsMode(oddsMode === "odds" ? "off" : "odds")} title="합 승률 표시" className="relative h-8 w-[4.3rem] pr-4 text-[11px] font-black text-[#ffd0d0]" style={{ backgroundImage: `url(${ui(oddsMode === "odds" ? "plate-red-on" : "plate-red-off")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>승률</button>
-            <button type="button" onClick={() => setOddsMode(oddsMode === "power" ? "off" : "power")} title="기대 위력 표시" className="relative h-8 w-[4.3rem] pr-4 text-[11px] font-black text-[#ffd0d0]" style={{ backgroundImage: `url(${ui(oddsMode === "power" ? "plate-red-on" : "plate-red-off")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>피해량</button>
-            <span className="b-muted text-[10px] tabular-nums">선택 {state.slots.filter((s) => state.units.find((x) => x.id === s.combatantId)!.side === "ally").length - allyUnpicked.length}/{state.slots.filter((s) => state.units.find((x) => x.id === s.combatantId)!.side === "ally").length}</span>
+      {/* 아래 줄: 스킬 띠 + 승률/피해량 + 라운드 버튼을 한 덩어리로 가운데에 (넓은 화면에서 멀리 떨어지지 않게) */}
+      <div className="absolute inset-x-0 bottom-9 z-10 flex items-end justify-center gap-2 px-2 md:gap-4">
+        {state.phase === "select" && myUnits.length > 0 ? (
+          <SkillStrip units={myUnits} state={state} names={names} rules={rules} loaded={loaded} activeDie={activeDie} picker={picker} selId={selId} odds={odds}
+            onDie={(u, slot) => { const k = slotKey(u.id, slot); setActiveDie(k); setSelId(u.id); setPicker(picker === k ? null : k); }}
+            onPortrait={(u) => { setSelId(u.id); const d = firstFreeDie(u.id); if (d) setActiveDie(slotKey(u.id, d.slot)); }}
+            onDefense={(u, s) => { const slot = dieFor(u.id); if (slot !== undefined) chooseSkill(u, slot, s); }}
+            onCancel={(u, slot) => { const k = slotKey(u.id, slot); if (state.picks[k]) pick(u.id, slot, null); else setLoaded((l) => { const n = { ...l }; delete n[k]; return n; }); }}
+            onReroll={isGm ? (u) => reroll(u.id) : undefined}
+            startDrag={startDrag} />
+        ) : null}
+        <div className="z-20 flex shrink-0 items-end gap-2 pb-1 md:pb-2">
+          <div className="mb-2 hidden flex-col items-end gap-1 md:flex">
+            <button type="button" onClick={() => setOddsMode(oddsMode === "odds" ? "off" : "odds")} title="합 승률 표시" className="relative h-9 w-[4.8rem] pr-5 text-[12px] font-black text-[#ffd0d0]" style={{ backgroundImage: `url(${ui(oddsMode === "odds" ? "plate-red-on" : "plate-red-off")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>승률</button>
+            <button type="button" onClick={() => setOddsMode(oddsMode === "power" ? "off" : "power")} title="기대 위력 표시" className="relative h-9 w-[4.8rem] pr-5 text-[12px] font-black text-[#ffd0d0]" style={{ backgroundImage: `url(${ui(oddsMode === "power" ? "plate-red-on" : "plate-red-off")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>피해량</button>
+            {isGm && state.phase === "select" && enemiesAlive > 0 ? <button type="button" disabled={pending} onClick={() => reroll()} title="모든 적의 선택을 무작위로 다시 고릅니다 (확정된 것은 유지)" className="b-tabx px-3 py-0.5 text-[10px]">적 무작위</button> : null}
           </div>
           <RoundButton isGm={isGm} phase={state.phase} winner={state.winner} pending={pending} unpicked={allyUnpicked.length} playing={!!play} onNext={playNext}
             onStart={() => act(() => resolveRoundAction(campaignId, combatId))} onClose={() => router.refresh()} />
@@ -416,8 +424,8 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       </div>
 
       {/* 맨 아래 바 */}
-      <div className="b-banner absolute inset-x-0 bottom-0 z-20 flex h-8 items-center gap-1 px-2 text-[11px]">
-        <span className="b-logo mr-1 hidden px-2 py-0.5 text-[9px] font-black leading-none tracking-wider sm:block">LIMBUS<br />TRPG</span>
+      <div className="b-banner absolute inset-x-0 bottom-0 z-20 flex h-9 items-center gap-1.5 px-2 text-[11px]">
+        <span className="b-logo b-num mr-1 hidden px-2 py-0.5 text-[10px] leading-none tracking-wider sm:block">LIMBUS<br />TRPG</span>
         <button type="button" className={`b-tabx ${drawer === null ? "b-tabx-on" : ""}`} onClick={() => setDrawer(null)}>전투</button>
         <button type="button" className={`b-tabx ${drawer === "chat" ? "b-tabx-on" : ""}`} onClick={() => setDrawer(drawer === "chat" ? null : "chat")}>채팅</button>
         <button type="button" className={`b-tabx ${drawer === "log" ? "b-tabx-on" : ""}`} onClick={() => setDrawer(drawer === "log" ? null : "log")}>로그</button>
@@ -561,8 +569,9 @@ function Tracker({ state, names, selId, onSelect, className }: { state: CombatSt
 // 바닥 좌표 (u: 가로 0~1, v: 깊이 0=뒤 1=앞). 아군은 왼쪽 앞에서 뒤로 지그재그, 적은 좌우 반전
 const FORMATION: [number, number][] = [[0.17, 0.92], [0.31, 0.68], [0.43, 0.96], [0.10, 0.60], [0.47, 0.72], [0.25, 0.46], [0.37, 0.42], [0.06, 0.80], [0.20, 0.30], [0.44, 0.52]];
 
-function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, draggedRef, loaded, activeDie, onEnemyTap, odds, oddsMode, play, playKey, onPlayTap, background, cutin, thresholds }: {
+function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, draggedRef, loaded, activeDie, onEnemyTap, odds, oddsMode, play, playKey, onPlayTap, background, cutin, thresholds, targetSide }: {
   state: CombatState; names: Record<string, string>; isGm: boolean; selId: string | null; onSelect: (id: string | null) => void; mine: (u: Unit) => boolean; /** 흐트러짐 구간 (체력 바 눈금) */ thresholds: number[];
+  /** 지금 대상이 되는 편 (내 다이스의 반대편). 그 편의 유닛·다이스만 놓기/누르기 대상이 된다 */ targetSide: "ally" | "enemy";
   drag: { payload: DragPayload; over: DropId | null } | null; startDrag: (p: DragPayload) => (e: RPointerEvent) => void; draggedRef: React.MutableRefObject<boolean>;
   loaded: Record<string, string>; activeDie: string | null; onEnemyTap: (t: DropId) => boolean; odds: Record<string, ReturnType<typeof estimateClash>>;
   oddsMode: "odds" | "power" | "off"; play: PlayStep | null; /** 연출 단계 번호 (바뀔 때마다 모션 재생) */ playKey: number; onPlayTap?: () => void; background: string | null; cutin: boolean;
@@ -647,8 +656,8 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
       {ordered.map((u) => { const f = foot(u); const isSel = u.id === selId; const over = overId && overId.kind === "unit" && overId.unitId === u.id; const d = tokenD(u); const sh = spriteH(u);
         return (
           <div key={u.id} className={`absolute ${u.incapacitated ? "opacity-40 grayscale" : ""}`} style={{ left: f.x, top: f.y, width: 0, height: 0 }}>
-            <button type="button" data-drop={u.side === "enemy" ? `unit|${u.id}` : undefined}
-              onClick={() => { if (draggedRef.current) return; if (u.side === "enemy" && !u.incapacitated && onEnemyTap({ kind: "unit", unitId: u.id })) { onSelect(u.id); return; } onSelect(isSel ? null : u.id); }} title={names[u.id]}
+            <button type="button" data-drop={u.side === targetSide ? `unit|${u.id}` : undefined}
+              onClick={() => { if (draggedRef.current) return; if (u.side === targetSide && !u.incapacitated && onEnemyTap({ kind: "unit", unitId: u.id })) { onSelect(u.id); return; } onSelect(isSel ? null : u.id); }} title={names[u.id]}
               className="absolute bottom-0 left-0 flex -translate-x-1/2 items-end justify-center" style={{ width: u.spriteUrl ? sh * 0.6 : d, height: u.spriteUrl ? sh : d }}>
               {u.spriteUrl ? (
                 <span className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2">
@@ -672,13 +681,13 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
           </div>
         ); })}
       {/* 속도 다이스 (머리 위) */}
-      {ordered.filter((u) => !u.incapacitated).map((u) => { const ss = slotsOf(u); if (!ss.length) return null; const my = mine(u) && u.side === "ally"; const ds = dieSize(u);
+      {ordered.filter((u) => !u.incapacitated).map((u) => { const ss = slotsOf(u); if (!ss.length) return null; const my = mine(u); const ds = dieSize(u);
         return ss.map((s, i) => { const key = slotKey(u.id, s.slot); const p = state.picks[key]; const sk = p ? u.skills.find((x) => x.id === p.skillId) : (my && loaded[key] ? u.skills.find((x) => x.id === loaded[key]) : undefined); const dp = diePos(u, i, ss.length);
           const over = overId?.kind === "slot" && overId.unitId === u.id && overId.slot === s.slot;
           const hidden = u.side === "enemy" && !isGm; const o = odds[key];
           return (
-            <button key={key} type="button" data-drop={u.side === "enemy" ? `slot|${u.id}|${s.slot}` : undefined} onPointerDown={my && sk && !p?.locked && state.phase === "select" ? startDrag({ kind: "die", unitId: u.id, slot: s.slot }) : undefined}
-              onClick={() => { if (draggedRef.current) return; if (u.side === "enemy" && onEnemyTap({ kind: "slot", unitId: u.id, slot: s.slot })) { onSelect(u.id); return; } onSelect(u.id); }} title={`${names[u.id]} 속도 ${s.speed}${sk ? ` · ${hidden ? "???" : sk.name}${p ? ` → ${names[p.targetId]}` : " (대상 없음)"}` : ""}`}
+            <button key={key} type="button" data-drop={u.side === targetSide ? `slot|${u.id}|${s.slot}` : undefined} onPointerDown={my && sk && !p?.locked && state.phase === "select" ? startDrag({ kind: "die", unitId: u.id, slot: s.slot }) : undefined}
+              onClick={() => { if (draggedRef.current) return; if (u.side === targetSide && onEnemyTap({ kind: "slot", unitId: u.id, slot: s.slot })) { onSelect(u.id); return; } onSelect(u.id); }} title={`${names[u.id]} 속도 ${s.speed}${sk ? ` · ${hidden ? "???" : sk.name}${p ? ` → ${names[p.targetId]}` : " (대상 없음)"}` : ""}`}
               className={`absolute -translate-x-1/2 -translate-y-1/2 ${my && sk ? "touch-none cursor-grab" : ""}`} style={{ left: dp.x, top: dp.y, width: ds, height: ds }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={ui(u.side === "enemy" ? "die-enemy-fill" : "slot-base")} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={u.side === "enemy" ? { filter: "brightness(.55)" } : undefined} />
@@ -788,7 +797,7 @@ export function SkillChip({ skill, size, glow, selected, bare }: { skill: Skill;
 /* ---------- 상태 바 (선택한 내 유닛) ---------- */
 function StatusBar({ u, state, rules, protect, setProtect, onRedraw, hint }: { u: Unit; state: CombatState; rules: RuleConfig; protect: boolean; setProtect: (v: boolean) => void; onRedraw: () => void; hint: string }) {
   const corroded = isCorroded(u, state.round);
-  const protectable = Object.entries(state.picks).some(([k, p]) => { const a = state.units.find((x) => x.id === k.split(":")[0]); const v = state.units.find((x) => x.id === p.targetId); return !!a && a.side === "enemy" && !!v && v.side === "ally" && v.id !== u.id && !v.incapacitated && (!state.grid || dist(v.pos, u.pos) <= rules.protectRange); });
+  const protectable = u.side === "ally" && Object.entries(state.picks).some(([k, p]) => { const a = state.units.find((x) => x.id === k.split(":")[0]); const v = state.units.find((x) => x.id === p.targetId); return !!a && a.side === "enemy" && !!v && v.side === "ally" && v.id !== u.id && !v.incapacitated && (!state.grid || dist(v.pos, u.pos) <= rules.protectRange); });
   return (
     <div className="b-plate-d pointer-events-auto flex max-w-[min(96vw,52rem)] flex-wrap items-center gap-x-3 gap-y-1 px-5 py-1.5 text-xs" style={{ minHeight: 36 }}>
       <b className="b-gold">{u.name}</b>
@@ -860,12 +869,12 @@ function SkillPicker({ unit, slot, state, loaded, startDrag, onPick, onClose, ta
 }
 
 /* ---------- 하단 스킬 띠 (림버스 슬롯) ---------- */
-function SkillStrip({ units, state, names, rules, loaded, activeDie, picker, selId, odds, onDie, onPortrait, onDefense, onCancel, startDrag }: {
+function SkillStrip({ units, state, names, rules, loaded, activeDie, picker, selId, odds, onDie, onPortrait, onDefense, onCancel, onReroll, startDrag }: {
   units: Unit[]; state: CombatState; names: Record<string, string>; rules: RuleConfig; loaded: Record<string, string>; activeDie: string | null; picker: string | null; selId: string | null; odds: Record<string, ReturnType<typeof estimateClash>>;
-  onDie: (u: Unit, slot: number) => void; onPortrait: (u: Unit) => void; onDefense: (u: Unit, s: Skill) => void; onCancel: (u: Unit, slot: number) => void; startDrag: (p: DragPayload) => (e: RPointerEvent) => void;
+  onDie: (u: Unit, slot: number) => void; onPortrait: (u: Unit) => void; onDefense: (u: Unit, s: Skill) => void; onCancel: (u: Unit, slot: number) => void; /** GM: 이 적의 선택을 무작위로 다시 */ onReroll?: (u: Unit) => void; startDrag: (p: DragPayload) => (e: RPointerEvent) => void;
 }) {
   return (
-    <div className="b-strip relative flex max-w-[100vw] items-end gap-1 overflow-x-auto px-3 py-1.5 md:px-6">
+    <div className="b-strip relative flex min-w-0 max-w-[calc(100vw-7rem)] items-end gap-1 overflow-x-auto px-3 py-1.5 md:max-w-[calc(100vw-15rem)] md:px-6">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={ui("arm-l")} alt="" className="pointer-events-none absolute -left-3 bottom-0 hidden h-32 opacity-90 md:block" draggable={false} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -874,7 +883,7 @@ function SkillStrip({ units, state, names, rules, loaded, activeDie, picker, sel
         const slots = state.slots.filter((s) => s.combatantId === u.id); const corroded = isCorroded(u, state.round);
         const defense = u.skills.filter((s) => s.kind === "defense" && !s.ego);
         return (
-          <div key={u.id} className={`flex shrink-0 items-end gap-1.5 px-2 ${gi > 0 ? "border-l" : ""}`} style={{ borderColor: "rgba(217,179,91,.25)" }}>
+          <div key={u.id} className={`flex shrink-0 items-end gap-1.5 px-2 ${gi > 0 ? "border-l" : ""}`} style={{ borderColor: u.side === "enemy" ? "rgba(179,22,28,.45)" : "rgba(217,179,91,.25)" }} data-side={u.side}>
             {/* 다이스 열 */}
             {slots.length === 0 ? <span className="b-muted mb-6 w-16 text-center text-[10px]">{u.staggered ? "흐트러짐" : "슬롯 없음"}</span> : null}
             {slots.map((s) => { const key = slotKey(u.id, s.slot); const p = state.picks[key]; const skId = p?.skillId ?? loaded[key]; const sk = skId ? u.skills.find((x) => x.id === skId) : undefined; const active = key === activeDie; const open = key === picker;
@@ -885,7 +894,7 @@ function SkillStrip({ units, state, names, rules, loaded, activeDie, picker, sel
                     {active || open ? <span className="b-slot-glow" data-tone={open ? "cyan" : "gold"} /> : null}
                     <button type="button" onPointerDown={sk && !p?.locked && !corroded ? startDrag({ kind: "die", unitId: u.id, slot: s.slot }) : undefined} onClick={() => onDie(u, s.slot)}
                       title={sk ? `${sk.name}${p ? ` → ${names[p.targetId]}${p.targetSlot !== undefined ? (p.protect ? " (보호)" : " (가로채기/합)") : ""}` : " · 적에게 끌어 놓거나 적을 누르세요"}` : "누르면 스킬을 고릅니다"}
-                      className={`b-slot h-14 w-14 touch-none ${sk ? "" : "b-slot-empty"} ${sk && !p?.locked ? "cursor-grab" : ""}`}>
+                      data-side={u.side} className={`b-slot h-14 w-14 touch-none ${sk ? "" : "b-slot-empty"} ${sk && !p?.locked ? "cursor-grab" : ""}`}>
                       {sk ? <SkillChip skill={sk} size={46} bare /> : null}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       {p?.locked ? <img src={ui("ico-lock")} alt="확정" className="absolute -right-1 -top-1 h-4" /> : null}
@@ -908,8 +917,13 @@ function SkillStrip({ units, state, names, rules, loaded, activeDie, picker, sel
                 <span className="b-num absolute -bottom-1 -left-1 rounded-sm bg-black/80 px-1 text-[12px] text-red-400">{u.hp}</span>
                 {!u.sanityLocked ? <span className="b-num absolute -bottom-1 -right-1 rounded-sm bg-black/80 px-1 text-[12px] text-sky-300">{u.sanity}</span> : null}
               </button>
-              <span className="mt-1 w-16 truncate text-center text-[10px] leading-none">{u.name}</span>
-              <span className="mt-0.5 w-16 truncate text-center text-[9px] leading-none" style={{ color: slots.length === 0 ? "#9a8f86" : slots.every((s) => state.picks[slotKey(u.id, s.slot)]) ? "#7fd39a" : "#d9c08a" }}>{slots.length === 0 ? "행동 불가" : slots.every((s) => state.picks[slotKey(u.id, s.slot)]) ? "✓ 선택 완료" : "선택 중"}</span>
+              <span className="mt-1 flex w-20 items-center justify-center gap-1 truncate text-center text-[10px] leading-none">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {u.side === "enemy" ? <img src={ui("tag-enemy")} alt="적" className="h-3" draggable={false} /> : null}
+                <span className="truncate">{u.name}</span>
+              </span>
+              {u.side === "enemy" && onReroll && !corroded ? <button type="button" onClick={() => onReroll(u)} className="b-tabx mt-0.5 px-2 py-0 text-[9px]" title="이 적의 선택을 무작위로 다시 (확정된 것은 유지)">무작위</button>
+                : slots.length === 0 ? <span className="b-muted mt-0.5 text-[9px] leading-none">{u.staggered ? "흐트러짐" : "행동 불가"}</span> : null}
             </div>
             {defense.length ? (
               <div className="flex flex-col items-center gap-0.5 pb-3">
@@ -942,7 +956,7 @@ function RoundButton({ isGm, phase, winner, pending, unpicked, playing, onNext, 
   if (playing) return <button type="button" onClick={onNext} className={`b-start5 ${size} transition-transform hover:scale-105`} title="다음 단계 (스페이스)">{body("NEXT", "다음 단계")}</button>;
   if (isGm && phase === "select") return <button type="button" disabled={pending} onClick={onStart} className={`b-start5 ${size} transition-transform hover:scale-105 disabled:scale-100`} title="라운드 진행">{body(pending ? "…" : "START", pending ? "처리 중" : unpicked ? `미선택 ${unpicked}` : "라운드 진행")}</button>;
   if (phase === "ended") return <button type="button" onClick={onClose} className={`b-start5 ${size}`} data-dim={winner === "ally" ? undefined : "1"} title="닫기">{body(winner === "ally" ? "WIN" : "LOSE", "닫기", winner !== "ally", false)}</button>;
-  return <div className={`b-start5 ${size}`} data-dim="1" title="GM이 라운드를 진행합니다">{body("WAIT", unpicked ? `미선택 ${unpicked}` : "준비 완료", true)}</div>;
+  return <div className={`b-start5 ${size}`} data-dim="1" title="GM이 라운드를 진행합니다">{body("WAIT", "GM 진행 대기", true)}</div>;
 }
 
 /* ---------- 유닛 카드 (영상의 우측 카드) ---------- */
@@ -978,7 +992,7 @@ function UnitCard({ u, state, isGm, names, rules, campaignId, combatId, onApply,
         {threatTag ? <img src={ui(threatTag)} alt={info!.threat} title={info!.threat} className="h-4" draggable={false} /> : info?.threat ? <span className="b-muted text-[10px]">{info.threat}</span> : null}
         <button type="button" onClick={onClose} className="b-muted ml-auto hover:text-white">✕</button>
       </div>
-      <div className="p-2">
+      <div className="px-2.5 py-2">
         <div className="relative h-2.5 w-full bg-black/70">
           <div className="h-full" style={{ width: `${hpPct}%`, background: enemy ? "linear-gradient(90deg,#7a0f13,#e04b52)" : "linear-gradient(90deg,#2f7a4a,#4fb374)" }} />
           {rules.staggerThresholds.map((t, i) => <span key={i} className="absolute top-0 h-full w-px bg-amber-200/80" style={{ left: `${t * 100}%` }} title={`흐트러짐 ${Math.round(t * 100)}%`} />)}

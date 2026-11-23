@@ -1,6 +1,6 @@
 # 진행 상황과 결정 (인수인계)
 
-마지막 갱신: 2026-11-21. 사이트: https://limbus-trpg.vercel.app · 저장소: github.com/Semimail/limbus-trpg
+마지막 갱신: 2026-11-23. 사이트: https://limbus-trpg.vercel.app · 저장소: github.com/Semimail/limbus-trpg
 
 ## 구현 완료
 - 로그인(디스코드), 사무소 허브(세션·의뢰 게시판·내 캐릭터·파티원·기록 보관소·적 도감·GM 패널·캠페인 삭제·룰 설정 링크), 초대 코드, 임시 GM.
@@ -157,6 +157,13 @@
 - 폰트: 본문 SCDream(원작 한글 UI), 제목 KOTRA Bold(`h1,h2,h3`·`.font-title`), 영문·숫자 BebasKai(`.font-num`; 포스타입 글 "영문은 Bebas Neue"). 타이틀 폰트 Tagmarker 는 라이선스 불명·게임 파일에 없어 제외. Pretendard CDN 은 폴백으로 유지.
 - 조각(`ui/s/`, 47장, `ui-pick-shell.py`): 상단 바 = 원작 붉은 질감 플레이트 + Bebas 로고 "LIMBUS TRPG" + 청동 버튼 메뉴(`header.tsx`, `.site-header`), 패널 = 검정+청동 테 9조각(`.panel`, 머리띠는 갈색 그라데이션+청동 선, 스탬프 = 흰 사선 플레이트에 Bebas), 카드 = 모서리 깎인 플레이트(`.lb-card`), 버튼 = primary 붉은 플레이트(전투 조각 btn-red)·ghost 검정+청동(btn_t1_normal)·danger 붉은 테(`.lb-btn*`), 입력 = 모서리 깎인 어두운 칸(`.lb-input`), 페이지 제목 = KOTRA + 붉은 빛 바(`PageTitle`), 페이지 배경 = 원작 설정 화면 질감 + 비네트(`body::before/after`).
 - 미리보기 `/dev/shell`(개발 전용)로 사무소 모양을 확인. 각 페이지의 Tailwind 색 클래스(`bg-elev`, `border-border` 등)는 팔레트 변수를 따라 자동으로 어두워졌고, 페이지별 손질(캐릭터 목록·데이터북·룰북·공방 등)은 아직.
+
+## 전투 화면 v5.1: 조작 규칙 정리 + 배치 손질 (2026-11-23, 사용자 스크린샷 피드백 "조잡한 림버스 같네")
+- **조종 권한**: 캐릭터는 주인만(GM 이라도 남의 캐릭터는 못 건드린다), 적은 GM 만. `battle-screen.tsx mine()` 과 서버 액션 `canControl()`(setPick·redrawHand·moveUnit) 둘 다. 자리 비운 플레이어 대신 GM 이 고를 수는 없다(사용자 요청 "타 플레이어 거 건들 수 없음").
+- **"선택 완료" 단계 없음**: 고른 스킬이 곧 선택. 띠 아래 "✓ 선택 완료/선택 중" 글자, HUD 의 "준비 완료", "선택 n/m" 카운터 제거. START 아래 "미선택 n" 만 GM 참고용으로 남김. WAIT 는 "GM 진행 대기".
+- **적 스킬은 GM 이 지정**: GM 의 스킬 띠에 적 유닛도 함께 나온다(붉은 팔각 다이스, ENEMY 꼬리표). 다이스를 눌러 손패에서 고르고 아군을 눌러/끌어 대상 지정(대상 편은 "내 다이스 주인의 반대편"으로 일반화: `targetSide`). 라운드 시작 때는 전처럼 무작위로 깔리고, 적마다 "무작위" 버튼·승률 옆 "적 무작위"로 다시 굴린다(`rerollEnemyPicks` 엔진 함수 + `rerollEnemyPicksAction`, 확정(locked)된 선택은 유지). 적 쪽 합 승률은 GM 에게만 계산.
+- **배치**: 아래 줄을 스킬 띠 + 승률/피해량 + START 한 덩어리로 가운데 모음(넓은 화면에서 START 가 멀리 떨어지지 않게). 오른쪽 죄악 자원은 알약 플레이트(pill-dark)+아이콘 30px+Bebas 숫자로 키움. 유닛 카드 틀을 PassivePanel(오른쪽이 투명하게 사라지는 조각이라 글이 틀 밖으로 나가 보였음) → panel-tall(네 변 청동 틀)로 교체. 맨 아래 붉은 띠 → 어두운 띠+청동 윗선, 탭은 원작 검정+청동 플레이트(hud-plate), 켜진 탭은 붉은 버튼(btn-red). `/dev/battle` 은 아군 둘 중 하나를 남의 캐릭터로 두어 선택 불가를 보여줌.
+- 검증: `/dev/battle` GM·플레이어 시점에서 적 다이스 → 스킬 선택 팝업(손패 3+방어) → 아군 대상 목록/클릭까지 확인(서버 액션은 미리보기에서 로그인 오류로 끝남). typecheck·lint·build 통과. 실제 전투(DB)에서 무작위·적 지정은 미확인.
 
 ## 전투 화면 v5: 원작 BattleUI 조각 그대로 (2026-11-23, 사용자 "UI 추출한 거 그대로 가져온다면?" → "전투 화면부터")
 - 설치 폴더 추출본의 `BattleUI_*` Sprite(459장, 이미 정확히 잘린 조각)에서 134장을 골라 `apps/web/public/assets/limbus/ui/b/`(4.8MB) 에, 원작 폰트 Excelsior(제목)·BebasKai(숫자)·SCDream(본문)을 `assets/limbus/font/` 에 넣음. 이름 ↔ 원본 대응표는 `scripts/limbus-extract/README.md` "전투 UI 조각". 비공개 전제.

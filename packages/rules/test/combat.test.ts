@@ -1,4 +1,4 @@
-import { startCombat, setPick, resolveRound, slotKey, DEFAULT_RULES, type UnitInput } from "../src";
+import { startCombat, setPick, resolveRound, rerollEnemyPicks, slotKey, DEFAULT_RULES, type UnitInput } from "../src";
 const NOGRID = { ...DEFAULT_RULES, gridEnabled: false };
 import { mkSkill } from "./helpers";
 
@@ -23,6 +23,27 @@ function enemy(id: string, hp = 60): UnitInput {
 }
 
 describe("전투 진행", () => {
+  it("GM 적 지정: 적 선택을 직접 바꾸고, 무작위로 다시 굴리면 확정된 것만 남는다", () => {
+    const st = startCombat([ally("A"), ally("B"), enemy("E"), enemy("F")], 3, NOGRID);
+    const e = st.units.find((u) => u.id === "E")!;
+    // GM 이 적 E 의 다이스에 손패 스킬 → B 를 지정 (같은 편 F 는 거부)
+    expect(setPick(st, "E", 0, { skillId: e.hand[0]!, targetId: "F" }, NOGRID)).toBeTruthy();
+    expect(setPick(st, "E", 0, { skillId: e.hand[0]!, targetId: "B" }, NOGRID)).toBeNull();
+    expect(st.picks[slotKey("E", 0)]).toMatchObject({ skillId: e.hand[0], targetId: "B" });
+    // 확정 표시한 선택은 무작위 재지정에서 유지, F 는 다시 아군을 노린다
+    st.picks[slotKey("E", 0)]!.locked = true;
+    delete st.picks[slotKey("F", 0)];
+    expect(rerollEnemyPicks(st, NOGRID)).toBeNull();
+    expect(st.picks[slotKey("E", 0)]).toMatchObject({ targetId: "B", locked: true });
+    expect(["A", "B"]).toContain(st.picks[slotKey("F", 0)]?.targetId);
+    // 한 적만 다시: E 만 지정하면 F 의 선택은 그대로
+    const fBefore = st.picks[slotKey("F", 0)];
+    st.picks[slotKey("E", 0)]!.locked = false;
+    expect(rerollEnemyPicks(st, NOGRID, "E")).toBeNull();
+    expect(st.picks[slotKey("F", 0)]).toBe(fBefore);
+    expect(["A", "B"]).toContain(st.picks[slotKey("E", 0)]?.targetId);
+  });
+
   it("시작: 1라운드, 속도 슬롯, 손패 3장, 적 자동 선택", () => {
     const st = startCombat([ally("A"), enemy("E")], 1, NOGRID);
     expect(st.round).toBe(1);

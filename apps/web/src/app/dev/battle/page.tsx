@@ -5,7 +5,7 @@ import { BattleScreen } from "@/components/combat/battle-screen";
 /*
  * 전투 화면 미리보기 (개발 전용, 프로덕션은 404). 로그인·DB 없이 가짜 전투 상태로 화면만 본다.
  *  - 그림은 public/dev/ (저장소 제외) 에 둔 추출본을 쓴다. 없으면 초상 없는 토큰으로 나온다.
- *  - ?gm=0 플레이어 시점, ?ended=1 종료 화면, ?round=n 라운드 수
+ *  - ?gm=0 플레이어 시점, ?ended=1 종료 화면, ?round=n 라운드 수. 아군 둘 중 하나는 남의 캐릭터(선택 불가), 적은 GM 이 띠에서 지정
  */
 export const dynamic = "force-dynamic";
 
@@ -15,11 +15,11 @@ export default async function DevBattlePage({ searchParams }: { searchParams: Pr
   const rules = DEFAULT_RULES;
   const c = newCharacterData();
   const named = (s: Skill, name: string): Skill => ({ ...s, name });
-  const ally = (id: string, name: string, sprite: string, hp: number, sanity: number): UnitInput => ({
+  const ally = (id: string, name: string, sprite: string, hp: number, sanity: number, owner = "me"): UnitInput => ({
     id, name, side: "ally", maxHp: c.maxHp, hp, sanity, speed: { min: 2, max: 6, dice: 2 },
     skills: [named(c.skills[0]! as Skill, "찢어발기기"), named(c.skills[1]! as Skill, "한 방"), named(c.skills[2]! as Skill, "쇄도"), named(c.skills[3]! as Skill, "막기"),
       { id: "ego1", name: "지평선 너머", kind: "attack", tier: 3, basePower: 6, coinPower: 3, coinCount: 3, damageType: "pierce", sin: "pride", effectText: "", ego: { sanityCost: 10, erosionGain: 2, usesPerCombat: 1 } } as Skill],
-    portraitUrl: sprite, spriteUrl: sprite, light: 3, erosion: 1, source: { kind: "character", id, ownerId: "me" },
+    portraitUrl: sprite, spriteUrl: sprite, light: 3, erosion: 1, source: { kind: "character", id, ownerId: owner },
   });
   const e = newEnemyData();
   const enemy = (id: string, name: string, sprite: string, hp: number): UnitInput => ({
@@ -27,7 +27,7 @@ export default async function DevBattlePage({ searchParams }: { searchParams: Pr
     skills: e.skills.map((s) => ({ ...s } as Skill)), resist: e.resist, portraitUrl: sprite, spriteUrl: sprite, source: { kind: "enemy", id },
   });
   const inputs: UnitInput[] = [
-    ally("a1", "이상", "/dev/ally1.png", c.maxHp - 6, 12), ally("a2", "파우스트", "/dev/ally2.png", Math.round(c.maxHp * 0.45), -8),
+    ally("a1", "이상", "/dev/ally1.png", c.maxHp - 6, 12), ally("a2", "파우스트", "/dev/ally2.png", Math.round(c.maxHp * 0.45), -8, "other"), // 남의 캐릭터: GM 이라도 선택 못 함
     enemy("e1", "자치우", "/dev/enemy1.png", 90), enemy("e2", "구보", "/dev/enemy2.png", 40),
   ];
   const state: CombatState = startCombat(inputs, 7, rules);

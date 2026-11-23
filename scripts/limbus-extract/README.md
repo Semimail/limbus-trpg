@@ -87,19 +87,19 @@ python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types t
 | chip-frame / chip-mask / chip-ego / chip-gold / chip-outline / chip-emblem | resources Choice_7_0 / Operation_1_0 / Choice_8_1 / Choice_7_30 / _7_1 / _7_28 | 스킬 칩(팔각 청동 틀 + 죄악색 마스크), E.G.O 주황 글로우 |
 | oct-dark / oct-red / oct-bronze / oct-arc / oct-crack / oct-panel / oct-outline | Operation_1_30 / _9 / _6 / _34 / _24 / _16 / _21 | 라운드 버튼(붉은 팔각 + 청동 테) 등 |
 | start-gear / start-lever | Turn_5 / Operation_1_23 | 라운드 버튼 뒤 도는 기어 |
-| panel-wide / panel-tall / panel-sq / panel-black / panel-popup / panel-grey | Choice_7_24 / _26 / _16 / _5 / Choice_8_0 / _7_19 | `.b-pane` 9조각(panel-wide) 등 |
-| card-ally / card-enemy / card-glow-gold / card-glow-red | PassivePanel_new_0 / _19 / _18 / _20 | 유닛 카드 9조각(아군 청동·적 빨강) |
-| hazard-bar / pill-dark / bar-gold / card-dark | PassivePanel_new_23 / _25 / _3 / _5 | 머리띠(`.b-head-plate`) |
-| plate-brown / plate-dark / plate-white / bar-grey / bar-brush / bar-redglow | Choice_8_6 / _7 / _8 / _3 / Choice_7_15 / _18 | 하단 탭·버튼(`.b-tabx`, `.b-btn`), 적 머리띠 |
+| panel-wide / panel-tall / panel-sq / panel-black / panel-popup / panel-grey | Choice_7_24 / _26 / _16 / _5 / Choice_8_0 / _7_19 | `.b-pane` 9조각(panel-wide), 유닛 카드 `.b-card`(panel-tall, 네 변 모두 청동 틀) |
+| card-ally / card-enemy / card-glow-gold / card-glow-red | PassivePanel_new_0 / _19 / _18 / _20 | (예비) 오른쪽이 투명하게 사라지는 조각이라 유닛 카드에는 안 맞았음(글이 틀 밖으로 나가 보임) → panel-tall 로 교체 |
+| hazard-bar / pill-dark / bar-gold / card-dark | PassivePanel_new_23 / _25 / _3 / _5 | 머리띠(`.b-head-plate`), 오른쪽 죄악 자원 알약(`.b-res`, pill-dark) |
+| plate-brown / plate-dark / plate-white / bar-grey / bar-brush / bar-redglow | Choice_8_6 / _7 / _8 / _3 / Choice_7_15 / _18 | 적 머리띠(bar-redglow). plate-dark/brown 은 v5.1 부터 안 씀(탭·버튼은 hud-plate/btn-red) |
 | plate-slant-w / -s / -d / -x, name-box, dots | CoinPopup_1_21 / _18 / _28 / _26, _1_37, _1_41 | 속도 숫자·이름(흰 사선 플레이트), 상태 바(어두운 사선), 컷인 스킬 상자 |
-| btn-red / btn-red2 / paper | Choice_5_21 / _17 / _20 | (예비) |
+| btn-red / btn-red2 / paper | Choice_5_21 / _17 / _20 | 켜진 하단 탭(`.b-tabx-on`, 붉은 버튼 9조각). 꺼진 탭·`.b-btn` 은 hud-plate 9조각 |
 | coin-heads / coin-tails / coin-glow / coin-break / coin-hept-w / coin-hept-b | CoinPopup_coin / _back / _coin2 / _break / _1_30 / _1_39 | (예비: 지금 코인은 `coins/`) |
 | ico-heart / ico-shield / ico-boot / ico-swords / ico-x | Popup_4_2 / _3 / _4 / _5(sharedassets5) / _7 | HUD·상태 바 아이콘 |
 | ico-check / ico-x-w / ico-tri / ico-mind / ico-warn / ico-key / ico-exit / ico-skip / ico-up / ico-lock | DanteAbility_01_17 / _16 / _21, EGO_new_4, EGO_new_3, UpperLeft_1_47, Choice_5_2, Choice_7_6, _7_32, resources icon_lock | 정신력(뇌)·확정 자물쇠 등 |
 | txt-turn / turn-lines / turn-lines-gold / turn-band | Turn_0 / _1 / _3 / _7 | 라운드 플래시 "TURN n" |
 | txt-victory / txt-defeat / txt-survived / result-branch-l·r / result-lines-gold / result-line-red / result-band(-wide) / txt-continue | Result_6 / _0 / _12 / _4·_5 / _8 / _1 / _11·_14 / StageContinue_02_4 | 승리·패배 배너(`ResultBanner`) |
 | threat-zayin / -teth / -he / -waw / -aleph / -aleph2 / -unknown, tag-new, x-red | CreatureBattle_3_0 / _12 / _15 / _22 / _26 / _38 / _18, _19, _33 | 적 등급 꼬리표(뜬소문=ZAYIN … 별=ALEPH(빨강), 불순물=???) |
-| banner-red / battle-ring / battle-star / smudge | Battlestart_0 / _2 / _3 / _1 | 맨 아래 붉은 바 |
+| banner-red / battle-ring / battle-star / smudge | Battlestart_0 / _2 / _3 / _1 | (예비) 맨 아래 바는 v5.1 부터 어두운 띠+청동 윗선(사용자: 붉은 띠가 조잡) |
 | link-blue / link-orange, crosshair / crosshair2 | Operation_2_1 / _3, CreatureBattle_3_4 / _5 | (예비) |
 
 미리보기: `apps/web/src/app/dev/battle/page.tsx` — 로그인·DB 없이 가짜 전투로 전투 화면만 본다(프로덕션 404, `proxy.ts` 가 개발에서만 `/dev/*` 통과). 그림은 `apps/web/public/dev/`(저장소 제외)에 `ally1.png ally2.png enemy1.png enemy2.png bg.png` 를 두면 쓴다. `?ended=1` 종료, `?replay=win|lose` 뒤 "다시 보기"로 VICTORY/DEFEAT 연출, `?gm=0` 플레이어 시점.

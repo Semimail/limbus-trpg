@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getUser } from "@/lib/supabase/server";
 import {
-  startCombat, setPick, resolveRound, endCombat, redrawHand, moveUnit, seedFromString, affiliationTrait,
+  startCombat, setPick, resolveRound, endCombat, redrawHand, moveUnit, rerollEnemyPicks, seedFromString, affiliationTrait,
   type CombatState, type UnitInput, type CharacterData, type EnemyData, type Pick, type Skill, type Unit, type Effect,
 } from "@limbus/rules";
 import { formatRound, unitNames } from "@/lib/combat-log";
@@ -22,6 +22,9 @@ async function requireGm(campaignId: string) {
 async function post(supabase: Awaited<ReturnType<typeof createClient>>, sessionId: string, sceneId: string | null, content: string, payload?: Json) {
   await supabase.from("messages").insert({ session_id: sessionId, scene_id: sceneId, kind: "system", content, payload: (payload ?? null) as never });
 }
+
+/** 조종 권한: 캐릭터는 주인만(GM 이라도 남의 캐릭터는 못 건드린다), 적은 GM만 */
+const canControl = (unit: Unit, userId: string, isGm: boolean) => unit.source.kind === "character" ? unit.source.ownerId === userId : isGm;
 
 const toSkill = (s: CharacterData["skills"][number]): Skill => ({ ...s, tier: s.tier });
 const fx = (list: { effects?: Effect[] }[]): Effect[] => list.flatMap((x) => x.effects ?? []);
@@ -101,8 +104,7 @@ export async function setPickAction(campaignId: string, combatId: string, unitId
     if (!row) return { error: "전투가 없습니다" };
     const unit = row.state.units.find((u: Unit) => u.id === unitId);
     if (!unit) return { error: "유닛이 없습니다" };
-    const owns = unit.source.kind === "character" && unit.source.ownerId === user.id;
-    if (!owns && !isGm) return { error: "자기 캐릭터만 선택할 수 있습니다" };
+    if (!canControl(unit, user.id, isGm)) return { error: unit.source.kind === "enemy" ? "적은 GM만 지정할 수 있습니다" : "자기 캐릭터만 선택할 수 있습니다" };
     const { rules } = await getCampaignRules(campaignId);
     const err = setPick(row.state, unitId, slot, pick, rules);
     if (err) return { error: err };
@@ -198,7 +200,23 @@ export async function gmAdjustUnitAction(campaignId: string, combatId: string, u
   return { state: row.state };
 }
 
-/** 빛을 써서 손패 교체 (자기 캐릭터 또는 GM) */
+/** GM: 적 선택을 무작위로 다시 (unitId 를 주면 그 적만). 확정된 선택은 유지 */
+export async function rerollEnemyPicksAction(campaignId: string, combatId: string, unitId?: string): Promise<{ error?: string; state?: CombatState }> {
+  const g = await requireGm(campaignId); if ("error" in g) return g;
+  const { rules } = await getCampaignRules(campaignId);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const row = await loadState(g.supabase, combatId);
+    if (!row) return { error: "전투가 없습니다" };
+    const err = rerollEnemyPicks(row.state, rules, unitId);
+    if (err) return { error: err };
+    const r = await saveState(g.supabase, combatId, row.state, row.updated_at);
+    if (r === null) return { state: row.state };
+    if (r !== "conflict") return { error: r };
+  }
+  return { error: "동시에 수정 중입니다. 다시 시도하세요" };
+}
+
+/** 빛을 써서 손패 교체 (자기 캐릭터만) */
 export async function redrawHandAction(campaignId: string, combatId: string, unitId: string): Promise<{ error?: string; state?: CombatState }> {
   const supabase = await createClient();
   const user = await getUser();
@@ -211,8 +229,7 @@ export async function redrawHandAction(campaignId: string, combatId: string, uni
     if (!row) return { error: "전투가 없습니다" };
     const unit = row.state.units.find((u: Unit) => u.id === unitId);
     if (!unit) return { error: "유닛이 없습니다" };
-    const owns = unit.source.kind === "character" && unit.source.ownerId === user.id;
-    if (!owns && !isGm) return { error: "자기 캐릭터만 가능합니다" };
+    if (!canControl(unit, user.id, isGm)) return { error: "자기 캐릭터만 가능합니다" };
     const err = redrawHand(row.state, unitId, rules);
     if (err) return { error: err };
     const r = await saveState(supabase, combatId, row.state, row.updated_at);
@@ -222,7 +239,7 @@ export async function redrawHandAction(campaignId: string, combatId: string, uni
   return { error: "동시에 수정 중입니다. 다시 시도하세요" };
 }
 
-/** 격자 이동 (자기 캐릭터 또는 GM) */
+/** 격자 이동 (자기 캐릭터, 적은 GM) */
 export async function moveUnitAction(campaignId: string, combatId: string, unitId: string, to: { x: number; y: number }): Promise<{ error?: string; state?: CombatState }> {
   const supabase = await createClient();
   const user = await getUser();
@@ -235,8 +252,7 @@ export async function moveUnitAction(campaignId: string, combatId: string, unitI
     if (!row) return { error: "전투가 없습니다" };
     const unit = row.state.units.find((u: Unit) => u.id === unitId);
     if (!unit) return { error: "유닛이 없습니다" };
-    const owns = unit.source.kind === "character" && unit.source.ownerId === user.id;
-    if (!owns && !isGm) return { error: "자기 캐릭터만 움직일 수 있습니다" };
+    if (!canControl(unit, user.id, isGm)) return { error: "자기 캐릭터만 움직일 수 있습니다" };
     const err = moveUnit(row.state, unitId, to, rules);
     if (err) return { error: err };
     const r = await saveState(supabase, combatId, row.state, row.updated_at);

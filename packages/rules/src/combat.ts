@@ -257,6 +257,24 @@ export function autoPickEnemies(state: CombatState, r: Rng, rules: RuleConfig) {
   }
 }
 
+/**
+ * GM: 적 선택을 무작위로 다시 고른다 (unitId 를 주면 그 적만). 확정(locked)된 선택은 그대로 둔다.
+ * 라운드 시작 때의 자동 선택과 같은 규칙(손패 중 하나, 사거리 안 대상)을 쓴다.
+ */
+export function rerollEnemyPicks(state: CombatState, rules: RuleConfig, unitId?: string): string | null {
+  if (state.phase !== "select") return "선택 단계가 아닙니다";
+  const targets = state.units.filter((u) => u.side === "enemy" && (!unitId || u.id === unitId) && alive(u));
+  if (targets.length === 0) return "적이 없습니다";
+  for (const u of targets) for (const s of state.slots.filter((x) => x.combatantId === u.id)) {
+    const key = slotKey(u.id, s.slot);
+    if (!state.picks[key]?.locked) delete state.picks[key];
+  }
+  const { r, save } = rng(state);
+  autoPickEnemies(state, r, rules);
+  save();
+  return null;
+}
+
 /* ---------- 이동 ---------- */
 /** 한 칸 이동 + 기회 공격 처리 (검증은 호출자가) */
 function moveUnitRaw(state: CombatState, u: Unit, to: Pos, rules: RuleConfig, silent = false) {

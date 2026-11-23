@@ -8,7 +8,8 @@ import type { SpriteMotion } from "@/components/sprite/sprite-motion";
  *  - cards: 유닛 옆에 뜨는 카드 (코인 앞/뒤, "6 → 12", "위력 9", 피해·HP)
  *  - arc: 두 유닛 사이 강조 선
  */
-export interface PlayCard { unitId: string; title: string; coins?: boolean[]; big?: string; sub?: string; tone: "gold" | "red" | "white" | "dim"; /** 컷인용 스킬 이름 */ skill?: string; /** 스프라이트 코드 모션 (sd-sprite) */ motion?: SpriteMotion; /** 쓴 스킬 id (스킬별 띠 재생용) */ skillId?: string }
+export interface PlayCard { unitId: string; title: string; coins?: boolean[]; big?: string; sub?: string; tone: "gold" | "red" | "white" | "dim"; /** 컷인용 스킬 이름 */ skill?: string; /** 스프라이트 코드 모션 (sd-sprite) */ motion?: SpriteMotion; /** 쓴 스킬 id (스킬별 띠 재생용) */ skillId?: string;
+  /** 합 연출용: 이 단계가 합(격돌)인지, 이번 합의 총 위력, 남은 코인 / 전체 코인 */ clash?: boolean; power?: number; coinsLeft?: number; coinsTotal?: number }
 export interface PlayStep { header: string; cards: PlayCard[]; arc?: { from: string; to: string; kind: "clash" | "ally" | "enemy" }; banner?: { text: string; tone: "gold" | "red" | "white" }; hold: number }
 
 type UnitLite = Pick<Unit, "id" | "name" | "side" | "skills">;
@@ -53,20 +54,24 @@ export function buildPlaySteps(events: RoundEvent[], units: UnitLite[]): PlaySte
       const a = u(e.actor), t = u(e.target); if (!a || !t) continue;
       const as = sname(a, e.actorSkill), ts = sname(t, e.targetSkill);
       const arc = { from: a.id, to: t.id, kind: "clash" as const };
-      steps.push({ header: `${a.name} ↔ ${t.name} 합 · ${as} vs ${ts}`, cards: [{ unitId: a.id, title: `${a.name} · 합`, sub: as, tone: "white", skill: as, skillId: sid(a, e.actorSkill), motion: "ready" }, { unitId: t.id, title: `${t.name} · 합`, sub: ts, tone: "white", skill: ts, skillId: sid(t, e.targetSkill), motion: "ready" }], arc, hold: 900 });
+      // 코인 수: 합 라운드마다 패자가 1개씩 잃는다 (컷인에서 코인이 줄어드는 연출)
+      const aTotal = find(a, e.actorSkill)?.coinCount ?? Math.max(1, ...e.result.rounds.map((r) => r.a.coins.length)), tTotal = find(t, e.targetSkill)?.coinCount ?? Math.max(1, ...e.result.rounds.map((r) => r.b.coins.length));
+      steps.push({ header: `${a.name} ↔ ${t.name} 합 · ${as} vs ${ts}`, cards: [{ unitId: a.id, title: `${a.name} · 합`, sub: as, tone: "white", skill: as, skillId: sid(a, e.actorSkill), motion: "ready", clash: true, coinsLeft: aTotal, coinsTotal: aTotal }, { unitId: t.id, title: `${t.name} · 합`, sub: ts, tone: "white", skill: ts, skillId: sid(t, e.targetSkill), motion: "ready", clash: true, coinsLeft: tTotal, coinsTotal: tTotal }], arc, hold: 900 });
       e.result.rounds.forEach((r, i) => {
         const aw = r.winner === "a", bw = r.winner === "b";
         steps.push({
           header: `합 ${i + 1} · ${a.name} ${r.a.totalPower} ${aw ? "▶" : bw ? "◀" : "="} ${r.b.totalPower} ${t.name}${r.winner === "draw" ? " · 동률, 다시" : ""}`,
           cards: [
-            { unitId: a.id, title: `${a.name} · 합 ${i + 1}`, coins: r.a.coins.map((c) => c.heads), big: `${sbase(a, e.actorSkill)} → ${r.a.totalPower}`, sub: bw ? "코인 파괴" : aw ? "우세" : "동률", tone: aw ? "gold" : bw ? "dim" : "white", skill: as, skillId: sid(a, e.actorSkill), motion: bw ? "hit" : "attack" },
-            { unitId: t.id, title: `${t.name} · 합 ${i + 1}`, coins: r.b.coins.map((c) => c.heads), big: `${sbase(t, e.targetSkill)} → ${r.b.totalPower}`, sub: aw ? "코인 파괴" : bw ? "우세" : "동률", tone: bw ? "gold" : aw ? "dim" : "white", skill: ts, skillId: sid(t, e.targetSkill), motion: aw ? "hit" : "attack" },
+            { unitId: a.id, title: `${a.name} · 합 ${i + 1}`, coins: r.a.coins.map((c) => c.heads), big: `${sbase(a, e.actorSkill)} → ${r.a.totalPower}`, sub: bw ? "코인 파괴" : aw ? "우세" : "동률", tone: aw ? "gold" : bw ? "dim" : "white", skill: as, skillId: sid(a, e.actorSkill), motion: bw ? "hit" : "attack", clash: true, power: r.a.totalPower, coinsLeft: r.aCoinsLeft, coinsTotal: aTotal },
+            { unitId: t.id, title: `${t.name} · 합 ${i + 1}`, coins: r.b.coins.map((c) => c.heads), big: `${sbase(t, e.targetSkill)} → ${r.b.totalPower}`, sub: aw ? "코인 파괴" : bw ? "우세" : "동률", tone: bw ? "gold" : aw ? "dim" : "white", skill: ts, skillId: sid(t, e.targetSkill), motion: aw ? "hit" : "attack", clash: true, power: r.b.totalPower, coinsLeft: r.bCoinsLeft, coinsTotal: tTotal },
           ],
-          arc, hold: 1000,
+          arc, hold: 1100,
         });
       });
       const winner = e.result.winner === "a" ? a : t, loser = winner === a ? t : a;
-      steps.push({ header: `${winner.name} 합 승리 · ${loser.name} 무방비`, cards: [{ unitId: winner.id, title: winner.name, big: "합 승리", tone: "gold", skill: sname(winner, winner === a ? e.actorSkill : e.targetSkill), motion: "win" }, { unitId: loser.id, title: loser.name, big: "합 패배", tone: "dim", skill: sname(loser, loser === a ? e.actorSkill : e.targetSkill), motion: "hit" }], arc, banner: { text: `${winner.name} 합 승리`, tone: winner.side === "ally" ? "gold" : "red" }, hold: 900 });
+      const last = e.result.rounds[e.result.rounds.length - 1];
+      const leftOf = (x: UnitLite) => (x === a ? last?.aCoinsLeft ?? aTotal : last?.bCoinsLeft ?? tTotal), totalOf = (x: UnitLite) => (x === a ? aTotal : tTotal);
+      steps.push({ header: `${winner.name} 합 승리 · ${loser.name} 무방비`, cards: [{ unitId: winner.id, title: winner.name, big: "합 승리", tone: "gold", skill: sname(winner, winner === a ? e.actorSkill : e.targetSkill), motion: "win", clash: true, coinsLeft: leftOf(winner), coinsTotal: totalOf(winner) }, { unitId: loser.id, title: loser.name, big: "합 패배", tone: "dim", skill: sname(loser, loser === a ? e.actorSkill : e.targetSkill), motion: "hit", clash: true, coinsLeft: leftOf(loser), coinsTotal: totalOf(loser) }], arc, banner: { text: `${winner.name} 합 승리`, tone: winner.side === "ally" ? "gold" : "red" }, hold: 900 });
       if (e.result.evadeBonus) steps.push({ header: `${winner.name} 회피 성공 · 정신력 +${e.result.evadeBonus}`, cards: [{ unitId: winner.id, title: `${winner.name} · 회피`, big: `정신력 +${e.result.evadeBonus}`, sub: "회피 고유 효과", tone: "white", motion: "evade" }], arc, hold: 700 });
       coinSteps(winner, loser, sname(winner, winner === a ? e.actorSkill : e.targetSkill), e.result.attacks, arc, sid(winner, winner === a ? e.actorSkill : e.targetSkill), e.result.counter ? "반격" : "공격");
       tickSteps(e.result.ticks);

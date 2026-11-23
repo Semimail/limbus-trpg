@@ -71,6 +71,9 @@ python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types t
 - 소량(아이콘·UI 조각·배경 몇 장)은 기존처럼 `apps/web/public/assets/limbus/<종류>/`에 PNG로.
 - 음악·대량 배경처럼 큰 파일은 깃에 넣지 말고 Supabase Storage(비공개 버킷 + 서명 URL)에 올리는 쪽을 권장. 필요하면 업로드 스크립트를 추가한다.
 
+## 죄악 아이콘 교체 (2026-11-23, 사용자 "분노~질투 죄악 … 저거 옛날거야")
+`apps/web/public/assets/limbus/sins/{wrath,lust,sloth,gluttony,gloom,pride,envy}.png` 를 원작 "내성 정보" 아이콘(`BattleUI_SkillInfoResisIcon_*`: 1=분노(resources), 6=색욕, 11=나태, 16=폭식, 21=우울, 26=오만, 31=질투 — 각 죄악 5단계 중 밝은 기본형)으로 바꿨다. 배경 없는 새 그림이라 `SinIcon` 을 쓰는 모든 곳(시트·공방·데이터북)이 함께 바뀐다. 같은 세트의 0/2/3/4 번은 내성 단계(어두움→밝음), 35~49 는 참격·관통·타격의 단계별 아이콘이라 저항 표시에 쓸 수 있다.
+
 ## 전투 UI 조각 (2026-11-23, 사용자 "UI 추출한 거 그대로 가져온다면?" → "전투 화면부터")
 설치 폴더 추출본 `extracted/all/sprite/{resources,sharedassets3,…}/BattleUI_*.png` 은 Unity Sprite 단위라 이미 정확히 잘려 있다(459장). 그중 전투 화면에 쓰는 134장을 이름을 붙여 `apps/web/public/assets/limbus/ui/b/` 에 복사했고(복사 스크립트 `ui-pick-battle.py`, 아래 표가 그 안의 M 과 같다), 폰트 `ExcelsiorSans.ttf`·`BebasKai.ttf`·`SCDream5.otf`(`extracted/all/font/resources/`)를 `apps/web/public/assets/limbus/font/` 에 넣었다. 옛 눈대중 조각 `ui/*.png` 54장은 세션 무대(`stage.tsx` plate-tag)와 CSS 일부가 아직 써서 남겨 둠. 가족별 확인 시트: `ui-family-sheets.py <조각 폴더> <출력 폴더>`(PIL, BattleUI_/MainUI_ 가족 prefix 별 이름표 격자).
 
@@ -80,8 +83,8 @@ python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types t
 | tag-enemy, hud-panel, hud-plate | UpperLeft_1_41, _1_20, _1_44 | ENEMY 꼬리표(유닛 카드), 로그 카드 9조각, 플레이트 |
 | plate-red-off / plate-red-on | UpperLeft_1_4 / _5 | 승률·피해량 토글 |
 | btn-play / btn-pause / btn-gear / btn-fwd / btn-arrows-off·on / btn-glow | UpperLeft_1_29 / _26 / _19 / _36 / _16·_18 / _28 | 우상단 사각 버튼, 켜짐 글로우 |
-| arm-l / arm-r, side-gold / side-red, hazard-v | UpperLeft_1_37 / _38, _22 / _42, _39 | 스킬 띠 양끝 팔, 세로 틀 |
-| slot-base / slot-empty / slot-break / slot-glow / slot-link / slot-vanish | sharedassets3 ActionSlotUI_outline / _empty / _break / _1 / _linkline / _vanish | 속도 다이스(팔각): 바탕·빈 틀·흐트러짐·선택 글로우 |
+| arm-l / arm-r, side-gold / side-red, hazard-v | UpperLeft_1_37 / _38, _22 / _42, _39 | 스킬 띠 양끝 팔, 오른쪽 죄악 자원 세로 틀(`.b-rescol`, side-gold) |
+| slot-base / slot-empty / slot-break / slot-glow / slot-link / slot-vanish | sharedassets3 ActionSlotUI_outline / _empty / _break / _1 / _linkline / _vanish | 속도 다이스(팔각): 바탕·빈 틀·흐트러짐·선택 글로우, slot-link = 띠의 속도 숫자 밑 금선(`.b-speed`) |
 | gauge-frame / gauge-fill / gauge-emblem / gauge-gear / gauge-corner | BattleUnit_Gauge_0 / _1 / _2 / _3 / _4 | 초상 칠각 게이지(왼쪽 빨강 체력, 오른쪽 파랑 정신력 — conic mask) |
 | die-enemy / die-enemy-fill, creature-break, splat-red | CreatureBattle_SkillSlot_hp_bg / _hp, CreatureBattle_break, DestroyedPartBg | 적 다이스(붉은 칠각) |
 | chip-frame / chip-mask / chip-ego / chip-gold / chip-outline / chip-emblem | resources Choice_7_0 / Operation_1_0 / Choice_8_1 / Choice_7_30 / _7_1 / _7_28 | 스킬 칩(팔각 청동 틀 + 죄악색 마스크), E.G.O 주황 글로우 |
@@ -93,13 +96,13 @@ python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types t
 | plate-brown / plate-dark / plate-white / bar-grey / bar-brush / bar-redglow | Choice_8_6 / _7 / _8 / _3 / Choice_7_15 / _18 | 적 머리띠(bar-redglow). plate-dark/brown 은 v5.1 부터 안 씀(탭·버튼은 hud-plate/btn-red) |
 | plate-slant-w / -s / -d / -x, name-box, dots | CoinPopup_1_21 / _18 / _28 / _26, _1_37, _1_41 | 속도 숫자·이름(흰 사선 플레이트), 상태 바(어두운 사선), 컷인 스킬 상자 |
 | btn-red / btn-red2 / paper | Choice_5_21 / _17 / _20 | 켜진 하단 탭(`.b-tabx-on`, 붉은 버튼 9조각). 꺼진 탭·`.b-btn` 은 hud-plate 9조각 |
-| coin-heads / coin-tails / coin-glow / coin-break / coin-hept-w / coin-hept-b | CoinPopup_coin / _back / _coin2 / _break / _1_30 / _1_39 | (예비: 지금 코인은 `coins/`) |
+| coin-heads / coin-tails / coin-glow / coin-break / coin-hept-w / coin-hept-b | CoinPopup_coin / _back / _coin2 / _break / _1_30 / _1_39 | coin-break = 합 컷인에서 잃은 코인. 나머지는 예비(지금 코인은 `coins/`) |
 | ico-heart / ico-shield / ico-boot / ico-swords / ico-x | Popup_4_2 / _3 / _4 / _5(sharedassets5) / _7 | HUD·상태 바 아이콘 |
 | ico-check / ico-x-w / ico-tri / ico-mind / ico-warn / ico-key / ico-exit / ico-skip / ico-up / ico-lock | DanteAbility_01_17 / _16 / _21, EGO_new_4, EGO_new_3, UpperLeft_1_47, Choice_5_2, Choice_7_6, _7_32, resources icon_lock | 정신력(뇌)·확정 자물쇠 등 |
 | txt-turn / turn-lines / turn-lines-gold / turn-band | Turn_0 / _1 / _3 / _7 | 라운드 플래시 "TURN n" |
 | txt-victory / txt-defeat / txt-survived / result-branch-l·r / result-lines-gold / result-line-red / result-band(-wide) / txt-continue | Result_6 / _0 / _12 / _4·_5 / _8 / _1 / _11·_14 / StageContinue_02_4 | 승리·패배 배너(`ResultBanner`) |
 | threat-zayin / -teth / -he / -waw / -aleph / -aleph2 / -unknown, tag-new, x-red | CreatureBattle_3_0 / _12 / _15 / _22 / _26 / _38 / _18, _19, _33 | 적 등급 꼬리표(뜬소문=ZAYIN … 별=ALEPH(빨강), 불순물=???) |
-| banner-red / battle-ring / battle-star / smudge | Battlestart_0 / _2 / _3 / _1 | (예비) 맨 아래 바는 v5.1 부터 어두운 띠+청동 윗선(사용자: 붉은 띠가 조잡) |
+| banner-red / battle-ring / battle-star / smudge | Battlestart_0 / _2 / _3 / _1 | battle-star = 합 컷인 격돌 충격. 맨 아래 바는 v5.1 부터 어두운 띠+청동 윗선(사용자: 붉은 띠가 조잡) |
 | link-blue / link-orange, crosshair / crosshair2 | Operation_2_1 / _3, CreatureBattle_3_4 / _5 | (예비) |
 
 미리보기: `apps/web/src/app/dev/battle/page.tsx` — 로그인·DB 없이 가짜 전투로 전투 화면만 본다(프로덕션 404, `proxy.ts` 가 개발에서만 `/dev/*` 통과). 그림은 `apps/web/public/dev/`(저장소 제외)에 `ally1.png ally2.png enemy1.png enemy2.png bg.png` 를 두면 쓴다. `?ended=1` 종료, `?replay=win|lose` 뒤 "다시 보기"로 VICTORY/DEFEAT 연출, `?gm=0` 플레이어 시점.

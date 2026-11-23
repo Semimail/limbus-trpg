@@ -2,29 +2,22 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-:root {
-  --bg: #f6f3ee;
-  --bg-elev: #ffffff;
-  --fg: #1a1714;
-  --muted: #6b645c;
-  --border: #e2dcd3;
-  --accent: #b3161c;       /* 붉은색 포인트 */
-  --accent-fg: #ffffff;
-  --gold: #a8842c;
-  --danger: #b3161c;
-  --ok: #2f7a4a;
-}
-.dark {
-  --bg: #0b0a0a;
-  --bg-elev: #161313;
+/* 사이트 틀 v2 (2026-11-23, 사용자 "사이트 틀 자체가 림버스가 아니라서"): 항상 어두운 림버스 팔레트(검정·빨강·청동·금).
+   원작 폰트 — 본문 SCDream(한글 UI), 제목 KOTRA Bold, 영문·숫자 Bebas(원작은 Bebas Neue, 게임 파일의 BebasKai 사용). 조각은 ui/s/ (MainUI). 비공개 전제 */
+@font-face { font-family: "LimbusKotra"; src: url("/assets/limbus/font/KOTRA_BOLD.ttf") format("truetype"); font-display: swap; }
+:root, .dark {
+  --bg: #0a0808;
+  --bg-elev: #151010;
   --fg: #ece6dc;
   --muted: #9a918a;
-  --border: #2a2423;
-  --accent: #d2242b;
+  --border: #4a3520;       /* 청동 선 */
+  --accent: #c81e25;       /* 붉은색 포인트 */
   --accent-fg: #ffffff;
   --gold: #d9b35b;
+  --bronze: #a67c3a;
   --danger: #e04b52;
   --ok: #4fb374;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -38,11 +31,48 @@
   --color-gold: var(--gold);
   --color-danger: var(--danger);
   --color-ok: var(--ok);
-  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --color-bronze: var(--bronze);
+  --font-sans: "LimbusSCDream", "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --font-title: "LimbusKotra", "LimbusSCDream", "Pretendard Variable", sans-serif;
+  --font-num: "LimbusBebas", "LimbusExcelsior", "Bebas Neue", sans-serif;
+  /* 둥근 모서리를 거의 없애 각진 림버스 느낌으로 (Tailwind rounded-* 가 이 값을 쓴다) */
+  --radius-xs: 1px; --radius-sm: 2px; --radius-md: 2px; --radius-lg: 3px; --radius-xl: 4px; --radius-2xl: 6px; --radius-3xl: 8px;
 }
 
 html, body { height: 100%; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
+/* 페이지 배경: 원작 설정 화면의 어두운 붉은 질감을 아주 옅게 + 비네트 */
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 0%, rgba(200,30,37,.10), transparent 55%), url("/assets/limbus/ui/s/bg-texture.png") center / cover no-repeat, #0a0808; opacity: 1; }
+body::after { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(180deg, rgba(10,8,8,.35), rgba(10,8,8,.75) 60%, rgba(10,8,8,.9)); }
+h1, h2, h3, .font-title { font-family: var(--font-title); letter-spacing: .01em; }
+.font-num { font-family: var(--font-num); letter-spacing: .04em; }
+/* 상단 바: 원작 붉은 질감 플레이트 + 아래 청동 선 */
+.site-header { background: linear-gradient(90deg, rgba(170,22,28,.62), rgba(90,12,16,.45) 55%, rgba(30,6,8,.5)), url("/assets/limbus/ui/s/header-red.png") center / cover no-repeat, #3a0b0d; border-bottom: 2px solid var(--bronze); box-shadow: 0 4px 18px rgba(0,0,0,.6); }
+.site-header .logo { font-family: var(--font-num); font-size: 1.6rem; line-height: 1; letter-spacing: .08em; color: #fff; text-shadow: 0 1px 2px #000, 0 0 10px rgba(0,0,0,.6); }
+.site-header .logo b { color: #ffd54a; font-weight: 400; }
+.site-header .nav-link { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; color: #f1e4cf; font-size: 13px; font-weight: 600; text-shadow: 0 1px 1px #000;
+  background: url("/assets/limbus/ui/s/btn-normal.png") center / 100% 100% no-repeat; border-image: url("/assets/limbus/ui/s/btn-normal.png") 40 fill / 10px / 0 stretch; border: 0; }
+.site-header .nav-link:hover { border-image-source: url("/assets/limbus/ui/s/btn-hover.png"); color: #1a0e05; }
+/* 패널·카드·버튼·입력: 원작 조각 9조각 */
+.lb-card { border: 0; border-image: url("/assets/limbus/ui/s/card.png") 34 fill / 14px / 0 stretch; background: transparent; }
+.lb-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; padding: 6px 16px; font-size: 14px; font-weight: 700; line-height: 1.2; color: #f7ebd6; text-shadow: 0 1px 1px #000; border: 0; transition: filter .12s;
+  border-image: url("/assets/limbus/ui/s/btn-normal.png") 44 fill / 12px / 0 stretch; }
+.lb-btn:hover { filter: brightness(1.25); }
+.lb-btn:disabled { opacity: .45; filter: none; }
+.lb-btn-primary { color: #fff; border-image: url("/assets/limbus/ui/b/btn-red.png") 40 fill / 12px / 0 stretch; }
+.lb-btn-primary:hover { filter: brightness(1.2) saturate(1.1); }
+.lb-btn-ghost { color: #e9dcc2; }
+.lb-btn-danger { color: #ff9a9a; border-image: url("/assets/limbus/ui/s/btn-normal.png") 44 fill / 12px / 0 stretch; box-shadow: inset 0 0 0 1px rgba(224,75,82,.6); }
+.lb-btn-sm { padding: 3px 10px; font-size: 12px; }
+.lb-input { width: 100%; padding: 7px 12px; font-size: 14px; color: var(--fg); background: #0e0a0a; border: 1px solid var(--border); outline: none; box-shadow: inset 0 1px 0 rgba(0,0,0,.6);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.lb-input:focus { border-color: var(--gold); box-shadow: inset 0 0 0 1px rgba(217,179,91,.35); }
+textarea.lb-input { min-height: 4rem; }
+select.lb-input { clip-path: none; }
+.lb-title { font-family: var(--font-title); font-size: 1.35rem; line-height: 1.2; }
+.lb-title-bar { height: 10px; margin-top: 6px; background: url("/assets/limbus/ui/b/bar-redglow.png") left center / 100% 100% no-repeat; opacity: .9; }
+.lb-divider { height: 6px; background: url("/assets/limbus/ui/s/line.png") center / 100% 100% no-repeat; opacity: .8; }
 
 /* 로그인 전 화면: 임시 배경 (나중에 일러스트로 교체) */
 .landing { background: #070606; color: #ece6dc; }
@@ -64,15 +94,13 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.25 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-/* 사무소 패널: 모서리를 깎은 각진 형태 */
-.panel {
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-}
+/* 사무소 패널: 원작 검정+청동 테 틀(9조각) */
+.panel { border: 0; background: transparent; border-image: url("/assets/limbus/ui/s/panel.png") 36 fill / 16px / 0 stretch; box-shadow: 0 8px 24px rgba(0,0,0,.55); }
+.panel > header { margin: -4px -4px 10px; padding: 4px 8px 5px; background: linear-gradient(90deg, rgba(120,80,30,.45), rgba(60,38,16,.25) 60%, transparent); border-bottom: 1px solid rgba(166,124,58,.55); }
+.panel > header h2 { font-family: var(--font-title); font-size: .95rem; color: #f7e7c3; text-shadow: 0 1px 1px #000; }
 .stamp {
-  display: inline-block; padding: 1px 6px; font-size: 11px; letter-spacing: 0.08em;
-  border: 1px solid var(--gold); color: var(--gold); text-transform: uppercase;
+  display: inline-block; padding: 2px 8px 1px; font-family: var(--font-num); font-size: 12px; letter-spacing: .1em; line-height: 1;
+  color: #1a0e05; background: url("/assets/limbus/ui/s/plate-slant.png") center / 100% 100% no-repeat; text-transform: uppercase;
 }
 
 /* 캐릭터 시트: 테마와 무관하게 검정·빨강·금색 포스터 */

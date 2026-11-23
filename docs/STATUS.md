@@ -152,6 +152,12 @@
 - 미결: 결과 PNG 여백 트리밍·축소(이미지 라이브러리 없음), 대량 생성 시 비용 관리(NPC 1명 풀 세트 ≈ 호출 11회).
 - 로컬 환경 메모: 2026-11-20 "환경 일치화" 항목 참고.
 
+## 사이트 틀 v2: 림버스 팔레트·원작 폰트·MainUI 조각 (2026-11-23, 사용자 "사이트 틀 자체가 림버스가 아니라서" + 폰트 참고 글)
+- 라이트 테마 제거(항상 어두운 검정·빨강·청동·금, `ThemeProvider forcedTheme="dark"`, 테마 토글 삭제). Tailwind `--radius-*` 를 1~8px 로 줄여 각진 느낌.
+- 폰트: 본문 SCDream(원작 한글 UI), 제목 KOTRA Bold(`h1,h2,h3`·`.font-title`), 영문·숫자 BebasKai(`.font-num`; 포스타입 글 "영문은 Bebas Neue"). 타이틀 폰트 Tagmarker 는 라이선스 불명·게임 파일에 없어 제외. Pretendard CDN 은 폴백으로 유지.
+- 조각(`ui/s/`, 47장, `ui-pick-shell.py`): 상단 바 = 원작 붉은 질감 플레이트 + Bebas 로고 "LIMBUS TRPG" + 청동 버튼 메뉴(`header.tsx`, `.site-header`), 패널 = 검정+청동 테 9조각(`.panel`, 머리띠는 갈색 그라데이션+청동 선, 스탬프 = 흰 사선 플레이트에 Bebas), 카드 = 모서리 깎인 플레이트(`.lb-card`), 버튼 = primary 붉은 플레이트(전투 조각 btn-red)·ghost 검정+청동(btn_t1_normal)·danger 붉은 테(`.lb-btn*`), 입력 = 모서리 깎인 어두운 칸(`.lb-input`), 페이지 제목 = KOTRA + 붉은 빛 바(`PageTitle`), 페이지 배경 = 원작 설정 화면 질감 + 비네트(`body::before/after`).
+- 미리보기 `/dev/shell`(개발 전용)로 사무소 모양을 확인. 각 페이지의 Tailwind 색 클래스(`bg-elev`, `border-border` 등)는 팔레트 변수를 따라 자동으로 어두워졌고, 페이지별 손질(캐릭터 목록·데이터북·룰북·공방 등)은 아직.
+
 ## 전투 화면 v5: 원작 BattleUI 조각 그대로 (2026-11-23, 사용자 "UI 추출한 거 그대로 가져온다면?" → "전투 화면부터")
 - 설치 폴더 추출본의 `BattleUI_*` Sprite(459장, 이미 정확히 잘린 조각)에서 134장을 골라 `apps/web/public/assets/limbus/ui/b/`(4.8MB) 에, 원작 폰트 Excelsior(제목)·BebasKai(숫자)·SCDream(본문)을 `assets/limbus/font/` 에 넣음. 이름 ↔ 원본 대응표는 `scripts/limbus-extract/README.md` "전투 UI 조각". 비공개 전제.
 - `battle-screen.tsx` 가 `ui/b/` 를 쓰도록 바꿈: TURN·ENEMY 플레이트(UpperLeft_1_24/40), 우상단 사각 버튼+켜짐 글로우, 승률·피해량 붉은 플레이트, 속도 다이스 = 원작 팔각(ActionSlotUI: 바탕·빈 틀·흐트러짐·선택 글로우), 초상 = 칠각 게이지(BattleUnit_Gauge, 왼쪽 빨강 체력·오른쪽 파랑 정신력을 conic-gradient 마스크로), 스킬 칩 = 팔각 청동 틀(Choice_7_0)+죄악색 마스크, E.G.O 주황 글로우 팔각, 적 다이스 = 붉은 칠각, 라운드 버튼 = 붉은 팔각+청동 테+뒤에 도는 Turn_5 기어(START/NEXT/WIN/LOSE/WAIT), 라운드 플래시 = 원작 TURN 글자+주황 선, 승리·패배 = 원작 VICTORY/DEFEAT 글자+가지·선(`ResultBanner`), 유닛 카드 = PassivePanel 세로 틀(아군 청동/적 빨강)+ENEMY 꼬리표+위협 등급 꼬리표(뜬소문=ZAYIN…), 로그 카드·패널·탭·머리띠·상태 바·컷인 이름판도 원작 플레이트. `globals.css` "전투 화면 v5" 블록(v4 규칙 뒤에 두어 덮어씀).

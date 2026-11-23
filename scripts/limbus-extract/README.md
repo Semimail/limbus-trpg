@@ -72,7 +72,7 @@ python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types t
 - 음악·대량 배경처럼 큰 파일은 깃에 넣지 말고 Supabase Storage(비공개 버킷 + 서명 URL)에 올리는 쪽을 권장. 필요하면 업로드 스크립트를 추가한다.
 
 ## 전투 UI 조각 (2026-11-23, 사용자 "UI 추출한 거 그대로 가져온다면?" → "전투 화면부터")
-설치 폴더 추출본 `extracted/all/sprite/{resources,sharedassets3,…}/BattleUI_*.png` 은 Unity Sprite 단위라 이미 정확히 잘려 있다(459장). 그중 전투 화면에 쓰는 134장을 이름을 붙여 `apps/web/public/assets/limbus/ui/b/` 에 복사했고(복사 스크립트는 세션 scratchpad `copy-ui.py`, 아래 표가 원본), 폰트 `ExcelsiorSans.ttf`·`BebasKai.ttf`·`SCDream5.otf`(`extracted/all/font/resources/`)를 `apps/web/public/assets/limbus/font/` 에 넣었다. 옛 눈대중 조각 `ui/*.png` 54장은 세션 무대(`stage.tsx` plate-tag)와 CSS 일부가 아직 써서 남겨 둠. 가족별 확인 시트: `sheet.py` 대신 scratchpad `family-sheets.py`(PIL, 가족 prefix 별 격자).
+설치 폴더 추출본 `extracted/all/sprite/{resources,sharedassets3,…}/BattleUI_*.png` 은 Unity Sprite 단위라 이미 정확히 잘려 있다(459장). 그중 전투 화면에 쓰는 134장을 이름을 붙여 `apps/web/public/assets/limbus/ui/b/` 에 복사했고(복사 스크립트 `ui-pick-battle.py`, 아래 표가 그 안의 M 과 같다), 폰트 `ExcelsiorSans.ttf`·`BebasKai.ttf`·`SCDream5.otf`(`extracted/all/font/resources/`)를 `apps/web/public/assets/limbus/font/` 에 넣었다. 옛 눈대중 조각 `ui/*.png` 54장은 세션 무대(`stage.tsx` plate-tag)와 CSS 일부가 아직 써서 남겨 둠. 가족별 확인 시트: `ui-family-sheets.py <조각 폴더> <출력 폴더>`(PIL, BattleUI_/MainUI_ 가족 prefix 별 이름표 격자).
 
 | 공방 이름 | 원본 (`<폴더>/BattleUI_…`) | 쓰임 |
 |---|---|---|
@@ -103,3 +103,7 @@ python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types t
 | link-blue / link-orange, crosshair / crosshair2 | Operation_2_1 / _3, CreatureBattle_3_4 / _5 | (예비) |
 
 미리보기: `apps/web/src/app/dev/battle/page.tsx` — 로그인·DB 없이 가짜 전투로 전투 화면만 본다(프로덕션 404, `proxy.ts` 가 개발에서만 `/dev/*` 통과). 그림은 `apps/web/public/dev/`(저장소 제외)에 `ally1.png ally2.png enemy1.png enemy2.png bg.png` 를 두면 쓴다. `?ended=1` 종료, `?replay=win|lose` 뒤 "다시 보기"로 VICTORY/DEFEAT 연출, `?gm=0` 플레이어 시점.
+
+## 사이트 틀 조각 (2026-11-23, 사용자 "사이트 틀 자체가 림버스가 아니라서" + 폰트 글 https://www.postype.com/@bysmile0824/post/14436984)
+`MainUI_common_Popup_01/03`, `MainUI_UserInfo_1`, `MainUI_Settings_3` 에서 47장을 골라 `apps/web/public/assets/limbus/ui/s/`(2.1MB) 에 복사(`ui-pick-shell.py`, 이름·원본·쓰임 주석은 그 안에). 쓰임: `header-red`(상단 바 배경, UserInfo_1_0 붉은 질감), `panel`(패널 9조각, UserInfo_1_1 검정+청동 테), `card`(목록 항목, common_Popup_03_6), `btn-normal/hover/focus`(버튼 세 상태, common_Popup_01_btn_t1_*), `bar-input`, `plate-slant`(스탬프), `bg-texture`(페이지 배경, Settings_3_8), `line`, 아이콘(x·gear·check·lock·new·warn·search·refresh·docs), 스크롤바, 팔각 틀.
+폰트(게임 파일 `extracted/all/font/resources/`, 포스타입 글은 영문 = Bebas Neue, 타이틀 = Tagmarker 라고 함): 본문 `SCDream5.otf`, 제목 `KOTRA_BOLD.ttf`, 영문·숫자 `BebasKai.ttf`(Bebas Neue 계열), 전투 제목 `ExcelsiorSans.ttf` → `apps/web/public/assets/limbus/font/`. Tagmarker 는 게임 파일에 없고 라이선스가 불분명해 안 씀. 미리보기 `/dev/shell`.

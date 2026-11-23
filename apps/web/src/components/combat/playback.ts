@@ -60,10 +60,10 @@ export function buildPlaySteps(events: RoundEvent[], units: UnitLite[]): PlaySte
       e.result.rounds.forEach((r, i) => {
         const aw = r.winner === "a", bw = r.winner === "b";
         steps.push({
-          header: `합 ${i + 1} · ${a.name} ${r.a.totalPower} ${aw ? "▶" : bw ? "◀" : "="} ${r.b.totalPower} ${t.name}${r.winner === "draw" ? " · 동률, 다시" : ""}`,
+          header: `합 ${i + 1} · ${a.name} ${r.a.totalPower} ${aw ? "▶" : bw ? "◀" : "="} ${r.b.totalPower} ${t.name}`,
           cards: [
-            { unitId: a.id, title: `${a.name} · 합 ${i + 1}`, coins: r.a.coins.map((c) => c.heads), big: `${sbase(a, e.actorSkill)} → ${r.a.totalPower}`, sub: bw ? "코인 파괴" : aw ? "우세" : "동률", tone: aw ? "gold" : bw ? "dim" : "white", skill: as, skillId: sid(a, e.actorSkill), motion: bw ? "hit" : "attack", clash: true, power: r.a.totalPower, coinsLeft: r.aCoinsLeft, coinsTotal: aTotal },
-            { unitId: t.id, title: `${t.name} · 합 ${i + 1}`, coins: r.b.coins.map((c) => c.heads), big: `${sbase(t, e.targetSkill)} → ${r.b.totalPower}`, sub: aw ? "코인 파괴" : bw ? "우세" : "동률", tone: bw ? "gold" : aw ? "dim" : "white", skill: ts, skillId: sid(t, e.targetSkill), motion: aw ? "hit" : "attack", clash: true, power: r.b.totalPower, coinsLeft: r.bCoinsLeft, coinsTotal: tTotal },
+            { unitId: a.id, title: `${a.name} · 합 ${i + 1}`, coins: r.a.coins.map((c) => c.heads), big: `${sbase(a, e.actorSkill)} → ${r.a.totalPower}`, tone: aw ? "gold" : bw ? "dim" : "white", skill: as, skillId: sid(a, e.actorSkill), motion: bw ? "hit" : "attack", clash: true, power: r.a.totalPower, coinsLeft: r.aCoinsLeft, coinsTotal: aTotal },
+            { unitId: t.id, title: `${t.name} · 합 ${i + 1}`, coins: r.b.coins.map((c) => c.heads), big: `${sbase(t, e.targetSkill)} → ${r.b.totalPower}`, tone: bw ? "gold" : aw ? "dim" : "white", skill: ts, skillId: sid(t, e.targetSkill), motion: aw ? "hit" : "attack", clash: true, power: r.b.totalPower, coinsLeft: r.bCoinsLeft, coinsTotal: tTotal },
           ],
           arc, hold: 1100,
         });

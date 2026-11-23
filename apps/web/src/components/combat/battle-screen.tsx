@@ -14,7 +14,8 @@ import { SdSprite } from "@/components/sprite/sd-sprite";
 import { ErosionReveal, type ErosionCard } from "./erosion-reveal";
 
 /*
- * 전투 화면 v4 — 림버스 컴퍼니 UI 조각(드라이브 UI/Battle 아틀라스) + 참고 영상(FVTT 림버스 모듈) 레이아웃
+ * 전투 화면 v5 — 원작 BattleUI 조각(설치 폴더 추출, public/assets/limbus/ui/b/, 비공개 전제)을 그대로 쓴다 + 참고 영상(FVTT 림버스 모듈) 레이아웃
+ *  - 조각 이름 ↔ 원작 스프라이트 대응은 scripts/limbus-extract/README.md "전투 UI 조각" 절. 폰트: Excelsior(제목)·BebasKai(숫자)·SCDream(본문).
  *  - 좌상단 TURN/ENEMY 프레임, 왼쪽 행동 순서, 우상단 버튼, 오른쪽 유닛 카드(적은 공개된 기믹만), 우하단 로그, 붉은 원형 START.
  *  - 가운데 아래 림버스식 스킬 슬롯 띠: 자기 캐릭터의 다이스를 누르면 1·2·3번 손패/방어/E.G.O를 골라 올리고,
  *    다이스를 끌어(또는 적을 눌러) 대상을 정한다. 남의 캐릭터는 보기만.
@@ -30,8 +31,10 @@ interface Props {
   background: string | null;
 }
 
-const UI = "/assets/limbus/ui";
+const UI = "/assets/limbus/ui/b";
 const ui = (n: string) => `${UI}/${n}.png`;
+/** 적 등급 → 원작 위협 등급 꼬리표 (ZAYIN~ALEPH, 불순물은 ???) */
+const THREAT_TAG: Record<string, string> = { "뜬소문": "threat-zayin", "도시괴담": "threat-teth", "도시전설": "threat-he", "도시의 악몽": "threat-waw", "도시의 재앙": "threat-aleph", "별": "threat-aleph2", "불순물": "threat-unknown" };
 const SIN_COLOR: Record<string, string> = { wrath: "#b3161c", lust: "#d4621c", sloth: "#c9a227", gluttony: "#4f8a3a", gloom: "#2e6f9e", pride: "#2b3f8c", envy: "#6a3d9a" };
 
 type DragPayload = { kind: "skill"; unitId: string; skillId: string } | { kind: "die"; unitId: string; slot: number };
@@ -295,16 +298,16 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       {/* 좌상단 HUD */}
       <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-1">
         <div className="flex items-end gap-2">
-          <HudFrame img="turn-frame" value={state.round} title="라운드" />
-          <span className="mb-1 flex items-center gap-2 text-xs font-bold" style={{ textShadow: "0 1px 2px #000" }}>
+          <HudFrame img="hud-turn" value={state.round} title="라운드" />
+          <span className="b-num mb-1 flex items-center gap-2 text-sm font-bold" style={{ textShadow: "0 1px 2px #000" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={ui("ico-heart")} alt="아군" className="h-4" /> {alliesAlive}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={ui("ico-sword")} alt="적" className="h-4" /> {enemiesAlive}
+            <img src={ui("ico-swords")} alt="적" className="h-4" /> {enemiesAlive}
           </span>
         </div>
-        <HudFrame img="enemy-frame" value={enemiesAlive} title="남은 적" />
-        <span className="b-muted pl-1 text-[11px]">{phaseText}{state.phase === "select" && allyUnpicked.length ? ` · 미선택 ${allyUnpicked.length}` : state.phase === "select" ? " · 준비 완료" : ""}</span>
+        <HudFrame img="hud-enemy" value={enemiesAlive} title="남은 적" />
+        <span className="b-plate-d ml-1 px-3 py-0.5 text-[11px]">{phaseText}{state.phase === "select" && allyUnpicked.length ? ` · 미선택 ${allyUnpicked.length}` : state.phase === "select" ? " · 준비 완료" : ""}</span>
       </div>
       {/* 상단 가운데: 연출 띠 / 오류·공지 (영상의 "차례" 띠 자리) */}
       <div className="pointer-events-none absolute left-1/2 top-2 z-10 flex w-[min(80vw,40rem)] -translate-x-1/2 flex-col items-center gap-1 text-xs">
@@ -327,7 +330,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       {/* 우상단 버튼 */}
       <div className="absolute right-2 top-2 z-20 flex items-start gap-1">
         {state.lastRound?.length ? <IconBtn img="btn-play" label="다시 보기" onClick={() => startPlay(state.lastRound, state.units)} /> : null}
-        <IconBtn img="btn-pause" label="연출" on={autoCine} onClick={() => { const v = !autoCine; setAutoCine(v); autoRef.current = v; try { localStorage.setItem("limbus.cinematic", v ? "on" : "off"); } catch {} }} />
+        <IconBtn img={autoCine ? "btn-arrows-on" : "btn-arrows-off"} label="연출" on={autoCine} onClick={() => { const v = !autoCine; setAutoCine(v); autoRef.current = v; try { localStorage.setItem("limbus.cinematic", v ? "on" : "off"); } catch {} }} />
         <div className="relative">
           <IconBtn img="btn-gear" label="메뉴" on={menu} onClick={() => setMenu(!menu)} />
           {menu ? (
@@ -360,7 +363,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
 
       {/* 우하단: 로그 카드 */}
       <div className="absolute bottom-[15.5rem] right-2 z-10 hidden w-[20rem] md:block">
-        <div className="b-pane text-[11px]">
+        <div className="b-log text-[11px]">
           <button type="button" className="b-head-plate flex w-full items-center justify-between px-2 py-1" onClick={() => setLogOpen(!logOpen)}>
             <span className="font-bold">로그{state.lastRound?.length ? ` · ${state.round}R` : ""}</span><span className="b-muted">{logOpen ? "▾" : "▸"}</span>
           </button>
@@ -389,7 +392,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
             </div>
           ) : null}
           <div className="absolute inset-x-0 bottom-8 z-10 flex justify-center">
-            <SkillStrip units={myUnits} state={state} names={names} loaded={loaded} activeDie={activeDie} picker={picker} selId={selId} odds={odds}
+            <SkillStrip units={myUnits} state={state} names={names} rules={rules} loaded={loaded} activeDie={activeDie} picker={picker} selId={selId} odds={odds}
               onDie={(u, slot) => { const k = slotKey(u.id, slot); setActiveDie(k); setSelId(u.id); setPicker(picker === k ? null : k); }}
               onPortrait={(u) => { setSelId(u.id); const d = firstFreeDie(u.id); if (d) setActiveDie(slotKey(u.id, d.slot)); }}
               onDefense={(u, s) => { const slot = dieFor(u.id); if (slot !== undefined) chooseSkill(u, slot, s); }}
@@ -403,8 +406,8 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       <div className="absolute bottom-10 right-3 z-20 flex flex-col items-center gap-1 md:bottom-12 md:right-5">
         <div className="flex items-end gap-1">
           <div className="mb-3 mr-3 hidden flex-col items-end gap-1 md:flex">
-            <button type="button" onClick={() => setOddsMode(oddsMode === "odds" ? "off" : "odds")} title="합 승률 표시" className={`h-7 w-16 ${oddsMode === "odds" ? "" : "opacity-50 grayscale"}`} style={{ backgroundImage: `url(${ui("plate-winrate")})`, backgroundSize: "100% 100%" }} />
-            <button type="button" onClick={() => setOddsMode(oddsMode === "power" ? "off" : "power")} title="기대 위력 표시" className={`relative h-7 w-16 text-[11px] font-black text-[#ffd0d0] ${oddsMode === "power" ? "" : "opacity-50 grayscale"}`} style={{ backgroundImage: `url(${ui("plate-red")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>피해량</button>
+            <button type="button" onClick={() => setOddsMode(oddsMode === "odds" ? "off" : "odds")} title="합 승률 표시" className="relative h-8 w-[4.3rem] pr-4 text-[11px] font-black text-[#ffd0d0]" style={{ backgroundImage: `url(${ui(oddsMode === "odds" ? "plate-red-on" : "plate-red-off")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>승률</button>
+            <button type="button" onClick={() => setOddsMode(oddsMode === "power" ? "off" : "power")} title="기대 위력 표시" className="relative h-8 w-[4.3rem] pr-4 text-[11px] font-black text-[#ffd0d0]" style={{ backgroundImage: `url(${ui(oddsMode === "power" ? "plate-red-on" : "plate-red-off")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>피해량</button>
             <span className="b-muted text-[10px] tabular-nums">선택 {state.slots.filter((s) => state.units.find((x) => x.id === s.combatantId)!.side === "ally").length - allyUnpicked.length}/{state.slots.filter((s) => state.units.find((x) => x.id === s.combatantId)!.side === "ally").length}</span>
           </div>
           <RoundButton isGm={isGm} phase={state.phase} winner={state.winner} pending={pending} unpicked={allyUnpicked.length} playing={!!play} onNext={playNext}
@@ -453,13 +456,17 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       </div>
 
       {/* 라운드 시작 플래시 */}
-      {flash !== null && !play ? <div className="pointer-events-none absolute inset-x-0 top-[26%] z-30 flex justify-center"><div className="b-turn-flash flex items-center gap-3">
+      {flash !== null && !play ? <div className="pointer-events-none absolute inset-x-0 top-[26%] z-30 flex justify-center"><div className="b-turn-flash relative flex items-center gap-3 px-10 py-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={ui("turn-text")} alt="TURN" className="h-14 md:h-20" draggable={false} /><span className="text-5xl font-black text-[#ffb347] md:text-7xl" style={{ textShadow: "0 0 24px rgba(255,120,40,.8), 0 2px 0 #000" }}>{flash}</span></div></div> : null}
+        <img src={ui("turn-lines")} alt="" className="pointer-events-none absolute inset-0 h-full w-full" draggable={false} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={ui("txt-turn")} alt="TURN" className="relative h-14 md:h-20" draggable={false} /><span className="b-num relative text-6xl text-[#ff9a2e] md:text-8xl" style={{ textShadow: "0 0 24px rgba(255,120,40,.8), 0 2px 0 #000" }}>{flash}</span></div></div> : null}
       {/* 전투 종료: 침식도 단계 연출 */}
       {erosionCards ? <ErosionReveal cards={erosionCards} onDone={clearErosion} /> : null}
       {/* 연출 배너 (합 승리 · 전투불능 · 승패) */}
-      {playStep?.banner ? <div className="pointer-events-none absolute inset-x-0 top-[34%] z-30 flex justify-center"><div className="b-play-banner px-8 py-2 text-3xl font-black tracking-widest md:text-5xl" style={{ color: playStep.banner.tone === "gold" ? "#ffd54a" : playStep.banner.tone === "red" ? "#ff4d55" : "#f1ebe0" }}>{playStep.banner.text}</div></div> : null}
+      {playStep?.banner ? (playStep.banner.text === "승리" || playStep.banner.text === "패배"
+        ? <ResultBanner win={playStep.banner.text === "승리"} />
+        : <div className="pointer-events-none absolute inset-x-0 top-[34%] z-30 flex justify-center"><div className="b-play-banner px-8 py-2 text-3xl font-black tracking-widest md:text-5xl" style={{ color: playStep.banner.tone === "gold" ? "#ffd54a" : playStep.banner.tone === "red" ? "#ff4d55" : "#f1ebe0" }}>{playStep.banner.text}</div></div>) : null}
     </div>
   );
 }
@@ -467,20 +474,61 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
 const oddsColor = (l: string) => l === "압도" ? "text-amber-300" : l === "유리" ? "text-emerald-300" : l === "보통" ? "text-white" : l === "불리" ? "text-orange-300" : "text-red-400";
 
 /* ---------- HUD 조각 ---------- */
+/** 원작 TURN/ENEMY 플레이트(305x128): 오른쪽 어두운 칸에 숫자 */
 function HudFrame({ img, value, title }: { img: string; value: number | string; title: string }) {
   return (
-    <span className="relative block h-[44px] w-[120px]" title={title} style={{ backgroundImage: `url(${ui(img)})`, backgroundSize: "100% 100%" }}>
-      <span className="absolute inset-y-0 right-[9%] flex w-[46%] items-center justify-center text-lg font-black tabular-nums text-white" style={{ textShadow: "0 1px 2px #000" }}>{value}</span>
+    <span className="relative block h-[50px] w-[120px]" title={title} style={{ backgroundImage: `url(${ui(img)})`, backgroundSize: "100% 100%" }}>
+      <span className="b-num absolute inset-y-0 right-[8%] flex w-[40%] items-center justify-center text-2xl text-white" style={{ textShadow: "0 1px 2px #000" }}>{value}</span>
     </span>
   );
 }
+/** 원작 사각 버튼(250x245). 켜져 있으면 주황 테두리 글로우 조각을 겹친다 */
 function IconBtn({ img, label, on, onClick }: { img: string; label: string; on?: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} title={label} className={`flex flex-col items-center gap-0 ${on === false ? "opacity-55" : ""}`}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={ui(img)} alt="" className={`h-10 w-10 md:h-12 md:w-12 ${on ? "drop-shadow-[0_0_6px_rgba(217,179,91,.9)]" : ""}`} draggable={false} />
+    <button type="button" onClick={onClick} title={label} className={`flex flex-col items-center gap-0 ${on === false ? "opacity-60" : ""}`}>
+      <span className="relative block h-10 w-10 md:h-12 md:w-12">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={ui(img)} alt="" className="h-full w-full" draggable={false} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {on ? <img src={ui("btn-glow")} alt="" className="pointer-events-none absolute -inset-[6%] h-[112%] w-[112%]" draggable={false} /> : null}
+      </span>
       <span className="text-[9px] leading-none" style={{ color: on === false ? "var(--b-muted)" : "var(--b-gold)", textShadow: "0 1px 2px #000" }}>{label}</span>
     </button>
+  );
+}
+/** 승리·패배: 원작 VICTORY/DEFEAT 글자 + 장식 선 */
+function ResultBanner({ win }: { win: boolean }) {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-[30%] z-30 flex flex-col items-center">
+      <div className="relative flex w-[min(92vw,44rem)] items-center justify-center py-6">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={ui(win ? "result-lines-gold" : "result-line-red")} alt="" className="b-result-lines absolute inset-x-0 top-1/2 h-28 w-full -translate-y-1/2 object-fill opacity-90 md:h-40" draggable={false} />
+        {win ? (<>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ui("result-branch-l")} alt="" className="b-result absolute left-0 top-1/2 h-16 -translate-y-1/2 md:h-24" draggable={false} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ui("result-branch-r")} alt="" className="b-result absolute right-0 top-1/2 h-16 -translate-y-1/2 md:h-24" draggable={false} />
+        </>) : null}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={ui(win ? "txt-victory" : "txt-defeat")} alt={win ? "VICTORY" : "DEFEAT"} className="b-result relative h-16 md:h-24" draggable={false} />
+      </div>
+    </div>
+  );
+}
+/** 초상 게이지(원작 칠각 링): 왼쪽 빨강 체력, 오른쪽 파랑 정신력. 안쪽에 초상 */
+function PortraitGauge({ u, rules, size, children }: { u: Unit; rules: RuleConfig; size: number; children?: ReactNode }) {
+  const hp = Math.max(0, Math.min(1, u.maxHp > 0 ? u.hp / u.maxHp : 0));
+  const sp = u.sanityLocked ? 0 : Math.max(0, Math.min(1, (u.sanity - rules.sanityMin) / Math.max(1, rules.sanityMax - rules.sanityMin)));
+  return (
+    <span className="b-gauge" style={{ width: size, height: size, ["--hp" as string]: hp, ["--sp" as string]: sp }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={ui("gauge-fill")} alt="" className="b-gauge-img" draggable={false} />
+      <span className="b-gauge-face">{children}</span>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={ui("gauge-frame")} alt="" className="b-gauge-img b-gauge-track" draggable={false} />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={ui("gauge-frame")} alt="" className="b-gauge-img b-gauge-on" draggable={false} />
+    </span>
   );
 }
 
@@ -633,8 +681,9 @@ function Arena({ state, names, isGm, selId, onSelect, mine, drag, startDrag, dra
               onClick={() => { if (draggedRef.current) return; if (u.side === "enemy" && onEnemyTap({ kind: "slot", unitId: u.id, slot: s.slot })) { onSelect(u.id); return; } onSelect(u.id); }} title={`${names[u.id]} 속도 ${s.speed}${sk ? ` · ${hidden ? "???" : sk.name}${p ? ` → ${names[p.targetId]}` : " (대상 없음)"}` : ""}`}
               className={`absolute -translate-x-1/2 -translate-y-1/2 ${my && sk ? "touch-none cursor-grab" : ""}`} style={{ left: dp.x, top: dp.y, width: ds, height: ds }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={ui(u.side === "enemy" ? "hept-rune" : "hex-frame")} alt="" draggable={false} className={`absolute inset-0 h-full w-full ${activeDie === key ? "drop-shadow-[0_0_6px_#fff]" : ""}`} style={u.side === "enemy" ? undefined : { filter: "sepia(1) saturate(2) hue-rotate(5deg) brightness(1.05)" }} />
-              {!sk ? <span className="absolute inset-[22%] rounded-full" style={{ background: u.side === "enemy" ? "#2a0d0f" : "#1a1410" }} /> : null}
+              <img src={ui(u.side === "enemy" ? "die-enemy-fill" : "slot-base")} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={u.side === "enemy" ? { filter: "brightness(.55)" } : undefined} />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={ui(u.side === "enemy" ? "die-enemy" : "slot-empty")} alt="" draggable={false} className={`absolute inset-0 h-full w-full ${activeDie === key ? "drop-shadow-[0_0_6px_#fff]" : ""}`} />
               {sk ? <span className="absolute inset-[16%]"><SkillChip skill={sk} size={Math.round(ds * 0.68)} bare /></span> : null}
               {over ? <span className="absolute -inset-1 rounded-full" style={{ boxShadow: "0 0 0 2px #fff, 0 0 16px #ff3b3b" }} /> : null}
               <span className="absolute -left-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-sm px-0.5 text-[10px] font-black leading-none text-white" style={{ background: u.side === "enemy" ? "#b3161c" : "#2d6fb3", border: "1px solid #0008" }}>{s.speed}</span>
@@ -686,7 +735,7 @@ function CutIn({ step, playKey, state, names, w, bottom }: { step: PlayStep; pla
           )}
         </div>
         {/* 이름 플레이트 */}
-        <div className="mt-1 flex h-8 min-w-[7rem] items-center justify-center whitespace-nowrap px-4 text-sm font-bold text-[#f7e7c3]" style={{ backgroundImage: `url(${ui("plate-tag")})`, backgroundSize: "100% 100%", textShadow: "0 1px 2px #000" }}>{names[p.u.id]}</div>
+        <div className="b-plate-w mt-1 flex h-8 min-w-[7rem] items-center justify-center whitespace-nowrap px-5 text-sm">{names[p.u.id]}</div>
         {/* 스킬 · 위력 · 코인 */}
         <div className="b-cut-skill mt-2 flex w-[11rem] flex-col items-center gap-1 px-2 py-2 md:w-[13rem]" data-tone={tone}>
           <div className="flex items-center gap-2">
@@ -706,7 +755,7 @@ function CutIn({ step, playKey, state, names, w, bottom }: { step: PlayStep; pla
       <div className="absolute inset-x-0 top-0" style={{ height: bottom }}>
         {side(L, "l")}
         {side(R, "r")}
-        <div className="absolute left-1/2 -translate-x-1/2 text-4xl font-black italic text-white/80 md:text-6xl" style={{ top: Math.max(60, bottom * 0.35), textShadow: "0 0 20px rgba(0,0,0,.9)" }}>VS</div>
+        <div className="b-title absolute left-1/2 -translate-x-1/2 text-5xl italic text-white/85 md:text-7xl" style={{ top: Math.max(60, bottom * 0.35), textShadow: "0 0 20px rgba(0,0,0,.9)" }}>VS</div>
       </div>
     </div>
   );
@@ -723,12 +772,12 @@ function DragGhost({ drag, state, loaded, dieFor }: { drag: { payload: DragPaylo
 /* ---------- 스킬 아이콘: 림버스 칠각 프레임 + 죄악 색 ---------- */
 export function SkillChip({ skill, size, glow, selected, bare }: { skill: Skill; size: number; glow?: boolean; selected?: boolean; bare?: boolean }) {
   const color = SIN_COLOR[skill.sin] ?? "#555";
-  const mask = `url(${ui("hex-mask")})`;
+  const mask = `url(${ui("chip-mask")})`;
   return (
     <span className="relative inline-block shrink-0 align-middle" style={{ width: size, height: size, filter: glow ? `drop-shadow(0 0 10px ${color})` : undefined }}>
-      <span className="absolute inset-[9%]" style={{ background: `radial-gradient(circle at 40% 30%, ${color} 0%, ${color}cc 55%, #0a0505 100%)`, WebkitMaskImage: mask, maskImage: mask, WebkitMaskSize: "100% 100%", maskSize: "100% 100%" }} />
+      <span className="absolute inset-[8%]" style={{ background: `radial-gradient(circle at 40% 30%, ${color} 0%, ${color}cc 55%, #0a0505 100%)`, WebkitMaskImage: mask, maskImage: mask, WebkitMaskSize: "100% 100%", maskSize: "100% 100%" }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {!bare || skill.ego ? <img src={ui(skill.ego ? "hex-ego" : "hex-frame")} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={skill.ego ? { filter: "sepia(1) saturate(3) hue-rotate(10deg) brightness(1.1)" } : undefined} /> : null}
+      {!bare || skill.ego ? <img src={ui(skill.ego ? "chip-ego" : "chip-frame")} alt="" draggable={false} className={skill.ego ? "absolute -inset-[4%] h-[108%] w-[108%]" : "absolute inset-0 h-full w-full"} /> : null}
       <span className="absolute inset-0 flex items-center justify-center">{skill.kind === "defense" ? <DefenseIcon kind={skill.defenseKind ?? "guard"} size={Math.round(size * 0.5)} /> : <DamageIcon type={skill.damageType} size={Math.round(size * 0.5)} />}</span>
       {size >= 34 ? <span className="absolute -right-1 -top-1"><SinIcon sin={skill.sin} size={Math.round(size * 0.36)} /></span> : null}
       {selected ? <span className="absolute -inset-1 rounded-full" style={{ boxShadow: "0 0 0 2px #ffd54a, 0 0 12px #ffd54a" }} /> : null}
@@ -741,12 +790,12 @@ function StatusBar({ u, state, rules, protect, setProtect, onRedraw, hint }: { u
   const corroded = isCorroded(u, state.round);
   const protectable = Object.entries(state.picks).some(([k, p]) => { const a = state.units.find((x) => x.id === k.split(":")[0]); const v = state.units.find((x) => x.id === p.targetId); return !!a && a.side === "enemy" && !!v && v.side === "ally" && v.id !== u.id && !v.incapacitated && (!state.grid || dist(v.pos, u.pos) <= rules.protectRange); });
   return (
-    <div className="pointer-events-auto flex max-w-[min(96vw,52rem)] flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1.5 text-xs" style={{ backgroundImage: `url(${ui("plate-wide")})`, backgroundSize: "100% 100%", minHeight: 36 }}>
+    <div className="b-plate-d pointer-events-auto flex max-w-[min(96vw,52rem)] flex-wrap items-center gap-x-3 gap-y-1 px-5 py-1.5 text-xs" style={{ minHeight: 36 }}>
       <b className="b-gold">{u.name}</b>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <span className="flex items-center gap-1 tabular-nums"><img src={ui("ico-heart")} alt="체력" className="h-3.5" />{u.hp}/{u.maxHp}</span>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {!u.sanityLocked ? <span className="flex items-center gap-1 tabular-nums"><img src={ui("ico-brain-blue")} alt="정신력" className="h-3.5" />{u.sanity > 0 ? "+" : ""}{u.sanity}</span> : null}
+      {!u.sanityLocked ? <span className="flex items-center gap-1 tabular-nums"><img src={ui("ico-mind")} alt="정신력" className="h-3.5" />{u.sanity > 0 ? "+" : ""}{u.sanity}</span> : null}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {state.grid ? <span className="flex items-center gap-1 tabular-nums"><img src={ui("ico-boot")} alt="이동" className="h-3.5" />남은 이동 <b className="b-gold">{u.move ?? 0}</b></span> : null}
       <span className="b-muted">빛 {u.light}</span>
@@ -811,16 +860,16 @@ function SkillPicker({ unit, slot, state, loaded, startDrag, onPick, onClose, ta
 }
 
 /* ---------- 하단 스킬 띠 (림버스 슬롯) ---------- */
-function SkillStrip({ units, state, names, loaded, activeDie, picker, selId, odds, onDie, onPortrait, onDefense, onCancel, startDrag }: {
-  units: Unit[]; state: CombatState; names: Record<string, string>; loaded: Record<string, string>; activeDie: string | null; picker: string | null; selId: string | null; odds: Record<string, ReturnType<typeof estimateClash>>;
+function SkillStrip({ units, state, names, rules, loaded, activeDie, picker, selId, odds, onDie, onPortrait, onDefense, onCancel, startDrag }: {
+  units: Unit[]; state: CombatState; names: Record<string, string>; rules: RuleConfig; loaded: Record<string, string>; activeDie: string | null; picker: string | null; selId: string | null; odds: Record<string, ReturnType<typeof estimateClash>>;
   onDie: (u: Unit, slot: number) => void; onPortrait: (u: Unit) => void; onDefense: (u: Unit, s: Skill) => void; onCancel: (u: Unit, slot: number) => void; startDrag: (p: DragPayload) => (e: RPointerEvent) => void;
 }) {
   return (
     <div className="b-strip relative flex max-w-[100vw] items-end gap-1 overflow-x-auto px-3 py-1.5 md:px-6">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={ui("stand")} alt="" className="pointer-events-none absolute -left-2 bottom-0 hidden h-28 opacity-80 md:block" draggable={false} />
+      <img src={ui("arm-l")} alt="" className="pointer-events-none absolute -left-3 bottom-0 hidden h-32 opacity-90 md:block" draggable={false} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={ui("stand")} alt="" className="pointer-events-none absolute -right-2 bottom-0 hidden h-28 opacity-80 md:block" draggable={false} />
+      <img src={ui("arm-r")} alt="" className="pointer-events-none absolute -right-3 bottom-2 hidden h-24 opacity-90 md:block" draggable={false} />
       {units.map((u, gi) => {
         const slots = state.slots.filter((s) => s.combatantId === u.id); const corroded = isCorroded(u, state.round);
         const defense = u.skills.filter((s) => s.kind === "defense" && !s.ego);
@@ -831,13 +880,13 @@ function SkillStrip({ units, state, names, loaded, activeDie, picker, selId, odd
             {slots.map((s) => { const key = slotKey(u.id, s.slot); const p = state.picks[key]; const skId = p?.skillId ?? loaded[key]; const sk = skId ? u.skills.find((x) => x.id === skId) : undefined; const active = key === activeDie; const open = key === picker;
               return (
                 <div key={key} className="flex w-16 flex-col items-center">
-                  <span className="relative mb-0.5 flex h-[18px] w-12 items-center justify-center text-[11px] font-black text-white" style={{ backgroundImage: `url(${ui("num-plate")})`, backgroundSize: "100% 100%" }}>{s.speed}</span>
+                  <span className="b-plate-w b-num relative mb-0.5 flex h-[18px] w-12 items-center justify-center text-[13px]">{s.speed}</span>
                   <div className="relative">
-                    {active || open ? <span className="pointer-events-none absolute -inset-2" style={{ backgroundImage: `url(${ui("slot-glow")})`, backgroundSize: "100% 100%", filter: open ? "sepia(1) saturate(6) hue-rotate(170deg) brightness(1.3)" : "sepia(1) saturate(4) hue-rotate(5deg)", opacity: 0.75 }} /> : null}
+                    {active || open ? <span className="b-slot-glow" data-tone={open ? "cyan" : "gold"} /> : null}
                     <button type="button" onPointerDown={sk && !p?.locked && !corroded ? startDrag({ kind: "die", unitId: u.id, slot: s.slot }) : undefined} onClick={() => onDie(u, s.slot)}
                       title={sk ? `${sk.name}${p ? ` → ${names[p.targetId]}${p.targetSlot !== undefined ? (p.protect ? " (보호)" : " (가로채기/합)") : ""}` : " · 적에게 끌어 놓거나 적을 누르세요"}` : "누르면 스킬을 고릅니다"}
-                      className={`relative flex h-14 w-14 touch-none items-center justify-center ${sk && !p?.locked ? "cursor-grab" : ""}`} style={{ backgroundImage: `url(${ui(p ? "slot-oct" : "slot-oct")})`, backgroundSize: "100% 100%" }}>
-                      {sk ? <SkillChip skill={sk} size={44} /> : <span className="text-lg text-white/30">+</span>}
+                      className={`b-slot h-14 w-14 touch-none ${sk ? "" : "b-slot-empty"} ${sk && !p?.locked ? "cursor-grab" : ""}`}>
+                      {sk ? <SkillChip skill={sk} size={46} bare /> : null}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       {p?.locked ? <img src={ui("ico-lock")} alt="확정" className="absolute -right-1 -top-1 h-4" /> : null}
                     </button>
@@ -849,17 +898,15 @@ function SkillStrip({ units, state, names, loaded, activeDie, picker, selId, odd
               ); })}
             {/* 초상 + 방어 */}
             <div className="flex flex-col items-center">
-              <button type="button" onClick={() => onPortrait(u)} className={`relative h-16 w-16 ${u.id === selId ? "drop-shadow-[0_0_8px_rgba(255,213,74,.9)]" : ""}`} title={u.name}>
-                <span className="absolute inset-[10%] block overflow-hidden" style={{ WebkitMaskImage: `url(${ui("hex-mask")})`, maskImage: `url(${ui("hex-mask")})`, WebkitMaskSize: "100% 100%", maskSize: "100% 100%", background: "#120c0c" }}>
+              <button type="button" onClick={() => onPortrait(u)} className={`relative h-[4.5rem] w-[4.5rem] ${u.id === selId ? "drop-shadow-[0_0_8px_rgba(255,213,74,.9)]" : ""}`} title={`${u.name} · 체력 ${u.hp}/${u.maxHp}${u.sanityLocked ? "" : ` · 정신력 ${u.sanity}`}`}>
+                <PortraitGauge u={u} rules={rules} size={72}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {u.portraitUrl ? <img src={u.portraitUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <span className="flex h-full items-center justify-center text-base font-bold">{u.name.slice(0, 1)}</span>}
-                </span>
+                </PortraitGauge>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={ui("hex-frame")} alt="" className="absolute inset-0 h-full w-full" draggable={false} style={{ filter: "sepia(1) saturate(2) hue-rotate(5deg) brightness(1.05)" }} />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {u.staggered ? <img src={ui("slot-broken")} alt="흐트러짐" className="absolute inset-0 h-full w-full opacity-70" draggable={false} /> : null}
-                <span className="absolute -bottom-1 -left-1 rounded-sm bg-black/80 px-1 text-[10px] font-black tabular-nums text-red-400">{u.hp}</span>
-                {!u.sanityLocked ? <span className="absolute -bottom-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full px-0.5 text-[10px] font-black tabular-nums text-white" style={{ background: "#2d6fb3", border: "1px solid #fff4" }}>{u.sanity}</span> : null}
+                {u.staggered ? <img src={ui("slot-break")} alt="흐트러짐" className="absolute inset-0 h-full w-full opacity-75" draggable={false} /> : null}
+                <span className="b-num absolute -bottom-1 -left-1 rounded-sm bg-black/80 px-1 text-[12px] text-red-400">{u.hp}</span>
+                {!u.sanityLocked ? <span className="b-num absolute -bottom-1 -right-1 rounded-sm bg-black/80 px-1 text-[12px] text-sky-300">{u.sanity}</span> : null}
               </button>
               <span className="mt-1 w-16 truncate text-center text-[10px] leading-none">{u.name}</span>
               <span className="mt-0.5 w-16 truncate text-center text-[9px] leading-none" style={{ color: slots.length === 0 ? "#9a8f86" : slots.every((s) => state.picks[slotKey(u.id, s.slot)]) ? "#7fd39a" : "#d9c08a" }}>{slots.length === 0 ? "행동 불가" : slots.every((s) => state.picks[slotKey(u.id, s.slot)]) ? "✓ 선택 완료" : "선택 중"}</span>
@@ -878,21 +925,24 @@ function SkillStrip({ units, state, names, loaded, activeDie, picker, selId, odd
 }
 
 /* ---------- 라운드 버튼 (FVTT END 느낌 + 림버스 기어) ---------- */
+/* ---------- 라운드 버튼: 원작 붉은 팔각 + 청동 테 + 뒤에 도는 주황 기어 ---------- */
 function RoundButton({ isGm, phase, winner, pending, unpicked, playing, onNext, onStart, onClose }: { isGm: boolean; phase: CombatState["phase"]; winner: CombatState["winner"]; pending: boolean; unpicked: number; playing: boolean; onNext: () => void; onStart: () => void; onClose: () => void }) {
-  // eslint-disable-next-line @next/next/no-img-element
-  const gear = <img src={ui("gear-end")} alt="" className={`pointer-events-none absolute -inset-3 h-[calc(100%+1.5rem)] w-[calc(100%+1.5rem)] ${pending ? "b-spin-fast" : "b-spin"}`} style={{ mixBlendMode: "screen", opacity: 0.9 }} draggable={false} />;
-  const inner = (txt: ReactNode, sub: ReactNode, dim?: boolean) => (
-    <span className="relative flex h-full w-full flex-col items-center justify-center rounded-full text-white" style={{ backgroundImage: `url(${ui("btn-red-round")})`, backgroundSize: "100% 100%", filter: dim ? "grayscale(.8) brightness(.7)" : undefined }}>
-      <span className="text-base font-black leading-none tracking-wider drop-shadow-[0_1px_2px_#000] md:text-lg">{txt}</span>
-      <span className="mt-0.5 text-[9px] leading-none drop-shadow-[0_1px_2px_#000] md:text-[10px]">{sub}</span>
+  const body = (txt: ReactNode, sub: ReactNode, dim?: boolean, spin = true) => (<>
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    {spin ? <img src={ui("start-gear")} alt="" className={`b-start-gear ${pending ? "b-spin-fast" : "b-spin"}`} draggable={false} /> : null}
+    <span className="b-start-oct" />
+    <span className="b-start-ring" />
+    <span className="relative flex h-full w-full flex-col items-center justify-center text-white">
+      <span className="b-title text-lg leading-none drop-shadow-[0_1px_2px_#000] md:text-xl">{txt}</span>
+      <span className="mt-1 text-[9px] leading-none drop-shadow-[0_1px_2px_#000] md:text-[10px]">{sub}</span>
     </span>
-  );
-  const frame = (children: ReactNode) => <span className="absolute inset-0 rounded-full" style={{ backgroundImage: `url(${ui("btn-round-frame")})`, backgroundSize: "100% 100%" }}><span className="absolute inset-[11%]">{children}</span></span>;
+    {dim ? null : null}
+  </>);
   const size = "h-20 w-20 md:h-24 md:w-24";
-  if (playing) return <button type="button" onClick={onNext} className={`relative ${size} transition-transform hover:scale-105`} title="다음 단계 (스페이스)">{gear}{frame(inner("NEXT", "다음 단계"))}</button>;
-  if (isGm && phase === "select") return <button type="button" disabled={pending} onClick={onStart} className={`relative ${size} transition-transform hover:scale-105 disabled:scale-100`} title="라운드 진행">{gear}{frame(inner(pending ? "…" : "START", pending ? "처리 중" : unpicked ? `미선택 ${unpicked}` : "라운드 진행"))}</button>;
-  if (phase === "ended") return <button type="button" onClick={onClose} className={`relative ${size}`} title="닫기">{frame(inner(winner === "ally" ? "승리" : "패배", "닫기", winner !== "ally"))}</button>;
-  return <div className={`relative ${size}`} title="GM이 라운드를 진행합니다">{gear}{frame(inner("대기", unpicked ? `미선택 ${unpicked}` : "준비 완료", true))}</div>;
+  if (playing) return <button type="button" onClick={onNext} className={`b-start5 ${size} transition-transform hover:scale-105`} title="다음 단계 (스페이스)">{body("NEXT", "다음 단계")}</button>;
+  if (isGm && phase === "select") return <button type="button" disabled={pending} onClick={onStart} className={`b-start5 ${size} transition-transform hover:scale-105 disabled:scale-100`} title="라운드 진행">{body(pending ? "…" : "START", pending ? "처리 중" : unpicked ? `미선택 ${unpicked}` : "라운드 진행")}</button>;
+  if (phase === "ended") return <button type="button" onClick={onClose} className={`b-start5 ${size}`} data-dim={winner === "ally" ? undefined : "1"} title="닫기">{body(winner === "ally" ? "WIN" : "LOSE", "닫기", winner !== "ally", false)}</button>;
+  return <div className={`b-start5 ${size}`} data-dim="1" title="GM이 라운드를 진행합니다">{body("WAIT", unpicked ? `미선택 ${unpicked}` : "준비 완료", true)}</div>;
 }
 
 /* ---------- 유닛 카드 (영상의 우측 카드) ---------- */
@@ -917,12 +967,15 @@ function UnitCard({ u, state, isGm, names, rules, campaignId, combatId, onApply,
   const skillRow = (s: Skill) => (
     <div key={s.id} className="flex items-center gap-2 text-[11px]"><SkillChip skill={s} size={26} /><span className="min-w-0 flex-1"><span className="font-semibold">{s.name}</span> <span className="b-muted">{powerText(s)}</span>{s.effectText ? <span className="b-muted block truncate">{s.effectText}</span> : null}</span></div>
   );
+  const threatTag = info?.threat ? THREAT_TAG[info.threat] : undefined;
   return (
-    <div className="b-pane text-xs">
+    <div className="b-card text-xs" data-side={enemy ? "enemy" : "ally"}>
       <div className="b-head-plate flex items-center gap-2 px-2 py-1" data-tone={enemy ? "red" : "gold"}>
-        <span className="rounded-sm px-1 text-[10px] font-black" style={{ background: enemy ? "#b3161c" : "#c9a24a", color: enemy ? "#fff" : "#1a1208" }}>{enemy ? "적" : "아군"}</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {enemy ? <img src={ui("tag-enemy")} alt="적" className="h-5" draggable={false} /> : <span className="rounded-sm px-1 text-[10px] font-black" style={{ background: "#c9a24a", color: "#1a1208" }}>아군</span>}
         <span className="truncate text-sm font-bold">{names[u.id]}</span>
-        {info?.threat ? <span className="b-muted text-[10px]">{info.threat}</span> : null}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {threatTag ? <img src={ui(threatTag)} alt={info!.threat} title={info!.threat} className="h-4" draggable={false} /> : info?.threat ? <span className="b-muted text-[10px]">{info.threat}</span> : null}
         <button type="button" onClick={onClose} className="b-muted ml-auto hover:text-white">✕</button>
       </div>
       <div className="p-2">

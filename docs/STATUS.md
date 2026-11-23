@@ -152,6 +152,13 @@
 - 미결: 결과 PNG 여백 트리밍·축소(이미지 라이브러리 없음), 대량 생성 시 비용 관리(NPC 1명 풀 세트 ≈ 호출 11회).
 - 로컬 환경 메모: 2026-11-20 "환경 일치화" 항목 참고.
 
+## 전투 화면 v5: 원작 BattleUI 조각 그대로 (2026-11-23, 사용자 "UI 추출한 거 그대로 가져온다면?" → "전투 화면부터")
+- 설치 폴더 추출본의 `BattleUI_*` Sprite(459장, 이미 정확히 잘린 조각)에서 134장을 골라 `apps/web/public/assets/limbus/ui/b/`(4.8MB) 에, 원작 폰트 Excelsior(제목)·BebasKai(숫자)·SCDream(본문)을 `assets/limbus/font/` 에 넣음. 이름 ↔ 원본 대응표는 `scripts/limbus-extract/README.md` "전투 UI 조각". 비공개 전제.
+- `battle-screen.tsx` 가 `ui/b/` 를 쓰도록 바꿈: TURN·ENEMY 플레이트(UpperLeft_1_24/40), 우상단 사각 버튼+켜짐 글로우, 승률·피해량 붉은 플레이트, 속도 다이스 = 원작 팔각(ActionSlotUI: 바탕·빈 틀·흐트러짐·선택 글로우), 초상 = 칠각 게이지(BattleUnit_Gauge, 왼쪽 빨강 체력·오른쪽 파랑 정신력을 conic-gradient 마스크로), 스킬 칩 = 팔각 청동 틀(Choice_7_0)+죄악색 마스크, E.G.O 주황 글로우 팔각, 적 다이스 = 붉은 칠각, 라운드 버튼 = 붉은 팔각+청동 테+뒤에 도는 Turn_5 기어(START/NEXT/WIN/LOSE/WAIT), 라운드 플래시 = 원작 TURN 글자+주황 선, 승리·패배 = 원작 VICTORY/DEFEAT 글자+가지·선(`ResultBanner`), 유닛 카드 = PassivePanel 세로 틀(아군 청동/적 빨강)+ENEMY 꼬리표+위협 등급 꼬리표(뜬소문=ZAYIN…), 로그 카드·패널·탭·머리띠·상태 바·컷인 이름판도 원작 플레이트. `globals.css` "전투 화면 v5" 블록(v4 규칙 뒤에 두어 덮어씀).
+- 옛 54장(`ui/*.png`)은 `stage.tsx`(plate-tag)와 v4 CSS 가 아직 참조해 남김. 코인·죄악·상태 아이콘은 그대로.
+- 미리보기 `/dev/battle`(개발 전용, `proxy.ts` 통과, 그림은 `public/dev/` 저장소 제외) 로 GM 시점·종료·VICTORY 연출을 1440×860·800×480 에서 눈 확인. typecheck·lint·build 통과. 실제 전투(DB)에서는 미확인.
+- 다음 후보: 유닛 카드·상태이상 배지·합 컷인 코인(CoinPopup 조각), 사무소·장면 화면. 참고 세트 업로드 문제("파일 수는 떴는데 저장이 안 됨")는 보류 중.
+
 ## 공방 원작 참고 세트 (2026-11-21, 사용자 "추출한 인격·환상체 SD 를 참고해서 공방에서 새로 만들 수 있어?")
 - 결정: **원작 추출 SD 를 입력 이미지로 함께 보낸다**(이전 "원작 이미지는 참고로 보내지 않는다" 방침을 사용자 요청으로 뒤집음). 결과에 원작 그림을 그대로 쓰진 않는다.
 - 마이그레이션 **0014** — 테이블 `sprite_refs`(campaign_id·set_name·role·frames·url, GM 전용 RLS, (campaign, set, role) 유일) + `sprite_jobs.ref_urls text[]`·`ref_set text`. 2026-11-22 사용자가 `scripts/db-push.ps1` 로 적용함(토큰 `limbus-migrate`). 참고 세트 업로드·실제 생성 품질은 아직 미확인.

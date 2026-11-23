@@ -205,6 +205,61 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
 .battle .b-cut-skill[data-tone="red"] { box-shadow: 0 0 22px rgba(255,59,59,.5), 0 8px 24px rgba(0,0,0,.7); border-color: #ff3b3b; }
 .battle .b-cut-skill[data-tone="dim"] { opacity: .7; filter: grayscale(.4); }
 
+/* ===== 전투 화면 v5: 원작 UI 조각 그대로 (2026-11-23). 조각은 public/assets/limbus/ui/b/, 폰트는 ui/../font/ (비공개 전제) =====
+   위 v4 규칙보다 뒤에 있어 같은 선택자는 여기가 이긴다. 9조각(border-image) 숫자는 조각 PNG 의 테두리 두께(px) 기준. */
+@font-face { font-family: "LimbusExcelsior"; src: url("/assets/limbus/font/ExcelsiorSans.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "LimbusBebas"; src: url("/assets/limbus/font/BebasKai.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "LimbusSCDream"; src: url("/assets/limbus/font/SCDream5.otf") format("opentype"); font-display: swap; }
+.battle { font-family: "LimbusSCDream", var(--font-sans), sans-serif; }
+.battle .b-num { font-family: "LimbusBebas", "LimbusExcelsior", sans-serif; letter-spacing: .04em; }
+.battle .b-title { font-family: "LimbusExcelsior", "LimbusBebas", sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.battle .b-pane { border: 0; border-image: url("/assets/limbus/ui/b/panel-wide.png") 26 fill / 13px / 0 stretch; background: transparent; box-shadow: 0 8px 22px rgba(0,0,0,.65); }
+.battle .b-pane-tall { border-image: url("/assets/limbus/ui/b/panel-tall.png") 30 fill / 15px / 0 stretch; }
+.battle .b-log { border: 0; border-image: url("/assets/limbus/ui/b/hud-panel.png") 22 fill / 11px / 0 stretch; background: transparent; box-shadow: 0 8px 22px rgba(0,0,0,.65); }
+.battle .b-card { border: 0; background: transparent; border-image: url("/assets/limbus/ui/b/card-ally.png") 28 fill / 14px / 0 stretch; box-shadow: 0 8px 22px rgba(0,0,0,.65); }
+.battle .b-card[data-side="enemy"] { border-image-source: url("/assets/limbus/ui/b/card-enemy.png"); }
+.battle .b-tabx, .battle .b-btn { border: 0; background: url("/assets/limbus/ui/b/plate-dark.png") center / 100% 100% no-repeat; color: #e9dcc2; padding: 3px 14px; font-weight: 600; line-height: 1.3; }
+.battle .b-btn { padding: 2px 12px; }
+.battle .b-tabx:hover, .battle .b-btn:hover { filter: brightness(1.3); color: #fff; }
+.battle .b-tabx-on { background-image: url("/assets/limbus/ui/b/plate-brown.png"); color: #fff5dc; filter: none; }
+.battle .b-banner { background: url("/assets/limbus/ui/b/banner-red.png") center / cover, #5a0c10; border-top: 0; box-shadow: 0 -4px 16px rgba(0,0,0,.7); }
+.battle .b-drawer .b-bar { background: url("/assets/limbus/ui/b/hud-panel.png") center / 100% 100% no-repeat, #1a1210; border-bottom: 0; }
+.battle .b-head-plate { background: url("/assets/limbus/ui/b/bar-gold.png") center / 100% 100% no-repeat, linear-gradient(90deg, #4a3417, #2a1d0e 60%, #1a120a); color: #f1d9a0; border-bottom: 0; }
+.battle .b-head-plate[data-tone="red"] { background: url("/assets/limbus/ui/b/bar-redglow.png") center / 100% 100% no-repeat, linear-gradient(90deg, #7a1013, #3a0b0d 60%, #1a0607); color: #ffd7d7; }
+.battle .b-play-bar { background: url("/assets/limbus/ui/b/plate-slant-d.png") center / 100% 100% no-repeat; border: 0; box-shadow: 0 4px 16px rgba(0,0,0,.6); }
+.battle .b-cut-skill { border: 0; background: transparent; border-image: url("/assets/limbus/ui/b/name-box.png") 18 fill / 9px / 0 stretch; }
+.battle .b-cut-skill[data-tone="gold"] { box-shadow: 0 0 22px rgba(255,213,74,.55); }
+.battle .b-cut-skill[data-tone="red"] { box-shadow: 0 0 22px rgba(255,59,59,.5); }
+.battle .b-plate-w { background: url("/assets/limbus/ui/b/plate-slant-w.png") center / 100% 100% no-repeat; color: #111; font-weight: 800; }
+.battle .b-plate-d { background: url("/assets/limbus/ui/b/plate-slant-d.png") center / 100% 100% no-repeat; color: #f1d9a0; }
+.battle .b-pill { background: url("/assets/limbus/ui/b/pill-dark.png") center / 100% 100% no-repeat; }
+.battle .b-strip { background: linear-gradient(180deg, rgba(10,6,6,0), rgba(10,6,6,.85) 30%, #0a0606); border-top: 0; box-shadow: none; }
+/* 속도 다이스(팔각) */
+.battle .b-slot { position: relative; display: flex; align-items: center; justify-content: center; background: url("/assets/limbus/ui/b/slot-base.png") center / 100% 100% no-repeat; }
+.battle .b-slot-empty::after { content: ""; position: absolute; inset: 0; background: url("/assets/limbus/ui/b/slot-empty.png") center / 100% 100% no-repeat; pointer-events: none; }
+.battle .b-slot-glow { position: absolute; inset: -18%; background: url("/assets/limbus/ui/b/slot-glow.png") center / 100% 100% no-repeat; pointer-events: none; opacity: .9; }
+.battle .b-slot-glow[data-tone="cyan"] { filter: sepia(1) saturate(6) hue-rotate(170deg) brightness(1.2); }
+.battle .b-slot-glow[data-tone="gold"] { filter: sepia(1) saturate(4) hue-rotate(5deg); }
+/* 초상 게이지(칠각): 왼쪽 빨강 = 체력, 오른쪽 파랑 = 정신력. --hp, --sp 는 0~1 */
+.battle .b-gauge { position: relative; display: block; }
+.battle .b-gauge-img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.battle .b-gauge-track { opacity: .35; filter: grayscale(1) brightness(.9); }
+.battle .b-gauge-on { filter: brightness(1.6) saturate(1.5); }
+.battle .b-gauge-on { -webkit-mask-image: conic-gradient(from 180deg, #000 0 calc(var(--hp, 1) * 50%), transparent calc(var(--hp, 1) * 50%) calc(100% - var(--sp, 1) * 50%), #000 calc(100% - var(--sp, 1) * 50%) 100%); mask-image: conic-gradient(from 180deg, #000 0 calc(var(--hp, 1) * 50%), transparent calc(var(--hp, 1) * 50%) calc(100% - var(--sp, 1) * 50%), #000 calc(100% - var(--sp, 1) * 50%) 100%); }
+.battle .b-gauge-face { position: absolute; inset: 15%; overflow: hidden; -webkit-mask-image: url("/assets/limbus/ui/b/gauge-fill.png"); mask-image: url("/assets/limbus/ui/b/gauge-fill.png"); -webkit-mask-size: 100% 100%; mask-size: 100% 100%; background: #120c0c; }
+/* 라운드 버튼: 붉은 팔각 + 청동 테 + 뒤에 도는 기어 */
+.battle .b-start5 { position: relative; display: block; }
+.battle .b-start5 .b-start-gear { position: absolute; inset: -22%; width: 144%; height: 144%; opacity: .95; pointer-events: none; }
+.battle .b-start5 .b-start-oct { position: absolute; inset: 6%; background: url("/assets/limbus/ui/b/oct-red.png") center / 100% 100% no-repeat; }
+.battle .b-start5 .b-start-ring { position: absolute; inset: 0; background: url("/assets/limbus/ui/b/oct-bronze.png") center / 100% 100% no-repeat; pointer-events: none; }
+.battle .b-start5[data-dim="1"] .b-start-oct { filter: grayscale(.85) brightness(.6); }
+.battle .b-start5:hover .b-start-oct { filter: brightness(1.15); }
+/* 결과 글자 연출 */
+@keyframes b-result-in { 0% { opacity: 0; transform: scale(.7); } 25% { opacity: 1; transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
+.battle .b-result { animation: b-result-in .7s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes b-lines-in { 0% { opacity: 0; transform: scaleX(.2); } 100% { opacity: 1; transform: scaleX(1); } }
+.battle .b-result-lines { animation: b-lines-in .5s ease-out both; }
+
 /* SD 스프라이트 코드 모션 (components/sprite/sd-sprite.tsx). 앞 = +x, 적은 .sd-flip 으로 뒤집는다 */
 .sd-root { display: inline-block; position: relative; transform-origin: 50% 100%; }
 .sd-flip { transform: scaleX(-1); }

@@ -10,7 +10,7 @@ import { BattleScreen } from "@/components/combat/battle-screen";
  */
 export const dynamic = "force-dynamic";
 
-export default async function DevBattlePage({ searchParams }: { searchParams: Promise<{ gm?: string; ended?: string; round?: string; replay?: string }> }) {
+export default async function DevBattlePage({ searchParams }: { searchParams: Promise<{ gm?: string; ended?: string; round?: string; replay?: string; staggered?: string }> }) {
   if (process.env.NODE_ENV === "production") notFound();
   const q = await searchParams;
   const rules = DEFAULT_RULES;
@@ -36,7 +36,8 @@ export default async function DevBattlePage({ searchParams }: { searchParams: Pr
   // 적 하나는 이미 선택한 것처럼, 아군 하나는 흐트러진 것처럼
   const e1 = state.slots.find((s) => s.combatantId === "e1");
   if (e1) state.picks[`e1:${e1.slot}`] = { skillId: "e1", targetId: "a1" };
-  const a2 = state.units.find((u) => u.id === "a2"); if (a2) { a2.staggered = true; a2.staggerTriggered = [rules.staggerThresholds[0]!]; }
+  // ?staggered=a2,e2 : 흐트러진 유닛 (기본 a2). 흐트러진 유닛은 속도 슬롯이 없다
+  for (const id of (q.staggered ?? "a2").split(",")) { const u = state.units.find((x) => x.id === id); if (u) { u.staggered = true; u.staggerTriggered = [rules.staggerThresholds[0]!]; state.slots = state.slots.filter((s) => s.combatantId !== id); for (const k of Object.keys(state.picks)) if (k.startsWith(id + ":")) delete state.picks[k]; } }
   if (q.ended === "1") { state.phase = "ended"; state.winner = "ally"; }
   // ?replay=win|lose : "다시 보기" 버튼으로 승리/패배 연출(원작 VICTORY/DEFEAT)을 볼 수 있게 가짜 라운드 결과를 넣는다
   if (q.replay === "round") {

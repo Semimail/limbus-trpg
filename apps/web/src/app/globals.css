@@ -264,6 +264,18 @@ select.lb-input { clip-path: none; }
 .battle .b-plate-d { background: url("/assets/limbus/ui/b/plate-slant-d.png") center / 100% 100% no-repeat; color: #f1d9a0; }
 .battle .b-pill { background: url("/assets/limbus/ui/b/pill-dark.png") center / 100% 100% no-repeat; }
 .battle .b-strip { background: linear-gradient(180deg, rgba(10,6,6,0), rgba(10,6,6,.85) 30%, #0a0606); border-top: 0; box-shadow: none; }
+/* 원작 하단 띠(v5.6): 어두운 바탕 + 위아래 청동 선, 양끝 기어 고리(ring-dark)+기계 팔, 금 레일 위 속도 숫자, 주황 칠각 초상 */
+.battle .b-strip2 { background: linear-gradient(180deg, rgba(14,9,8,.6), rgba(14,9,8,.94) 25%, #0b0706); border-top: 2px solid #6b4a1e; border-bottom: 2px solid #3a2812; box-shadow: 0 -8px 24px rgba(0,0,0,.6), inset 0 1px 0 rgba(217,179,91,.25); }
+.battle .b-strip-rail::before { content: ""; position: absolute; left: 0; right: 0; bottom: calc(0.5rem + 5.4rem + 0.25rem + 2px); height: 14px; border-top: 2px solid rgba(217,179,91,.75); border-bottom: 2px solid rgba(217,179,91,.75); pointer-events: none; }
+.battle .b-speed2 { position: relative; padding: 0 5px; color: #ffd54a; background: #0b0706; text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,.9); }
+.battle .b-ring { filter: brightness(1.35) contrast(1.1) drop-shadow(0 2px 4px rgba(0,0,0,.8)); animation: b-ring-spin 24s linear infinite; }
+@keyframes b-ring-spin { to { transform: rotate(360deg); } }
+.battle .b-hept { display: block; }
+.battle .b-hept-face { position: absolute; inset: 8%; overflow: hidden; background: #120c0c; -webkit-mask-image: url("/assets/limbus/ui/b/gauge-fill.png"); mask-image: url("/assets/limbus/ui/b/gauge-fill.png"); -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
+.battle .b-hept-frame { position: absolute; inset: -5%; width: 110%; height: 110%; pointer-events: none; }
+.battle .b-hept[data-side="enemy"] .b-hept-frame { filter: hue-rotate(-32deg) saturate(1.7) brightness(.95); }
+.battle .b-hept-sel .b-hept-frame { filter: brightness(1.5) drop-shadow(0 0 8px rgba(255,213,74,.9)); }
+.battle .b-hept-sel[data-side="enemy"] .b-hept-frame { filter: hue-rotate(-32deg) saturate(1.7) brightness(1.4) drop-shadow(0 0 8px rgba(255,90,90,.9)); }
 /* 속도 다이스(팔각) */
 .battle .b-slot { position: relative; display: flex; align-items: center; justify-content: center; background: url("/assets/limbus/ui/b/slot-base.png") center / 100% 100% no-repeat; }
 .battle .b-slot-empty::after { content: ""; position: absolute; inset: 0; background: url("/assets/limbus/ui/b/slot-empty.png") center / 100% 100% no-repeat; pointer-events: none; }

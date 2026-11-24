@@ -104,6 +104,7 @@ python extract.py --game "..." --cache "..." --out D:\limbus-extracted --types t
 | threat-zayin / -teth / -he / -waw / -aleph / -aleph2 / -unknown, tag-new, x-red | CreatureBattle_3_0 / _12 / _15 / _22 / _26 / _38 / _18, _19, _33 | 적 등급 꼬리표(뜬소문=ZAYIN … 별=ALEPH(빨강), 불순물=???) |
 | banner-red / battle-ring / battle-star / smudge | Battlestart_0 / _2 / _3 / _1 | battle-star = 합 컷인 격돌 충격. 맨 아래 바는 v5.1 부터 어두운 띠+청동 윗선(사용자: 붉은 띠가 조잡) |
 | link-blue / link-orange, crosshair / crosshair2 | Operation_2_1 / _3, CreatureBattle_3_4 / _5 | (예비) |
+| ring-dark / hept-orange | resources Operation_1_33 / Choice_8_1 | 하단 띠 양끝 기어 고리(`.b-ring`, 천천히 돈다) / 띠의 주황 칠각 초상 틀(`.b-hept-frame`, 적은 hue-rotate 로 붉게). 원작에서 양끝 고리는 못 찾아 줄무늬 원판으로 대신 |
 
 미리보기: `apps/web/src/app/dev/battle/page.tsx` — 로그인·DB 없이 가짜 전투로 전투 화면만 본다(프로덕션 404, `proxy.ts` 가 개발에서만 `/dev/*` 통과). 그림은 `apps/web/public/dev/`(저장소 제외)에 `ally1.png ally2.png enemy1.png enemy2.png bg.png` 를 두면 쓴다. `?ended=1` 종료, `?replay=win|lose` 뒤 "다시 보기"로 VICTORY/DEFEAT 연출, `?gm=0` 플레이어 시점.
 

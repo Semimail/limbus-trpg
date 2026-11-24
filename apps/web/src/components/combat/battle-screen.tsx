@@ -409,7 +409,7 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
       {/* 아래 줄: 스킬 띠 + 승률/피해량 + 라운드 버튼을 한 덩어리로 가운데에 (넓은 화면에서 멀리 떨어지지 않게) */}
       <div className="absolute inset-x-0 bottom-12 z-10 flex items-end justify-center gap-2 px-2 md:gap-4">
         {state.phase === "select" && myUnits.length > 0 ? (
-          <SkillStrip units={myUnits} state={state} names={names} rules={rules} loaded={loaded} activeDie={activeDie} picker={picker} selId={selId} odds={odds}
+          <SkillStrip units={myUnits} state={state} names={names} loaded={loaded} activeDie={activeDie} picker={picker} selId={selId} odds={odds}
             onDie={(u, slot) => { const k = slotKey(u.id, slot); setActiveDie(k); setSelId(u.id); setPicker(picker === k ? null : k); }}
             onPortrait={(u) => { setSelId(u.id); const d = firstFreeDie(u.id); if (d) setActiveDie(slotKey(u.id, d.slot)); }}
             onCancel={(u, slot) => { const k = slotKey(u.id, slot); if (state.picks[k]) pick(u.id, slot, null); else setLoaded((l) => { const n = { ...l }; delete n[k]; return n; }); }}
@@ -528,21 +528,6 @@ function ResultBanner({ win }: { win: boolean }) {
   );
 }
 /** 초상 게이지(원작 칠각 링): 왼쪽 빨강 체력, 오른쪽 파랑 정신력. 안쪽에 초상 */
-function PortraitGauge({ u, rules, size, children }: { u: Unit; rules: RuleConfig; size: number; children?: ReactNode }) {
-  const hp = Math.max(0, Math.min(1, u.maxHp > 0 ? u.hp / u.maxHp : 0));
-  const sp = u.sanityLocked ? 0 : Math.max(0, Math.min(1, (u.sanity - rules.sanityMin) / Math.max(1, rules.sanityMax - rules.sanityMin)));
-  return (
-    <span className="b-gauge" style={{ width: size, height: size, ["--hp" as string]: hp, ["--sp" as string]: sp }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={ui("gauge-fill")} alt="" className="b-gauge-img" draggable={false} />
-      <span className="b-gauge-face">{children}</span>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={ui("gauge-frame")} alt="" className="b-gauge-img b-gauge-track" draggable={false} />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={ui("gauge-frame")} alt="" className="b-gauge-img b-gauge-on" draggable={false} />
-    </span>
-  );
-}
 
 /* ---------- 행동 순서 ---------- */
 function Tracker({ state, names, selId, onSelect, className }: { state: CombatState; names: Record<string, string>; selId: string | null; onSelect: (id: string) => void; className?: string }) {
@@ -907,61 +892,80 @@ function SkillPicker({ unit, slot, state, loaded, startDrag, onPick, onClose, ta
 }
 
 /* ---------- 하단 스킬 띠 (원작 배치): 유닛마다 세로 한 열 — 위 다이스(고른 스킬) → 속도 숫자 → 아래 초상(칠각 게이지)+체력·정신력. 이름·대상 글자는 두지 않는다 ---------- */
-function SkillStrip({ units, state, names, rules, loaded, activeDie, picker, selId, odds, onDie, onPortrait, onCancel, onReroll, startDrag }: {
-  units: Unit[]; state: CombatState; names: Record<string, string>; rules: RuleConfig; loaded: Record<string, string>; activeDie: string | null; picker: string | null; selId: string | null; odds: Record<string, ReturnType<typeof estimateClash>>;
+function SkillStrip({ units, state, names, loaded, activeDie, picker, selId, odds, onDie, onPortrait, onCancel, onReroll, startDrag }: {
+  units: Unit[]; state: CombatState; names: Record<string, string>; loaded: Record<string, string>; activeDie: string | null; picker: string | null; selId: string | null; odds: Record<string, ReturnType<typeof estimateClash>>;
   onDie: (u: Unit, slot: number) => void; onPortrait: (u: Unit) => void; onCancel: (u: Unit, slot: number) => void; /** GM: 이 적의 선택을 무작위로 다시 */ onReroll?: (u: Unit) => void; startDrag: (p: DragPayload) => (e: RPointerEvent) => void;
 }) {
+  // 원작 하단 띠(사용자가 보낸 실제 게임 화면): 양끝에 기어 고리와 기계 팔, 가운데 금 레일 위에 속도 숫자, 그 아래 주황 칠각 초상(체력 주황 숫자·정신력 파란 원).
+  // 원작의 위쪽 스킬 더미는 두지 않고(사용자 요청) 다이스(고른 스킬)만 둔다.
   return (
-    <div className="b-strip relative flex min-w-0 max-w-[calc(100vw-7rem)] items-end gap-0 overflow-x-auto px-3 pb-2.5 pt-2.5 md:max-w-[calc(100vw-15rem)] md:px-9">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={ui("arm-l")} alt="" className="pointer-events-none absolute -left-3 bottom-0 hidden h-36 opacity-90 md:block" draggable={false} />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={ui("arm-r")} alt="" className="pointer-events-none absolute -right-3 bottom-2 hidden h-28 opacity-90 md:block" draggable={false} />
-      {units.map((u, gi) => {
-        const slots = state.slots.filter((s) => s.combatantId === u.id); const corroded = isCorroded(u, state.round); const enemy = u.side === "enemy";
-        return (
-          <div key={u.id} className={`relative flex shrink-0 flex-col items-center px-1.5 ${gi > 0 ? "border-l" : ""}`} style={{ borderColor: enemy ? "rgba(179,22,28,.45)" : "rgba(217,179,91,.25)" }} data-side={u.side}
-            title={`${names[u.id]} · 체력 ${u.hp}/${u.maxHp}${u.sanityLocked ? "" : ` · 정신력 ${u.sanity}`}`}>
-            {/* 위: 다이스(고른 스킬) + 속도 */}
-            <div className="flex items-end gap-1">
-              {slots.length === 0 ? <span className="b-muted flex h-14 w-14 items-center justify-center text-center text-[10px] leading-tight" title={u.staggered ? "흐트러짐" : "행동 슬롯 없음"}>{u.staggered ? "흐트러짐" : "행동 불가"}</span> : null}
-              {slots.map((s) => { const key = slotKey(u.id, s.slot); const p = state.picks[key]; const skId = p?.skillId ?? loaded[key]; const sk = skId ? u.skills.find((x) => x.id === skId) : undefined; const active = key === activeDie; const open = key === picker; const o = odds[key];
-                return (
-                  <div key={key} className="flex flex-col items-center">
-                    <div className="relative">
-                      {active || open ? <span className="b-slot-glow" data-tone={open ? "cyan" : "gold"} /> : null}
-                      <button type="button" onPointerDown={sk && !p?.locked && !corroded ? startDrag({ kind: "die", unitId: u.id, slot: s.slot }) : undefined} onClick={() => onDie(u, s.slot)}
-                        title={sk ? `${sk.name}${p ? ` → ${names[p.targetId]}${p.targetSlot !== undefined ? (p.protect ? " (보호)" : " (가로채기/합)") : ""}` : " · 상대에게 끌어 놓거나 상대를 누르세요"}` : "누르면 스킬을 고릅니다"}
-                        data-side={u.side} className={`b-slot h-14 w-14 touch-none ${sk ? "" : "b-slot-empty"} ${sk && !p?.locked ? "cursor-grab" : ""}`}>
-                        {sk ? <SkillChip skill={sk} size={46} bare /> : null}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        {p?.locked ? <img src={ui("ico-lock")} alt="확정" className="absolute -right-1 -top-1 h-4" /> : null}
-                      </button>
-                      {(p && !p.locked) || (!p && loaded[key]) ? <button type="button" onClick={() => onCancel(u, s.slot)} className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-black text-[9px] text-white/80 ring-1 ring-white/30 hover:bg-red-700" title="선택 취소">✕</button> : null}
-                      {p && !o ? <span className="pointer-events-none absolute -bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-sky-300 shadow-[0_0_6px_#7dd3fc]" title="대상 지정됨" /> : null}
-                      {o ? <span className={`pointer-events-none absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm bg-black/85 px-1 text-[9px] font-bold ${oddsColor(o.label)}`}>{Math.round(o.winRate * 100)}%</span> : null}
+    <div className="b-strip2 relative flex min-w-0 max-w-[calc(100vw-7rem)] items-end md:max-w-[calc(100vw-15rem)]">
+      {/* 왼쪽 끝: 기어 고리 + 기둥 */}
+      <div className="pointer-events-none relative hidden w-20 shrink-0 self-stretch md:block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={ui("arm-l")} alt="" className="absolute bottom-0 left-5 h-[7.5rem] opacity-95" draggable={false} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={ui("ring-dark")} alt="" className="b-ring absolute left-1 top-1 h-[4.4rem] w-[4.4rem]" draggable={false} />
+      </div>
+      <div className="b-strip-rail relative flex items-end gap-0.5 overflow-x-auto px-3 pb-2 pt-2 md:px-4">
+        {units.map((u) => {
+          const slots = state.slots.filter((s) => s.combatantId === u.id); const corroded = isCorroded(u, state.round); const enemy = u.side === "enemy";
+          const firstPick = slots.map((s) => state.picks[slotKey(u.id, s.slot)]?.skillId ?? loaded[slotKey(u.id, s.slot)]).find(Boolean);
+          const barColor = firstPick ? SIN_COLOR[u.skills.find((x) => x.id === firstPick)?.sin ?? ""] : undefined;
+          return (
+            <div key={u.id} className="relative flex w-[6.2rem] shrink-0 flex-col items-center" data-side={u.side}
+              title={`${names[u.id]} · 체력 ${u.hp}/${u.maxHp}${u.sanityLocked ? "" : ` · 정신력 ${u.sanity}`}`}>
+              {/* 위: 다이스(고른 스킬), 그 밑 금 레일 위의 속도 숫자 */}
+              <div className="flex items-end gap-1">
+                {slots.length === 0 ? <div className="flex flex-col items-center"><span className="b-muted flex h-14 w-14 items-center justify-center text-center text-[10px] leading-tight" title={u.staggered ? "흐트러짐" : "행동 슬롯 없음"}>{u.staggered ? "흐트러짐" : "행동 불가"}</span><span className="b-speed2 b-num mt-1 text-[19px] leading-none">–</span></div> : null}
+                {slots.map((s) => { const key = slotKey(u.id, s.slot); const p = state.picks[key]; const skId = p?.skillId ?? loaded[key]; const sk = skId ? u.skills.find((x) => x.id === skId) : undefined; const active = key === activeDie; const open = key === picker; const o = odds[key];
+                  return (
+                    <div key={key} className="flex flex-col items-center">
+                      <div className="relative">
+                        {active || open ? <span className="b-slot-glow" data-tone={open ? "cyan" : "gold"} /> : null}
+                        <button type="button" onPointerDown={sk && !p?.locked && !corroded ? startDrag({ kind: "die", unitId: u.id, slot: s.slot }) : undefined} onClick={() => onDie(u, s.slot)}
+                          title={sk ? `${sk.name}${p ? ` → ${names[p.targetId]}${p.targetSlot !== undefined ? (p.protect ? " (보호)" : " (가로채기/합)") : ""}` : " · 상대에게 끌어 놓거나 상대를 누르세요"}` : "누르면 스킬을 고릅니다"}
+                          data-side={u.side} className={`b-slot h-14 w-14 touch-none ${sk ? "" : "b-slot-empty"} ${sk && !p?.locked ? "cursor-grab" : ""}`}>
+                          {sk ? <SkillChip skill={sk} size={46} bare /> : null}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          {p?.locked ? <img src={ui("ico-lock")} alt="확정" className="absolute -right-1 -top-1 h-4" /> : null}
+                        </button>
+                        {(p && !p.locked) || (!p && loaded[key]) ? <button type="button" onClick={() => onCancel(u, s.slot)} className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-black text-[9px] text-white/80 ring-1 ring-white/30 hover:bg-red-700" title="선택 취소">✕</button> : null}
+                        {p && !o ? <span className="pointer-events-none absolute -bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-sky-300 shadow-[0_0_6px_#7dd3fc]" title="대상 지정됨" /> : null}
+                        {o ? <span className={`pointer-events-none absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm bg-black/85 px-1 text-[9px] font-bold ${oddsColor(o.label)}`}>{Math.round(o.winRate * 100)}%</span> : null}
+                      </div>
+                      <span className="b-speed2 b-num mt-1 text-[19px] leading-none">{s.speed}</span>
                     </div>
-                    <span className="b-speed b-num mt-1 text-[15px] leading-none">{s.speed}</span>
-                  </div>
-                ); })}
-            </div>
-            {/* 아래: 초상(칠각 게이지, 왼쪽 빨강 체력·오른쪽 파랑 정신력) + 숫자 */}
-            <button type="button" onClick={() => onPortrait(u)} className={`relative mt-0.5 h-[4.75rem] w-[4.75rem] ${u.id === selId ? "drop-shadow-[0_0_8px_rgba(255,213,74,.9)]" : ""}`}>
-              <PortraitGauge u={u} rules={rules} size={76}>
+                  ); })}
+              </div>
+              {/* 아래: 주황 칠각 초상 (적은 붉게) + 체력(주황)·정신력(파란 원), 왼쪽 가는 띠는 고른 스킬의 죄악색 */}
+              <button type="button" onClick={() => onPortrait(u)} className={`b-hept relative mt-1 h-[5.4rem] w-[5.4rem] ${u.id === selId ? "b-hept-sel" : ""}`} data-side={u.side}>
+                <span className="b-hept-face">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {u.portraitUrl ? <img src={u.portraitUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <span className="flex h-full items-center justify-center text-lg font-bold">{u.name.slice(0, 1)}</span>}
+                </span>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                {u.portraitUrl ? <img src={u.portraitUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <span className="flex h-full items-center justify-center text-base font-bold">{u.name.slice(0, 1)}</span>}
-              </PortraitGauge>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {u.staggered ? <img src={ui("slot-break")} alt="흐트러짐" className="absolute inset-0 h-full w-full opacity-75" draggable={false} /> : null}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {enemy ? <img src={ui("tag-enemy")} alt="적" className="absolute -top-1 left-1/2 h-3.5 -translate-x-1/2" draggable={false} /> : null}
-              <span className="b-num absolute -bottom-0.5 left-0 text-[17px] leading-none text-[#ff8a3c]" style={{ textShadow: "0 1px 0 #000, 0 0 6px #000" }}>{u.hp}</span>
-              {!u.sanityLocked ? <span className="b-num absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full text-[13px] leading-none text-white" style={{ background: "#1f5fb8", border: "2px solid #9fd0ff", textShadow: "0 1px 1px #000" }}>{u.sanity}</span> : null}
-            </button>
-            {enemy && onReroll && !corroded ? <button type="button" onClick={() => onReroll(u)} className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-black/80 text-[12px] leading-none text-[#ffd54a] ring-1 ring-[#ffd54a]/60 hover:bg-red-800" title="이 적의 선택을 무작위로 다시 (확정된 것은 유지)">⟳</button> : null}
-          </div>
-        );
-      })}
+                <img src={ui("hept-orange")} alt="" className="b-hept-frame" draggable={false} />
+                {barColor ? <span className="absolute bottom-[22%] left-0 top-[22%] w-[3px] rounded-full" style={{ background: barColor, boxShadow: `0 0 6px ${barColor}` }} /> : null}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {u.staggered ? <img src={ui("slot-break")} alt="흐트러짐" className="absolute inset-0 h-full w-full opacity-75" draggable={false} /> : null}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {enemy ? <img src={ui("tag-enemy")} alt="적" className="absolute -top-1 left-1/2 h-3.5 -translate-x-1/2" draggable={false} /> : null}
+                <span className="b-num absolute -bottom-1 left-0.5 text-[19px] leading-none text-[#ff8a3c]" style={{ textShadow: "0 1px 0 #000, 0 0 6px #000" }}>{u.hp}</span>
+                {!u.sanityLocked ? <span className="b-num absolute -bottom-1.5 -right-1 flex h-7 w-7 items-center justify-center rounded-full text-[14px] leading-none text-white" style={{ background: "#1f5fb8", border: "2px solid #9fd0ff", textShadow: "0 1px 1px #000" }}>{u.sanity}</span> : null}
+              </button>
+              {enemy && onReroll && !corroded ? <button type="button" onClick={() => onReroll(u)} className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-black/80 text-[12px] leading-none text-[#ffd54a] ring-1 ring-[#ffd54a]/60 hover:bg-red-800" title="이 적의 선택을 무작위로 다시 (확정된 것은 유지)">⟳</button> : null}
+            </div>
+          );
+        })}
+      </div>
+      {/* 오른쪽 끝: 기어 고리 + 집게 팔 */}
+      <div className="pointer-events-none relative hidden w-20 shrink-0 self-stretch md:block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={ui("arm-r")} alt="" className="absolute bottom-1 right-2 h-[6.5rem] opacity-95" draggable={false} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={ui("ring-dark")} alt="" className="b-ring absolute right-1 top-1 h-[4.4rem] w-[4.4rem]" draggable={false} />
+      </div>
     </div>
   );
 }
@@ -983,7 +987,8 @@ function RoundButton({ isGm, phase, winner, pending, unpicked, playing, onStart,
   const size = "h-20 w-20 md:h-24 md:w-24";
   // 연출(합 등)은 저절로 진행된다. 버튼은 돌아가는 기어로 "진행 중"만 보여준다 (스페이스로 빨리 넘길 수는 있음)
   if (playing) return <div className={`b-start5 ${size}`} data-dim="1" title="연출 진행 중 (스페이스: 빨리 넘기기)">{body("PLAY", "연출 중", true)}</div>;
-  if (isGm && phase === "select") return <button type="button" disabled={pending} onClick={onStart} className={`b-start5 ${size} transition-transform hover:scale-105 disabled:scale-100`} title="라운드 진행">{body(pending ? "…" : "START", pending ? "처리 중" : unpicked ? `미선택 ${unpicked} · 그대로 진행` : "라운드 진행")}</button>;
+  // 아군 슬롯이 하나라도 비어 있으면 START 는 꺼진다 (사용자: "미선택" 글 대신 선택이 안 되면 활성화 안 되게)
+  if (isGm && phase === "select") { const wait = unpicked > 0; return <button type="button" disabled={pending || wait} onClick={onStart} data-dim={wait ? "1" : undefined} className={`b-start5 ${size} transition-transform hover:scale-105 disabled:scale-100`} title={wait ? "아군이 모두 스킬을 고르면 진행할 수 있습니다" : "라운드 진행"}>{body(pending ? "…" : "START", pending ? "처리 중" : wait ? "선택 대기" : "라운드 진행", wait)}</button>; }
   if (phase === "ended") return <button type="button" onClick={onClose} className={`b-start5 ${size}`} data-dim={winner === "ally" ? undefined : "1"} title="닫기">{body(winner === "ally" ? "WIN" : "LOSE", "닫기", winner !== "ally", false)}</button>;
   return <div className={`b-start5 ${size}`} data-dim="1" title="GM이 라운드를 진행합니다">{body("WAIT", "GM 진행 대기", true)}</div>;
 }

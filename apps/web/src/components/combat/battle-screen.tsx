@@ -860,7 +860,10 @@ function SkillPicker({ unit, slot, state, loaded, startDrag, onPick, onClose, ta
   const defense = unit.skills.filter((s) => s.kind === "defense" && !s.ego);
   const egos = unit.skills.filter((s) => s.ego);
   const chip = (s: Skill, idx: number | null) => {
-    const used = s.ego ? (unit.egoUsed?.[s.id] ?? 0) : 0; const blocked = corroded || (s.ego ? used >= s.ego.usesPerCombat : false); const on = cur === s.id;
+    const used = s.ego ? (unit.egoUsed?.[s.id] ?? 0) : 0;
+    // 같은 E.G.O는 한 라운드에 한 번 (다른 슬롯에서 이미 골랐으면 막음)
+    const egoElsewhere = s.ego ? Object.entries(state.picks).some(([k, p]) => k.startsWith(unit.id + ":") && k !== key && p.skillId === s.id) : false;
+    const blocked = corroded || (s.ego ? used >= s.ego.usesPerCombat || egoElsewhere : false); const on = cur === s.id;
     return (
       <button key={`${s.id}-${idx}`} type="button" disabled={blocked} onPointerDown={blocked ? undefined : startDrag({ kind: "skill", unitId: unit.id, skillId: s.id })} onClick={() => onPick(s)}
         title={`${s.name} · ${SIN_LABEL[s.sin]} · ${powerText(s)}${s.effectText ? `\n${s.effectText}` : ""}`}
@@ -980,7 +983,7 @@ function RoundButton({ isGm, phase, winner, pending, unpicked, playing, onStart,
   const size = "h-20 w-20 md:h-24 md:w-24";
   // 연출(합 등)은 저절로 진행된다. 버튼은 돌아가는 기어로 "진행 중"만 보여준다 (스페이스로 빨리 넘길 수는 있음)
   if (playing) return <div className={`b-start5 ${size}`} data-dim="1" title="연출 진행 중 (스페이스: 빨리 넘기기)">{body("PLAY", "연출 중", true)}</div>;
-  if (isGm && phase === "select") return <button type="button" disabled={pending} onClick={onStart} className={`b-start5 ${size} transition-transform hover:scale-105 disabled:scale-100`} title="라운드 진행">{body(pending ? "…" : "START", pending ? "처리 중" : unpicked ? `미선택 ${unpicked}` : "라운드 진행")}</button>;
+  if (isGm && phase === "select") return <button type="button" disabled={pending} onClick={onStart} className={`b-start5 ${size} transition-transform hover:scale-105 disabled:scale-100`} title="라운드 진행">{body(pending ? "…" : "START", pending ? "처리 중" : unpicked ? `미선택 ${unpicked} · 그대로 진행` : "라운드 진행")}</button>;
   if (phase === "ended") return <button type="button" onClick={onClose} className={`b-start5 ${size}`} data-dim={winner === "ally" ? undefined : "1"} title="닫기">{body(winner === "ally" ? "WIN" : "LOSE", "닫기", winner !== "ally", false)}</button>;
   return <div className={`b-start5 ${size}`} data-dim="1" title="GM이 라운드를 진행합니다">{body("WAIT", "GM 진행 대기", true)}</div>;
 }

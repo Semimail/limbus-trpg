@@ -46,7 +46,11 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   let combat: { id: string; state: CombatState } | null = null;
   let setup: { allies: { id: string; name: string; owner: string; approved: boolean }[]; enemies: { id: string; name: string; threat: string; maxHp: number }[] } | null = null;
   if (current?.kind === "combat") {
-    if (activeCombat) combat = { id: activeCombat.id, state: activeCombat.state as unknown as CombatState };
+    if (activeCombat) {
+      combat = { id: activeCombat.id, state: activeCombat.state as unknown as CombatState };
+      // v5.1 이전에 시작한 전투: 유닛에 주인(ownerId)이 없어 아무도 고를 수 없었다 → 캐릭터 표로 채움
+      for (const u of combat.state.units) if (u.source.kind === "character" && u.source.ownerId === undefined) { const c = (chars ?? []).find((x) => x.id === u.source.id); if (c) u.source.ownerId = c.owner_id; }
+    }
     else if (isGm && open) {
       const ownerName = (uid: string) => memberList.find((m) => m.user_id === uid)?.username ?? "";
       setup = {

@@ -18,7 +18,8 @@ export interface Unit extends Combatant {
   spriteUrl?: string | null;
   spritePoses?: SpritePoses | null;
   spriteAnims?: SpriteAnims | null;
-  source: { kind: "character"; id: string; ownerId: string } | { kind: "enemy"; id: string };
+  /** ownerId: 캐릭터 주인(사용자 id). v5.1(2026-11-23) 이전에 시작한 전투에는 없다 → 서버·화면에서 캐릭터 표로 보정 */
+  source: { kind: "character"; id: string; ownerId?: string } | { kind: "enemy"; id: string };
   deck: string[];
   discard: string[];
   hand: string[];
@@ -387,6 +388,9 @@ function useEgo(state: CombatState, u: Unit, s: SpeedSlot, skill: Skill, pick: P
   const cost = skill.ego!;
   const used = u.egoUsed[skill.id] ?? 0;
   if (used >= cost.usesPerCombat) return "이 전투에서 더 쓸 수 없습니다";
+  // 같은 E.G.O는 한 라운드에 한 번만 (다른 E.G.O는 같은 라운드에 함께 써도 된다)
+  const key0 = slotKey(u.id, s.slot);
+  if (Object.entries(state.picks).some(([k, p]) => k.startsWith(u.id + ":") && k !== key0 && p.skillId === skill.id)) return "같은 E.G.O는 한 라운드에 한 번만 쓸 수 있습니다";
   const { r, save } = rng(state);
   u.egoUsed[skill.id] = used + 1;
   if (!u.sanityLocked) u.sanity = adjustSanity(u.sanity, -cost.sanityCost, rules);

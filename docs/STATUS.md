@@ -1,6 +1,6 @@
 # 진행 상황과 결정 (인수인계)
 
-마지막 갱신: 2026-11-23. 사이트: https://limbus-trpg.vercel.app · 저장소: github.com/Semimail/limbus-trpg
+마지막 갱신: 2026-11-25. 사이트: https://limbus-trpg.vercel.app · 저장소: github.com/Semimail/limbus-trpg
 
 ## 구현 완료
 - 로그인(디스코드), 사무소 허브(세션·의뢰 게시판·내 캐릭터·파티원·기록 보관소·적 도감·GM 패널·캠페인 삭제·룰 설정 링크), 초대 코드, 임시 GM.
@@ -157,6 +157,10 @@
 - 폰트: 본문 SCDream(원작 한글 UI), 제목 KOTRA Bold(`h1,h2,h3`·`.font-title`), 영문·숫자 BebasKai(`.font-num`; 포스타입 글 "영문은 Bebas Neue"). 타이틀 폰트 Tagmarker 는 라이선스 불명·게임 파일에 없어 제외. Pretendard CDN 은 폴백으로 유지.
 - 조각(`ui/s/`, 47장, `ui-pick-shell.py`): 상단 바 = 원작 붉은 질감 플레이트 + Bebas 로고 "LIMBUS TRPG" + 청동 버튼 메뉴(`header.tsx`, `.site-header`), 패널 = 검정+청동 테 9조각(`.panel`, 머리띠는 갈색 그라데이션+청동 선, 스탬프 = 흰 사선 플레이트에 Bebas), 카드 = 모서리 깎인 플레이트(`.lb-card`), 버튼 = primary 붉은 플레이트(전투 조각 btn-red)·ghost 검정+청동(btn_t1_normal)·danger 붉은 테(`.lb-btn*`), 입력 = 모서리 깎인 어두운 칸(`.lb-input`), 페이지 제목 = KOTRA + 붉은 빛 바(`PageTitle`), 페이지 배경 = 원작 설정 화면 질감 + 비네트(`body::before/after`).
 - 미리보기 `/dev/shell`(개발 전용)로 사무소 모양을 확인. 각 페이지의 Tailwind 색 클래스(`bg-elev`, `border-border` 등)는 팔레트 변수를 따라 자동으로 어두워졌고, 페이지별 손질(캐릭터 목록·데이터북·룰북·공방 등)은 아직.
+
+## 전투 화면 v5.5 (2026-11-25) — 옛 전투 주인 보정, 같은 E.G.O 라운드 1회
+- **"미선택 N"만 뜨고 아무것도 못 고르던 문제**: v5.1부터 캐릭터는 주인(`unit.source.ownerId`)만 조종하는데, v5.1 이전에 시작한 전투의 유닛에는 `ownerId` 가 없어 GM 포함 아무도 고를 수 없었다. 서버 `canControl` 이 없으면 `characters.owner_id` 를 찾아 판정(찾은 값은 상태에 써 둠), 세션 페이지도 화면에 넘기기 전에 채움. 타입은 `ownerId?: string`. START 버튼 아래 글은 "미선택 N · 그대로 진행"(미선택이 있어도 눌러 진행 가능, 미선택 슬롯은 행동 없음).
+- **E.G.O**: 같은 E.G.O는 한 라운드에 한 번(다른 슬롯에서 또 고르면 "같은 E.G.O는 한 라운드에 한 번만"), 다른 E.G.O는 같은 라운드에 함께 가능. 전투당 횟수(시트 `usesPerCombat`)는 그대로. 룰북 7장 표에 행 추가, 테스트 추가(83).
 
 ## 전투 화면 v5.3: 연출 자동 진행 + 정보 패널 분리 (2026-11-23, 사용자 "합은 자동으로 진행해", "흐트러졌을 때 스킬 안 써짐·대상 지정이 안 돼")
 - 연출(합 등)은 단계 타이머로 저절로 진행. 라운드 버튼의 NEXT(다음 단계)와 무대 탭으로 넘기기를 없애고, 연출 중에는 어두운 "PLAY · 연출 중" 기어만 돈다. 상단 띠의 일시정지·건너뛰기, 스페이스/→ 빨리 넘기기는 유지.

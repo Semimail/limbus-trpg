@@ -73,6 +73,18 @@ describe("E.G.O와 빛", () => {
     expect(st.notices.some((n) => n.includes("발현"))).toBe(true);
   });
 
+  it("같은 E.G.O는 한 라운드에 한 번, 다른 E.G.O는 함께 쓸 수 있다", () => {
+    const ego2 = mkSkill({ id: "ego1", name: "E.G.O", tier: 3, ego: { sanityCost: 5, erosionGain: 1, usesPerCombat: 3 } });
+    const ego3 = mkSkill({ id: "ego2", name: "E.G.O 2", tier: 3, ego: { sanityCost: 5, erosionGain: 1, usesPerCombat: 3 } });
+    const st = startCombat([base("A", "ally", { skills: [mkSkill({ id: "a1" }), ego2, ego3], speed: { min: 5, max: 5, dice: 2 } }), base("E", "enemy")], 7, NOGRID);
+    expect(st.slots.filter((s) => s.combatantId === "A")).toHaveLength(2);
+    expect(setPick(st, "A", 0, { skillId: "ego1", targetId: "E" }, NOGRID)).toBeNull();
+    expect(setPick(st, "A", 1, { skillId: "ego1", targetId: "E" }, NOGRID)).toContain("한 라운드에 한 번");
+    expect(setPick(st, "A", 1, { skillId: "ego2", targetId: "E" }, NOGRID)).toBeNull();
+    const a = st.units.find((u) => u.id === "A")!;
+    expect(a.egoUsed.ego1).toBe(1); expect(a.egoUsed.ego2).toBe(1);
+  });
+
   it("정신력이 음수로 떨어지면 침식 판정, 침식도 상한이면 무조건 침식", () => {
     const st = startCombat([base("A", "ally", { skills: [mkSkill({ id: "a1" }), ego], erosion: 95, sanity: 45 }), base("E", "enemy")], 6, NOGRID);
     expect(setPick(st, "A", 0, { skillId: "ego1", targetId: "E" }, NOGRID)).toBeNull();

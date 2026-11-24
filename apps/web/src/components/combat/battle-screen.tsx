@@ -18,7 +18,7 @@ import { ErosionReveal, type ErosionCard } from "./erosion-reveal";
  *  - 조각 이름 ↔ 원작 스프라이트 대응은 scripts/limbus-extract/README.md "전투 UI 조각" 절. 폰트: Excelsior(제목)·BebasKai(숫자)·SCDream(본문).
  *  - 좌상단 TURN/ENEMY 프레임, 왼쪽 행동 순서, 우상단 버튼, 오른쪽 유닛 카드(적은 공개된 기믹만), 우하단 로그, 붉은 원형 START.
  *  - 가운데 아래 림버스식 스킬 슬롯 띠: 자기 캐릭터의 다이스를 누르면 1·2·3번 손패/방어/E.G.O를 골라 올리고,
- *    다이스를 끌어(또는 상대를 눌러) 대상을 정한다. 남의 캐릭터는 GM 이라도 보기만. "선택 완료" 단계는 없다 — 고른 스킬이 곧 선택.
+ *    다이스를 끌어(또는 상대를 눌러) 대상을 정한다. 남의 캐릭터는 보기만(GM 은 자리를 비운 플레이어 대신 고를 수 있음). "선택 완료" 단계는 없다 — 고른 스킬이 곧 선택.
  *  - 적의 스킬은 GM 이 같은 띠에서 지정한다(라운드 시작 때는 무작위로 깔리고, "무작위" 버튼으로 다시 굴릴 수 있다).
  *  - 아래 줄은 스킬 띠 + 승률/피해량 + START 를 한 덩어리로 가운데 모은다(넓은 화면에서 멀리 떨어지지 않게).
  *  - v5.2: 띠는 원작처럼 유닛마다 세로 한 열(다이스 → 속도 → 초상, 이름 글자 없음), 적에 마우스를 올리면 호버 카드(고른 스킬·효과·키워드),
@@ -126,10 +126,10 @@ export function BattleScreen({ campaignId, combatId, initial, meId, isGm, rules,
   useEffect(() => { const prev = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = prev; }; }, []);
 
   const names = useMemo(() => unitNames(state), [state]);
-  // 조종 권한: 캐릭터는 주인만(GM 이라도 남의 캐릭터는 못 건드린다), 적은 GM 만
-  const mine = useCallback((u: Unit) => (u.source.kind === "character" ? u.source.ownerId === meId : isGm), [isGm, meId]);
+  // 조종 권한: 캐릭터는 주인(GM 은 자리를 비운 플레이어 대신 고를 수 있어 전부), 적은 GM 만
+  const mine = useCallback((u: Unit) => isGm || (u.source.kind === "character" && u.source.ownerId === meId), [isGm, meId]);
   const myUnits = state.units.filter((u) => mine(u) && !u.incapacitated);
-  const [selId, setSelId] = useState<string | null>(() => { const ctrl = (u: Unit) => !u.incapacitated && (u.source.kind === "character" ? u.source.ownerId === meId : isGm); return (initial.units.find((u) => u.side === "ally" && ctrl(u)) ?? initial.units.find(ctrl))?.id ?? null; });
+  const [selId, setSelId] = useState<string | null>(() => { const ctrl = (u: Unit) => !u.incapacitated && (isGm || (u.source.kind === "character" && u.source.ownerId === meId)); return (initial.units.find((u) => u.side === "ally" && ctrl(u)) ?? initial.units.find(ctrl))?.id ?? null; });
   const selected = state.units.find((u) => u.id === selId) ?? null;
   // 정보 패널(아군 카드·적 패널)은 무대·순서표에서 유닛을 눌렀을 때만 연다. 띠의 다이스·초상은 선택만 바꾼다(패널이 무대를 가려 대상 지정을 막지 않게)
   const [infoId, setInfoId] = useState<string | null>(null);

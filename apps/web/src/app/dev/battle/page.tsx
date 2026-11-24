@@ -5,7 +5,7 @@ import { BattleScreen } from "@/components/combat/battle-screen";
 /*
  * 전투 화면 미리보기 (개발 전용, 프로덕션은 404). 로그인·DB 없이 가짜 전투 상태로 화면만 본다.
  *  - 그림은 public/dev/ (저장소 제외) 에 둔 추출본을 쓴다. 없으면 초상 없는 토큰으로 나온다.
- *  - ?gm=0 플레이어 시점, ?ended=1 종료 화면, ?round=n 라운드 수. 아군 둘 중 하나는 남의 캐릭터(선택 불가), 적은 GM 이 띠에서 지정
+ *  - ?gm=0 플레이어 시점, ?ended=1 종료 화면, ?round=n 라운드 수. 아군 둘 중 하나는 남의 캐릭터(플레이어 시점에선 선택 불가, GM 은 대리 선택 가능), 적은 GM 이 띠에서 지정
  *  - ?replay=round : 아군 1이 적 1의 다이스를 맞받아치게 해 두고 엔진으로 한 라운드를 실제로 굴린다 → "다시 보기"로 합 컷인(격돌·코인 토스)을 본다
  */
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ export default async function DevBattlePage({ searchParams }: { searchParams: Pr
     skills: e.skills.map((s) => ({ ...s } as Skill)), resist: e.resist, portraitUrl: sprite, spriteUrl: sprite, source: { kind: "enemy", id },
   });
   const inputs: UnitInput[] = [
-    ally("a1", "이상", "/dev/ally1.png", c.maxHp - 6, 12), ally("a2", "파우스트", "/dev/ally2.png", Math.round(c.maxHp * 0.45), -8, "other"), // 남의 캐릭터: GM 이라도 선택 못 함
+    ally("a1", "이상", "/dev/ally1.png", c.maxHp - 6, 12), ally("a2", "파우스트", "/dev/ally2.png", Math.round(c.maxHp * 0.45), -8, "other"), // 남의 캐릭터: 플레이어는 선택 못 함, GM 은 대리 선택
     enemy("e1", "자치우", "/dev/enemy1.png", 90), enemy("e2", "구보", "/dev/enemy2.png", 40),
   ];
   const state: CombatState = startCombat(inputs, 7, rules);

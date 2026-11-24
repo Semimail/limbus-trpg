@@ -23,10 +23,10 @@ async function post(supabase: Awaited<ReturnType<typeof createClient>>, sessionI
   await supabase.from("messages").insert({ session_id: sessionId, scene_id: sceneId, kind: "system", content, payload: (payload ?? null) as never });
 }
 
-/** 조종 권한: 캐릭터는 주인만(GM 이라도 남의 캐릭터는 못 건드린다), 적은 GM만.
+/** 조종 권한: 캐릭터는 주인 또는 GM(자리를 비운 플레이어 대신 고를 수 있게, 사용자 결정 2026-11-25), 적은 GM만.
  *  v5.1 이전에 시작한 전투의 유닛에는 ownerId 가 없어 아무도 고를 수 없었다("미선택"만 남음) → 캐릭터 표에서 주인을 찾아 판정 */
 async function canControl(supabase: Awaited<ReturnType<typeof createClient>>, unit: Unit, userId: string, isGm: boolean) {
-  if (unit.source.kind !== "character") return isGm;
+  if (unit.source.kind !== "character" || isGm) return isGm;
   let owner = unit.source.ownerId;
   if (owner === undefined) {
     const { data } = await supabase.from("characters").select("owner_id").eq("id", unit.source.id).maybeSingle();
